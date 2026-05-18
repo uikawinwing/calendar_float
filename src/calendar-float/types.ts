@@ -137,6 +137,7 @@ export interface CalendarBookRecord {
   title: string;
   summary: string;
   content: string;
+  triggerText: string;
   worldbookEntryName?: string;
 }
 
@@ -176,6 +177,7 @@ export interface FestivalRecord {
 export interface DayCellEventChip {
   id: string;
   title: string;
+  label?: string;
   row: number;
   startOffset: number;
   endOffset: number;
@@ -184,6 +186,7 @@ export interface DayCellEventChip {
   source: EventSourceKind;
   colorToken: 'user' | 'festival' | 'archived';
   color?: CalendarEventColorStyle;
+  displayKind?: 'bar' | 'stage-bubble';
 }
 
 export interface DayCellFestivalMarker {

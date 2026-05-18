@@ -50,6 +50,7 @@ export interface BindCalendarWidgetEventsOptions {
   onOpenBookPage: (pageIndex: number) => void;
   onBookPrevPage: () => void;
   onBookNextPage: () => void;
+  onQuickInputBookTrigger: (triggerText: string) => void;
   onCloseBookReader: () => void;
   onEditEvent: (eventId: string) => void;
   onCompleteEvent: (eventId: string, eventType: CalendarBucketType) => void | Promise<void>;
@@ -368,6 +369,14 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     options.onBookNextPage();
   });
 
+  $(refs.root).on('click.calendar-float', '[data-action="quick-input-book-trigger"]', event => {
+    const triggerText = String((event.currentTarget as HTMLElement).getAttribute('data-trigger-text') || '').trim();
+    if (!triggerText) {
+      return;
+    }
+    options.onQuickInputBookTrigger(triggerText);
+  });
+
   $(refs.root).on('click.calendar-float', '[data-action="close-book-reader"]', () => {
     options.onCloseBookReader();
   });
@@ -439,7 +448,7 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     const target = event.target as HTMLElement | null;
     if (
       target?.closest(
-        '[data-action="edit-event"], [data-action="complete-event"], [data-action="delete-event"], [data-action="restore-event"], [data-action="purge-event"], [data-action="open-book"], [data-action="open-book-page"], [data-action="book-prev-page"], [data-action="book-next-page"], [data-action="close-book-reader"]',
+        '[data-action="edit-event"], [data-action="complete-event"], [data-action="delete-event"], [data-action="restore-event"], [data-action="purge-event"], [data-action="open-book"], [data-action="open-book-page"], [data-action="book-prev-page"], [data-action="book-next-page"], [data-action="quick-input-book-trigger"], [data-action="close-book-reader"]',
       )
     ) {
       return;

@@ -162,7 +162,7 @@ function getBookTitleFontSize(title: string): number {
   return Math.max(22, Math.min(48, Math.floor(760 / visualLength)));
 }
 
-function buildBookFooterControls(pages: CalendarBookPage[], currentPageIndex: number): string {
+function buildBookFooterControls(pages: CalendarBookPage[], currentPageIndex: number, book?: CalendarBookRecord): string {
   const pageControls =
     pages.length > 1
       ? `<div class="th-book-pagination-main">
@@ -183,9 +183,21 @@ function buildBookFooterControls(pages: CalendarBookPage[], currentPageIndex: nu
     <nav class="th-book-pagination${pages.length > 1 ? ' has-page-controls' : ' has-return-only'}" aria-label="读物底部控制">
       <div class="th-book-pagination-spacer" aria-hidden="true"></div>
       ${pageControls}
-      <button type="button" class="th-btn th-book-return-btn" data-action="close-book-reader">返回日期详情</button>
+      <div class="th-book-pagination-actions">
+        ${book ? buildBookQuickInputButton(book) : ''}
+        <button type="button" class="th-btn th-book-return-btn" data-action="close-book-reader">返回日期详情</button>
+      </div>
     </nav>
   `;
+}
+
+function buildBookQuickInputButton(book: CalendarBookRecord): string {
+  const bookTitle = String(book.title || '').trim();
+  const triggerText = String(book.triggerText || (bookTitle ? `[[打开《${bookTitle}》]]` : '')).trim();
+  if (!triggerText) {
+    return '';
+  }
+  return `<button type="button" class="th-btn th-book-trigger-btn" data-action="quick-input-book-trigger" data-trigger-text="${escapeWidgetHtml(triggerText)}" title="${escapeWidgetHtml(triggerText)}">填入触发词</button>`;
 }
 
 function chunkWeekRows(cells: MonthDayCell[]): MonthDayCell[][] {
@@ -207,7 +219,8 @@ function isSameContinuousChip(
     left.id === right.id &&
     left.title === right.title &&
     left.colorToken === right.colorToken &&
-    left.source === right.source
+    left.source === right.source &&
+    left.displayKind === right.displayKind
   );
 }
 
@@ -243,10 +256,12 @@ function renderWeekChipOverlay(week: MonthDayCell[]): string {
       const lastChip = getChipAtRow(week[cellIndex + span - 1], row);
       const isBarEnd = Boolean(lastChip?.isEnd);
       const colorClass = chip.color ? ' has-custom-color' : '';
+      const kindClass = chip.displayKind === 'stage-bubble' ? ' is-stage-bubble' : '';
       const continuityClass = `${chip.isStart ? '' : ' is-continue-left'}${isBarEnd ? '' : ' is-continue-right'}`;
       const customStyle = buildCustomColorStyle(chip.color);
+      const label = chip.label || chip.title;
       bars.push(
-        `<div class="th-chip th-week-chip-bar is-${chip.colorToken}${colorClass}${continuityClass}" style="grid-column: ${cellIndex + 1} / span ${span}; grid-row: ${row + 1}; ${customStyle}" title="${escapeWidgetHtml(chip.title)}">${escapeWidgetHtml(chip.title)}</div>`,
+        `<div class="th-chip th-week-chip-bar is-${chip.colorToken}${colorClass}${kindClass}${continuityClass}" style="grid-column: ${cellIndex + 1} / span ${span}; grid-row: ${row + 1}; ${customStyle}" title="${escapeWidgetHtml(chip.title)}">${escapeWidgetHtml(label)}</div>`,
       );
     });
   }
@@ -369,13 +384,14 @@ export function renderBookMainView(options: {
           <div class="th-month-title" style="--th-book-title-size: ${titleFontSize}px;">${escapeWidgetHtml(decoratedBookTitle)}</div>
           <div class="th-month-subtitle">读物正文 · Markdown 阅读模式</div>
         </div>
+        ${buildBookQuickInputButton(book)}
       </div>
       ${book.summary ? `<div class="th-reminder-summary"><div>${escapeWidgetHtml(book.summary)}</div></div>` : ''}
       <section class="th-book-reading-surface" aria-label="${escapeWidgetHtml(shouldShowPageTitle ? pageTitle : displayBookTitle)}">
         ${shouldShowPageTitle ? `<div class="th-book-page-title">${escapeWidgetHtml(pageTitle)}</div>` : ''}
         <div class="th-book-main-body">${renderMarkdownContent(currentPage.content || '（暂无内容）')}</div>
       </section>
-      ${buildBookFooterControls(pages, safePageIndex)}
+      ${buildBookFooterControls(pages, safePageIndex, book)}
     </article>
   `;
 }
@@ -570,7 +586,7 @@ export function renderDetailPanel(options: {
     const bookTitle = openedBook.title.trim() || '未命名读物';
     const decoratedBookTitle = `《${bookTitle}》`;
     const titleFontSize = getBookTitleFontSize(decoratedBookTitle);
-    return `<article class="th-detail-card is-book-reader"><div class="th-book-reader-head"><div class="th-book-main-title-wrap"><div class="th-item-title" style="--th-book-title-size: ${titleFontSize}px;">${escapeWidgetHtml(decoratedBookTitle)}</div><div class="th-detail-meta">读物详情</div></div></div>${openedBook.summary ? `<div class="th-detail-summary">${escapeWidgetHtml(openedBook.summary)}</div>` : ''}<div class="th-book-page-title">${escapeWidgetHtml(currentPage.title)}</div><div class="th-book-reader-body">${renderMarkdownContent(currentPage.content || '（暂无内容）')}</div>${buildBookFooterControls(pages, safePageIndex)}</article>`;
+    return `<article class="th-detail-card is-book-reader"><div class="th-book-reader-head"><div class="th-book-main-title-wrap"><div class="th-item-title" style="--th-book-title-size: ${titleFontSize}px;">${escapeWidgetHtml(decoratedBookTitle)}</div><div class="th-detail-meta">读物详情</div></div>${buildBookQuickInputButton(openedBook)}</div>${openedBook.summary ? `<div class="th-detail-summary">${escapeWidgetHtml(openedBook.summary)}</div>` : ''}<div class="th-book-page-title">${escapeWidgetHtml(currentPage.title)}</div><div class="th-book-reader-body">${renderMarkdownContent(currentPage.content || '（暂无内容）')}</div>${buildBookFooterControls(pages, safePageIndex, openedBook)}</article>`;
   }
   if (!selectedItems.length) {
     return (

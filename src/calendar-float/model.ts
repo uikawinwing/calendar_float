@@ -33,6 +33,7 @@ import type {
   MonthDayCell,
   ReminderLevel,
   ReminderState,
+  WorldbookStageRecord,
 } from './types';
 
 export const MONTH_EVENT_ROW_LIMIT = 3;
@@ -71,6 +72,42 @@ function normalizeFestivalEvent(festival: FestivalRecord): CalendarEventRecord {
   };
 }
 
+function normalizeFestivalStageMonthEvent(festival: FestivalRecord, stage: WorldbookStageRecord): CalendarEventRecord {
+  const marker = buildFestivalMarker(festival);
+  const locationKeywords = getFestivalLocationKeywords(festival);
+  return {
+    source: 'festival',
+    sourceKind: festival.sourceKind,
+    id: `${festival.id}:${stage.phaseId}`,
+    type: '节庆',
+    title: `${festival.title} · ${stage.title}`,
+    content: stage.summary || festival.content || festival.summary,
+    startText: stage.startText,
+    endText: stage.endText,
+    repeatRule: '每年',
+    tags: ['节庆', '阶段'],
+    allDay: true,
+    range: stage.range,
+    relatedBookIds: festival.relatedBookIds,
+    metadata: {
+      ...festival.metadata,
+      locationKeywords,
+      stages: festival.stages,
+      entryName: festival.entryName,
+      festivalId: festival.id,
+      festivalTitle: festival.title,
+      stageId: stage.phaseId,
+      stageTitle: stage.title,
+      monthChipKind: 'stage-bubble',
+      monthChipLabel: stage.title,
+      festivalIconSvg: marker.iconSvg,
+      festivalIconColor: marker.iconColor,
+      festivalLocationLabel: locationKeywords[0] || '',
+    },
+    color: marker.color,
+  };
+}
+
 function rangesOverlap(left: DateRange, right: DateRange): boolean {
   return compareDatePoint(left.start, right.end) <= 0 && compareDatePoint(left.end, right.start) >= 0;
 }
@@ -88,11 +125,16 @@ function isFestivalOccurrenceYear(festival: FestivalRecord, year: number): boole
   return (year - lastYear) % intervalYears === 0;
 }
 
-function resolveFestivalOccurrenceRange(festival: FestivalRecord, startYear: number): DateRange | null {
-  const startText = normalizeMonthDayText(festival.startText);
-  const endText = normalizeMonthDayText(festival.endText || festival.startText);
+function resolveFestivalMonthDayOccurrenceRange(
+  festival: FestivalRecord,
+  startYear: number,
+  rawStartText: string,
+  rawEndText: string,
+): DateRange | null {
+  const startText = normalizeMonthDayText(rawStartText);
+  const endText = normalizeMonthDayText(rawEndText || rawStartText);
   if (!startText || !endText) {
-    return festival.range ?? null;
+    return null;
   }
 
   if (!isFestivalOccurrenceYear(festival, startYear)) {
@@ -117,6 +159,13 @@ function resolveFestivalOccurrenceRange(festival: FestivalRecord, startYear: num
   }
 
   return { start, end };
+}
+
+function resolveFestivalOccurrenceRange(festival: FestivalRecord, startYear: number): DateRange | null {
+  if (!normalizeMonthDayText(festival.startText) || !normalizeMonthDayText(festival.endText || festival.startText)) {
+    return festival.range ?? null;
+  }
+  return resolveFestivalMonthDayOccurrenceRange(festival, startYear, festival.startText, festival.endText);
 }
 
 export function buildFestivalEventsForRange(
@@ -152,6 +201,56 @@ export function buildFestivalEventsForRange(
   });
 }
 
+function buildFestivalStageMonthEventsForRange(
+  festival: FestivalRecord,
+  targetRange: DateRange,
+): CalendarEventRecord[] {
+  if (festival.stages.length === 0) {
+    return [];
+  }
+
+  const candidateStartYears = new Set<number>([
+    targetRange.start.year - 1,
+    targetRange.start.year,
+    targetRange.end.year,
+    targetRange.end.year + 1,
+  ]);
+
+  return festival.stages.flatMap(stage => {
+    const baseEvent = normalizeFestivalStageMonthEvent(festival, stage);
+    const ranges = [...candidateStartYears]
+      .map(year => resolveFestivalMonthDayOccurrenceRange(festival, year, stage.startText, stage.endText))
+      .filter((range): range is DateRange => Boolean(range))
+      .filter(range => rangesOverlap(range, targetRange))
+      .sort((left, right) => compareDatePoint(left.start, right.start));
+
+    if (ranges.length === 0 && stage.range && rangesOverlap(stage.range, targetRange)) {
+      return [baseEvent];
+    }
+
+    return ranges.map(range => ({
+      ...baseEvent,
+      range,
+      metadata: {
+        ...baseEvent.metadata,
+        occurrenceStartYear: range.start.year,
+      },
+    }));
+  });
+}
+
+export function buildFestivalMonthChipEventsForRange(
+  festivals: FestivalRecord[],
+  targetRange: DateRange,
+): CalendarEventRecord[] {
+  return festivals.flatMap(festival => {
+    if (festival.stages.length > 0) {
+      return buildFestivalStageMonthEventsForRange(festival, targetRange);
+    }
+    return buildFestivalEventsForRange([festival], targetRange);
+  });
+}
+
 function getEventSourcePriority(event: CalendarEventRecord): number {
   if (event.source === 'festival') {
     return 0;
@@ -174,6 +273,24 @@ function clampRangeToBoundary(range: DateRange, boundary: DateRange): DateRange 
     start: compareDatePoint(range.start, boundary.start) < 0 ? boundary.start : range.start,
     end: compareDatePoint(range.end, boundary.end) > 0 ? boundary.end : range.end,
   };
+}
+
+function incrementOverflowForBlockedSpan(
+  week: MonthDayCell[],
+  rowOccupancy: boolean[][],
+  startIndex: number,
+  endIndex: number,
+): void {
+  let incremented = false;
+  for (let index = startIndex; index <= endIndex; index += 1) {
+    if (rowOccupancy.every(row => row[index])) {
+      week[index].overflowCount += 1;
+      incremented = true;
+    }
+  }
+  if (!incremented) {
+    week[startIndex].overflowCount += 1;
+  }
 }
 
 function compareMonthEvents(left: CalendarEventRecord, right: CalendarEventRecord): number {
@@ -234,9 +351,7 @@ function assignMonthWeekChips(cells: MonthDayCell[], events: CalendarEventRecord
 
       const row = rowOccupancy.findIndex(occupied => occupied.slice(startIndex, endIndex + 1).every(value => !value));
       if (row < 0) {
-        for (let index = startIndex; index <= endIndex; index += 1) {
-          week[index].overflowCount += 1;
-        }
+        incrementOverflowForBlockedSpan(week, rowOccupancy, startIndex, endIndex);
         return;
       }
 
@@ -247,6 +362,7 @@ function assignMonthWeekChips(cells: MonthDayCell[], events: CalendarEventRecord
         cellsByKey.get(key)?.chips.push({
           id: event.id,
           title: event.title,
+          label: typeof event.metadata.monthChipLabel === 'string' ? event.metadata.monthChipLabel : undefined,
           row,
           startOffset: 0,
           endOffset: 0,
@@ -255,6 +371,7 @@ function assignMonthWeekChips(cells: MonthDayCell[], events: CalendarEventRecord
           source: event.source,
           colorToken: event.source === 'festival' ? 'festival' : event.source === 'archive' ? 'archived' : 'user',
           color: event.color,
+          displayKind: event.metadata.monthChipKind === 'stage-bubble' ? 'stage-bubble' : 'bar',
         });
       }
     });
@@ -276,7 +393,7 @@ export function buildMonthCells(args: {
   const allEvents = [
     ...args.dataset.activeEvents,
     ...args.dataset.archivedEvents,
-    ...buildFestivalEventsForRange(args.dataset.festivals, { start: monthStart, end: monthEnd }),
+    ...buildFestivalMonthChipEventsForRange(args.dataset.festivals, { start: monthStart, end: monthEnd }),
   ];
   const cells: MonthDayCell[] = [];
 

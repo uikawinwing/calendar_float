@@ -10,6 +10,7 @@ import {
   MONTH_EVENT_ROW_LIMIT,
   buildDailyAgenda,
   buildFestivalEventsForRange,
+  buildFestivalMonthChipEventsForRange,
   buildMonthAgenda,
   buildMonthCells,
   buildReminderState,
@@ -1598,6 +1599,24 @@ function clampRangeToBoundary(range: DateRange, boundary: DateRange): DateRange 
   };
 }
 
+function incrementOverflowForBlockedSpan(
+  week: MonthDayCell[],
+  rowOccupancy: boolean[][],
+  startIndex: number,
+  endIndex: number,
+): void {
+  let incremented = false;
+  for (let index = startIndex; index <= endIndex; index += 1) {
+    if (rowOccupancy.every(row => row[index])) {
+      week[index].overflowCount += 1;
+      incremented = true;
+    }
+  }
+  if (!incremented) {
+    week[startIndex].overflowCount += 1;
+  }
+}
+
 function addCompactFestivalBars(cells: MonthDayCell[], events: CalendarEventRecord[]): void {
   if (!cells.length || !events.length) {
     return;
@@ -1644,9 +1663,7 @@ function addCompactFestivalBars(cells: MonthDayCell[], events: CalendarEventReco
           occupied.slice(startIndex, endIndex + 1).every(value => !value),
         );
         if (row < 0) {
-          for (let index = startIndex; index <= endIndex; index += 1) {
-            week[index].overflowCount += 1;
-          }
+          incrementOverflowForBlockedSpan(week, rowOccupancy, startIndex, endIndex);
           return;
         }
 
@@ -1656,6 +1673,7 @@ function addCompactFestivalBars(cells: MonthDayCell[], events: CalendarEventReco
           cell.chips.push({
             id: event.id,
             title: event.title,
+            label: typeof event.metadata.monthChipLabel === 'string' ? event.metadata.monthChipLabel : undefined,
             row,
             startOffset: 0,
             endOffset: 0,
@@ -1664,6 +1682,7 @@ function addCompactFestivalBars(cells: MonthDayCell[], events: CalendarEventReco
             source: event.source,
             colorToken: 'festival',
             color: event.color,
+            displayKind: event.metadata.monthChipKind === 'stage-bubble' ? 'stage-bubble' : 'bar',
           });
         }
       });
@@ -1696,7 +1715,7 @@ function addCompactFestivalChips(
       day: cells[cells.length - 1].day,
     },
   };
-  const compactEvents = buildFestivalEventsForRange(compactFestivals, range);
+  const compactEvents = buildFestivalMonthChipEventsForRange(compactFestivals, range);
   addCompactFestivalBars(cells, compactEvents);
 }
 
@@ -1727,6 +1746,24 @@ function renderBookMainView(bookId: string): string {
     currentPageIndex: uiState.openedBookPageIndex,
     renderMarkdownContent,
   });
+}
+
+function quickInputBookTrigger(triggerText: string): void {
+  const text = String(triggerText || '').trim();
+  if (!text) {
+    return;
+  }
+  const input = hostDocument.querySelector<HTMLTextAreaElement | HTMLInputElement>(
+    '#send_textarea, textarea[name="send_textarea"], textarea#send_textarea',
+  );
+  if (!input) {
+    hostWindow.alert(`没有找到酒馆输入框，可手动输入：${text}`);
+    return;
+  }
+  input.value = text;
+  input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  input.focus();
 }
 
 function getCurrentMonthAgendaGroups(dataset: CalendarDataset | null): DailyAgendaGroup[] {
@@ -2697,6 +2734,7 @@ function bindEvents(): void {
       uiState.openedBookPageIndex += 1;
       renderShell();
     },
+    onQuickInputBookTrigger: quickInputBookTrigger,
     onEditEvent: startEditForm,
     onCompleteEvent: async (eventId: string, eventType: '临时' | '重复') => {
       const result = await archiveCompletedEvent({

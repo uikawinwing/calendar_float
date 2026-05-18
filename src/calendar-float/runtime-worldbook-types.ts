@@ -106,7 +106,19 @@ export interface 日历运行时节庆条目 {
   介绍?: 日历运行时内容节点 | null;
   文本?: 日历运行时内容节点[];
   提醒?: 日历运行时内容节点 | null;
+  阶段?: 日历运行时节庆阶段条目[];
   相关书籍?: string[];
+  元数据?: Record<string, unknown>;
+}
+
+export interface 日历运行时节庆阶段条目 {
+  id: string;
+  名称: string;
+  开始: string;
+  结束: string;
+  周期?: 日历运行时节庆周期;
+  启用?: boolean;
+  提醒?: 日历运行时内容节点 | null;
   元数据?: Record<string, unknown>;
 }
 

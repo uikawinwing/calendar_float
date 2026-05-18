@@ -13,6 +13,7 @@ import type {
   日历运行时变量条件,
   日历运行时提醒状态,
   日历运行时日期窗口条件,
+  日历运行时节庆阶段条目,
   日历运行时节庆条目,
   日历运行时触发映射,
   日历运行时逻辑条件,
@@ -603,6 +604,35 @@ export async function resolveCalendarFestivalReminder(
     文本库键: resolved.文本库键,
     警告: resolved.正文 ? resolved.警告 : [...resolved.警告, '提醒正文缺失，已回退到模板文本'],
   };
+}
+
+export async function resolveCalendarFestivalStageReminder(
+  festival: 日历运行时节庆条目,
+  stage: 日历运行时节庆阶段条目,
+  context: 日历运行时触发上下文,
+): Promise<日历运行时提醒解析结果> {
+  if (stage.启用 === false || !stage.提醒) {
+    return {
+      正文: '',
+      状态: '未命中',
+      来源条目名: null,
+      文本库键: null,
+      警告: [],
+    };
+  }
+
+  return resolveCalendarFestivalReminder(
+    {
+      ...festival,
+      id: `${festival.id}:${stage.id}`,
+      名称: `${festival.名称}·${stage.名称}`,
+      开始: stage.开始,
+      结束: stage.结束 || stage.开始,
+      周期: stage.周期 ?? festival.周期,
+      提醒: stage.提醒,
+    },
+    context,
+  );
 }
 
 export async function resolveCalendarBookAbstract(

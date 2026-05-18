@@ -17,7 +17,7 @@ import {
   type 日历运行时触发上下文,
 } from './runtime-trigger-evaluator';
 import { readCalendarRuntimeIndex, resolveCalendarRuntimeWorldbookSources } from './runtime-worldbook-loader';
-import type { 日历运行时书籍条目, 日历运行时节庆条目 } from './runtime-worldbook-types';
+import type { 日历运行时书籍条目, 日历运行时节庆阶段条目, 日历运行时节庆条目 } from './runtime-worldbook-types';
 import {
   buildSuggestionSet,
   collectEventTags,
@@ -35,6 +35,7 @@ import type {
   DatePoint,
   FestivalRecord,
   RawCalendarEvent,
+  WorldbookStageRecord,
 } from './types';
 
 function buildRuntimeContext(now: DatePoint): 日历运行时触发上下文 {
@@ -47,6 +48,11 @@ function buildRuntimeContext(now: DatePoint): 日历运行时触发上下文 {
 
 function readUiSummary(metadata: Record<string, unknown> | undefined): string {
   return String(metadata?.简介 ?? metadata?.summary ?? metadata?.uiSummary ?? '').trim();
+}
+
+function buildBookTriggerText(bookTitle: string): string {
+  const title = String(bookTitle || '').trim() || '未命名读物';
+  return `[[打开《${title}》]]`;
 }
 
 function readFestivalLocationKeywords(festival: 日历运行时节庆条目): string[] {
@@ -198,6 +204,36 @@ function buildFestivalRange(festival: 日历运行时节庆条目, now: DatePoin
   };
 }
 
+function buildRuntimeStageRecord(
+  festival: 日历运行时节庆条目,
+  stage: 日历运行时节庆阶段条目,
+  now: DatePoint,
+  index: number,
+): WorldbookStageRecord | null {
+  const dateRange = buildFestivalRange(
+    {
+      ...festival,
+      开始: stage.开始,
+      结束: stage.结束 || stage.开始,
+      周期: stage.周期 ?? festival.周期,
+    },
+    now,
+  );
+  if (!dateRange) {
+    return null;
+  }
+
+  return {
+    phaseId: stage.id,
+    dayIndex: index + 1,
+    title: stage.名称,
+    summary: stage.名称,
+    startText: dateRange.startText,
+    endText: dateRange.endText,
+    range: dateRange.range,
+  };
+}
+
 async function buildRuntimeFestivalRecord(
   festival: 日历运行时节庆条目,
   now: DatePoint,
@@ -213,6 +249,10 @@ async function buildRuntimeFestivalRecord(
   const uiSummary = readUiSummary(festival.介绍?.元数据);
   const introText = uiSummary || intro.正文 || festival.名称;
   const locationKeywords = readFestivalLocationKeywords(festival);
+  const stages = (festival.阶段 ?? [])
+    .filter(stage => stage.启用 !== false)
+    .map((stage, index) => buildRuntimeStageRecord(festival, stage, now, index))
+    .filter((stage): stage is WorldbookStageRecord => Boolean(stage));
   return {
     id: festival.id,
     title: festival.名称,
@@ -225,7 +265,7 @@ async function buildRuntimeFestivalRecord(
     recurrence: festival.周期 ? { intervalYears: festival.周期.每隔年, lastYear: festival.周期.上次年份 } : undefined,
     relatedBookIds: [...(festival.相关书籍 ?? [])],
     locationKeywords,
-    stages: [],
+    stages,
     range: dateRange.range,
     metadata: {
       source: 'runtime_worldbook',
@@ -247,6 +287,7 @@ async function buildRuntimeBookRecord(book: 日历运行时书籍条目, now: Da
     title: book.名称,
     summary: abstract.正文 || '',
     content: fulltext.正文 || '',
+    triggerText: buildBookTriggerText(book.名称),
     worldbookEntryName: book.全文?.条目?.条目名 || book.全文?.文本库?.条目名,
   };
 }

@@ -21,6 +21,7 @@ import {
   type 日历运行时文本库,
   type 日历运行时日期窗口条件,
   type 日历运行时索引,
+  type 日历运行时节庆阶段条目,
   type 日历运行时节庆条目,
   type 日历运行时触发映射,
   type 日历运行时逻辑条件,
@@ -1105,6 +1106,145 @@ function 规范化节庆提醒节点(
   };
 }
 
+function 是否内联提醒配置(item: Record<string, unknown>): boolean {
+  return Boolean(
+    读取节庆开始前天数(item) !== undefined ||
+      读取对象字段(item, ['未开始', '进行中', '注入方式', 'mode', '宏触发词', 'macro']) !== undefined ||
+      读取对象(item, ['自定义正文']) ||
+      读取对象(item, ['自定义提醒']) ||
+      读取对象(item, ['开启自定义提醒']),
+  );
+}
+
+function 规范化节庆阶段列表(
+  festivalId: string,
+  festivalName: string,
+  festivalItem: Record<string, unknown>,
+  reminderDefaults: 日历运行时提醒默认值,
+  runtimeDefaults: 日历运行时默认设置 | undefined,
+  festivalCycle: { 每隔年: number; 上次年份: number } | undefined,
+): 日历运行时节庆阶段条目[] {
+  const stages = 规范化对象数组(读取对象字段(festivalItem, ['阶段', '阶段列表', 'stages', 'phases']));
+  const output: 日历运行时节庆阶段条目[] = [];
+
+  stages.forEach((stageItem, index) => {
+    const stageId = 规范化名称(读取对象字段(stageItem, ['id', '阶段id', 'phase_id', 'phaseId'])) || `stage_${index + 1}`;
+    const stageName =
+      规范化名称(读取对象字段(stageItem, ['名称', '阶段名', 'name', 'title'])) || `阶段 ${index + 1}`;
+    const 开始 = 规范化名称(读取对象字段(stageItem, ['开始', 'start']));
+    const 结束 = 规范化名称(读取对象字段(stageItem, ['结束', 'end']) ?? 读取对象字段(stageItem, ['开始', 'start']));
+    if (!stageId || !stageName || !开始 || !结束) {
+      return;
+    }
+
+    const 周期 = 读取节庆周期(stageItem) ?? festivalCycle;
+    const mergedStageItem = {
+      ...festivalItem,
+      ...stageItem,
+      开始,
+      结束,
+    };
+    const 阶段共享触发 = 构建节庆共享触发映射(mergedStageItem, runtimeDefaults, 开始, 结束, 周期);
+    const 原始提醒 = 读取对象字段(stageItem, ['提醒', 'reminder']);
+    const 提醒源 = 原始提醒 ?? (是否内联提醒配置(stageItem) ? stageItem : null);
+    const 提醒 = 规范化节庆提醒节点(
+      `${festivalId}:${stageId}`,
+      `${festivalName}·${stageName}`,
+      提醒源,
+      reminderDefaults,
+      阶段共享触发,
+    );
+
+    output.push({
+      id: stageId,
+      名称: stageName,
+      开始,
+      结束,
+      周期,
+      启用: 读取对象字段(stageItem, ['启用', 'enabled']) === false ? false : true,
+      提醒,
+      元数据: {
+        ...(阶段共享触发 ? { 共享条件: 阶段共享触发 } : {}),
+        ...(周期 ? { 周期 } : {}),
+        ...(读取节庆开始前天数(stageItem) !== undefined
+          ? { 开始前提醒天数: 读取节庆开始前天数(stageItem) }
+          : {}),
+      },
+    });
+  });
+
+  return output;
+}
+
+function 补全内置节庆阶段列表(
+  stages: 日历运行时节庆阶段条目[],
+  festivalId: string,
+  festivalName: string,
+  festivalItem: Record<string, unknown>,
+  reminderDefaults: 日历运行时提醒默认值,
+  runtimeDefaults: 日历运行时默认设置 | undefined,
+  festivalCycle: { 每隔年: number; 上次年份: number } | undefined,
+): 日历运行时节庆阶段条目[] {
+  if (stages.length > 0 || (festivalId !== 'goddess_beauty_contest' && festivalName !== '倾国倾城祭')) {
+    return stages;
+  }
+
+  return 规范化节庆阶段列表(
+    festivalId,
+    festivalName,
+    {
+      ...festivalItem,
+      阶段: [
+        {
+          id: 'first_bloom',
+          名称: '第一阶段·初绽海选',
+          开始: '02-01',
+          结束: '02-04',
+          reminder: {
+            注入方式: 'injectprompt',
+            开始前提醒天数: 2,
+            开启自定义提醒: {
+              未开始: '倾国倾城祭第一阶段「初绽」即将开始，银帆城街道、喷泉旁与酒馆外会陆续出现无门槛街头展演',
+              进行中: '倾国倾城祭第一阶段「初绽」正在进行，参赛者在街头展示才艺并争取初始选票，02-04 午夜将统计晋级名单',
+            },
+          },
+        },
+        {
+          id: 'parade_day',
+          名称: '第二阶段·海滨巡游',
+          开始: '02-12',
+          结束: '02-12',
+          reminder: {
+            注入方式: 'injectprompt',
+            开始前提醒天数: 1,
+            开启自定义提醒: {
+              未开始: '倾国倾城祭第二阶段的海滨巡游日即将到来，参赛者的花车与随行团队会在银帆城海滨大道亮相',
+              进行中: '倾国倾城祭第二阶段「海滨巡游」正在进行，观众会向游行队伍投掷辉光花并完成第二轮大规模投票',
+            },
+          },
+        },
+        {
+          id: 'final_bloom',
+          名称: '第三阶段·怒放决赛',
+          开始: '02-14',
+          结束: '02-14',
+          reminder: {
+            注入方式: 'injectprompt',
+            开始前提醒天数: 1,
+            开启自定义提醒: {
+              未开始: '倾国倾城祭第三阶段「怒放」终焉决赛即将开始，最终入围者将在苍籁剧院进行毫无保留的终极展示',
+              进行中: '倾国倾城祭第三阶段「怒放」正在苍籁剧院进行，百人核心评审团与满座权贵观众将见证本年度阿芙罗黛蒂加冕',
+            },
+          },
+        },
+      ],
+    },
+    reminderDefaults,
+    runtimeDefaults,
+    festivalCycle,
+  );
+}
+
 function 规范化书籍摘要节点(
   bookId: string,
   bookName: string,
@@ -1190,7 +1330,7 @@ function 规范化书籍全文节点(
     return null;
   }
 
-  const 默认模板 = 默认设置?.书籍全文默认关键词模板 || '${entryname}';
+  const 默认模板 = 默认设置?.书籍全文默认关键词模板 || '[[打开《${bookname}》]]';
   const 默认全文关键词 = 使用模板生成关键词(默认模板, bookName, 实际条目名);
   const 显式触发 = 规范化触发映射(读取对象字段(source, ['条件', '触发', 'trigger']));
   const 显式全文关键字 = 取唯一文本(
@@ -1230,6 +1370,22 @@ function 规范化书籍全文节点(
       共享条件已继承: 继承共享条件,
     },
   };
+}
+
+function 读取书籍摘要源(rawBook: Record<string, unknown>): unknown {
+  const nestedSummary = 读取对象(rawBook, ['摘要']);
+  if (nestedSummary) {
+    return nestedSummary;
+  }
+  const inlineSummary = 读取对象字段(rawBook, [
+    '摘要内容',
+    'book_abstract_content',
+    '摘要正文',
+    'abstract_content',
+    'abstractContent',
+    '正文',
+  ]);
+  return inlineSummary === undefined ? null : rawBook;
 }
 
 function 收集节庆文本映射(rawFestivals: unknown): Map<string, string> {
@@ -1314,7 +1470,7 @@ function 规范化节庆与内嵌书籍(
         return;
       }
 
-      const 摘要源 = 读取对象(rawBook, ['摘要']) ?? rawBook;
+      const 摘要源 = 读取书籍摘要源(rawBook);
       const 摘要节点 = 规范化书籍摘要节点(bookId, bookName, 摘要源, bookDefaults, 节庆共享触发);
       const 全文源 = 读取对象(rawBook, ['全文']) ?? rawBook;
       const 全文节点 = 规范化书籍全文节点(
@@ -1356,6 +1512,15 @@ function 规范化节庆与内嵌书籍(
     }
 
     const 地点关键词 = 读取共享地点关键词(item);
+    const 阶段 = 补全内置节庆阶段列表(
+      规范化节庆阶段列表(id, 名称, item, reminderDefaults, runtimeDefaults, 周期),
+      id,
+      名称,
+      item,
+      reminderDefaults,
+      runtimeDefaults,
+      周期,
+    );
     const festival: 日历运行时节庆条目 = {
       id,
       名称,
@@ -1367,6 +1532,7 @@ function 规范化节庆与内嵌书籍(
       介绍: 规范化节庆介绍节点(id, 名称, 读取对象字段(item, ['介绍', 'event']), 节庆共享触发),
       文本: 节庆文本节点,
       提醒: 规范化节庆提醒节点(id, 名称, 读取对象字段(item, ['提醒', 'reminder']), reminderDefaults, 节庆共享触发),
+      阶段,
       相关书籍: 取唯一文本(相关书籍),
       元数据: {
         ...(节庆共享触发 ? { 共享条件: 节庆共享触发 } : {}),

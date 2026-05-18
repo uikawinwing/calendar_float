@@ -12,15 +12,6 @@
 - 如任务涉及脚本，读 `.cursor/rules/脚本.mdc`
 - 如任务涉及 MVU变量，读 `.cursor/rules/mvu变量框架.mdc` 和 `.cursor/rules/mvu角色卡.mdc`
 
-## Shell 注意事项
-
-在 Codex Windows 环境中，优先使用：
-
-- `cmd.exe`
-- `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`
-
-避免依赖 `pwsh.exe`，它可能因 Windows App Execution Alias 权限问题启动失败
-
 ## Chrome DevTools / SillyTavern 调试
 
 SillyTavern URL 以 `.vscode/launch.json` 为准，目前是：`http://localhost:8000`

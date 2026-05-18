@@ -9,6 +9,7 @@ import {
   resolveCalendarBookAbstract,
   resolveCalendarContentNode,
   resolveCalendarFestivalReminder,
+  resolveCalendarFestivalStageReminder,
   type 日历运行时触发上下文,
 } from './runtime-trigger-evaluator';
 import { readCalendarRuntimeIndex } from './runtime-worldbook-loader';
@@ -128,6 +129,21 @@ async function 扫描节庆提醒(
       }
     }
     result.警告.push(...reminder.警告.map(message => `[节庆提醒:${festival.名称}] ${message}`));
+
+    for (const stage of festival.阶段 ?? []) {
+      const stageReminder = await resolveCalendarFestivalStageReminder(festival, stage, context);
+      if (stageReminder.状态 === '未开始' || stageReminder.状态 === '进行中') {
+        追加节点关键字(result.命中关键字, stage.提醒);
+        if (stage.提醒?.输出?.模式 !== 'silent_scan') {
+          if (stageReminder.状态 === '未开始') {
+            result.提醒未开始文本.push(stageReminder.正文);
+          } else {
+            result.提醒进行中文本.push(stageReminder.正文);
+          }
+        }
+      }
+      result.警告.push(...stageReminder.警告.map(message => `[节庆阶段提醒:${festival.名称}/${stage.名称}] ${message}`));
+    }
   }
 }
 
@@ -165,6 +181,14 @@ function buildXmlWrappedPromptContent(tagName: string, content: string): string 
   return `<${tagName}>\n${normalizedContent}\n</${tagName}>`;
 }
 
+function escapeXmlAttribute(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function buildReminderPromptContent(result: 日历运行时扫描结果): string {
   return buildXmlWrappedPromptContent(
     'festival_reminder',
@@ -173,10 +197,16 @@ function buildReminderPromptContent(result: 日历运行时扫描结果): string
 }
 
 function buildAbstractPromptContent(result: 日历运行时扫描结果): string {
-  return buildXmlWrappedPromptContent(
-    'book_abstract',
-    result.摘要文本.map(item => `【${item.名称}】\n${item.正文}`).join('\n\n'),
-  );
+  const blocks = result.摘要文本
+    .map(item => {
+      const content = 规范化文本(item.正文);
+      if (!content) {
+        return '';
+      }
+      return `<book_abstract name="${escapeXmlAttribute(item.名称)}">\n\n摘要内容: |\n${content}\n</book_abstract>`;
+    })
+    .filter(Boolean);
+  return blocks.length ? `\n${blocks.join('\n\n')}` : '';
 }
 
 function clearPromptById(id: string, uninjectRef: (() => void) | null): void {

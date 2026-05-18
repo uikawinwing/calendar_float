@@ -1264,8 +1264,9 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
     }
     #${ROOT_ID} .th-book-main-head {
       display: grid;
-      grid-template-columns: minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
+      gap: 12px;
       padding: 12px clamp(16px, 3vw, 34px) 10px;
       border-bottom: 1px solid rgba(155, 128, 84, 0.16);
     }
@@ -1273,6 +1274,13 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
       min-width: 0;
       width: 100%;
       text-align: center;
+    }
+    #${ROOT_ID} .th-book-trigger-btn {
+      flex: 0 0 auto;
+      justify-self: end;
+      min-height: 32px;
+      padding: 7px 12px;
+      white-space: nowrap;
     }
     #${ROOT_ID} .th-book-return-btn {
       flex: 0 0 auto;
@@ -1306,6 +1314,14 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
       justify-content: center;
       gap: 10px;
       flex-wrap: wrap;
+    }
+    #${ROOT_ID} .th-book-pagination-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+      min-width: 0;
     }
     #${ROOT_ID} .th-book-page-number-list {
       display: flex;
@@ -5584,6 +5600,64 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
         pointer-events: none;
         transform: translateY(12px);
       }
+    }
+
+    #${ROOT_ID} .th-chip.is-stage-bubble {
+      justify-content: center;
+      border-style: dashed !important;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0)),
+        color-mix(in srgb, var(--th-chip-bg, #ffe6a6) 72%, #ffffff 28%) !important;
+      color: color-mix(in srgb, var(--th-chip-text, #895710) 88%, #2f2418 12%) !important;
+      border-color: color-mix(in srgb, var(--th-chip-border, rgba(201, 145, 40, 0.56)) 76%, #ffffff 24%) !important;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.32),
+        0 2px 6px rgba(114, 79, 30, 0.12) !important;
+    }
+
+    #${ROOT_ID} .th-chip.is-stage-bubble::before {
+      width: 6px !important;
+      height: 6px !important;
+      border-radius: 999px !important;
+      background: currentColor !important;
+      box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent) !important;
+    }
+
+    #${ROOT_ID} .th-chip.is-stage-bubble.is-continue-left,
+    #${ROOT_ID} .th-chip.is-stage-bubble.is-continue-right,
+    #${ROOT_ID} .th-chip.is-stage-bubble.is-continue-left.is-continue-right {
+      border-radius: 999px !important;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-chip.is-stage-bubble {
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0)),
+        color-mix(in srgb, var(--th-chip-bg, #ffe6a6) 42%, #08111f 58%) !important;
+      color: color-mix(in srgb, var(--th-chip-bg, #ffe6a6) 28%, #ffffff 72%) !important;
+      border-color: color-mix(in srgb, var(--th-chip-border, #d59a2d) 70%, #ffffff 30%) !important;
+      text-shadow: none !important;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-book-main-body h1,
+    #${ROOT_ID}[data-theme='dark'] .th-book-main-body h2,
+    #${ROOT_ID}[data-theme='dark'] .th-book-main-body h3,
+    #${ROOT_ID}[data-theme='dark'] .th-book-main-body h4,
+    #${ROOT_ID}[data-theme='dark'] .th-book-main-body h5,
+    #${ROOT_ID}[data-theme='dark'] .th-book-main-body h6,
+    #${ROOT_ID}[data-theme='dark'] .th-book-reader-body h1,
+    #${ROOT_ID}[data-theme='dark'] .th-book-reader-body h2,
+    #${ROOT_ID}[data-theme='dark'] .th-book-reader-body h3,
+    #${ROOT_ID}[data-theme='dark'] .th-book-reader-body h4,
+    #${ROOT_ID}[data-theme='dark'] .th-book-reader-body h5,
+    #${ROOT_ID}[data-theme='dark'] .th-book-reader-body h6 {
+      color: #f7fafc !important;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-book-main-body blockquote,
+    #${ROOT_ID}[data-theme='dark'] .th-book-reader-body blockquote {
+      color: #273143 !important;
+      background: rgba(247, 241, 230, 0.92) !important;
+      border-left-color: rgba(250, 204, 118, 0.68) !important;
     }
   `;
   hostDocument.head.appendChild(style);
