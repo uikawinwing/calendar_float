@@ -9,6 +9,10 @@
       "preLaunchTask": "开始任务",
       "postDebugTask": "结束任务",
       "url": "http://localhost:8000",
+      "runtimeArgs": [
+        "--remote-debugging-port=9222"
+      ],
+      "userDataDir": "${env:LOCALAPPDATA}\\CodexChromeMCPProfile",
       "disableNetworkCache": true,
       "internalConsoleOptions": "neverOpen",
       "cwd": "${workspaceFolder}",
@@ -47,6 +51,10 @@
       "type": "chrome",
       "request": "launch",
       "url": "http://localhost:8000",
+      "runtimeArgs": [
+        "--remote-debugging-port=9222"
+      ],
+      "userDataDir": "${env:LOCALAPPDATA}\\CodexChromeMCPProfile",
       "disableNetworkCache": true,
       "internalConsoleOptions": "neverOpen",
       "cwd": "${workspaceFolder}",
