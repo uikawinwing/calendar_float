@@ -15,8 +15,8 @@ import {
   buildReminderState,
 } from './calendar-view-model';
 import { INSTANCE_KEY, ROOT_ID, SCRIPT_NAME, STYLE_ID } from './constants';
-import { addDays, compareDatePoint, formatDateKey } from './date';
-import { buildFestivalMarker, getFestivalLocationKeywords } from './festival-visual';
+import { addDays, compareDatePoint, extractClockTimeText, formatDateKey, getWeekdayFromAnchor } from './date';
+import { getFestivalLocationKeywords } from './festival-visual';
 import { saveCalendarForm } from './form-service';
 import { buildSelectedDayDetail, fallbackDateLabel, renderFormHtml } from './render';
 import { loadCalendarDatasetFromRuntimeWorldbook } from './runtime-ui-dataset';
@@ -58,6 +58,7 @@ import {
   renderCalendarMonthView,
   renderDetailPanel as renderDetailPanelExternal,
   type AgendaSortMode,
+  type FestivalScopeMode,
 } from './widget-render';
 import { ensureCalendarWidgetStyle } from './widget-style';
 import {
@@ -148,6 +149,7 @@ const BALL_POSITION_VAR_KEY = 'calendar_float_ball_position';
 const BALL_DEFAULT_SIZE = 68;
 const BALL_VIEWPORT_MARGIN = 8;
 const BALL_DRAG_CLICK_THRESHOLD = 4;
+const WORLD_WEEKDAY_TEXT = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
 const uiState = {
   sidebarTab: 'detail' as SidebarTab,
@@ -172,7 +174,7 @@ const uiState = {
   openedBookPageIndex: 0,
   theme: 'light' as 'light' | 'dark',
   agendaSort: 'date-asc' as AgendaSortMode,
-  showAllFestivals: false,
+  festivalScopeMode: 'local' as FestivalScopeMode,
   mobileSideOpen: false,
   managedWorldbookBusy: false,
   managedWorldbookDialogOpen: false,
@@ -489,25 +491,30 @@ function ensureRoot(): void {
   root.innerHTML = `
     <button type="button" class="th-calendar-ball" aria-label="打开月历">📅</button>
     <section class="th-calendar-panel" aria-label="月历悬浮面板">
+      <div class="th-window-actions" aria-label="窗口操作">
+        <details class="th-tools-menu th-tools-menu--window">
+          <summary class="th-btn th-menu-status-btn" title="设置菜单" aria-label="设置菜单">
+            <span class="th-menu-bars" aria-hidden="true">
+              <span class="th-menu-bar th-menu-bar-1"></span>
+              <span class="th-menu-bar th-menu-bar-2"></span>
+              <span class="th-menu-bar th-menu-bar-3"></span>
+            </span>
+          </summary>
+          <div class="th-tool-menu-panel" role="menu" aria-label="设置菜单">
+            <button type="button" class="th-tool-menu-item" data-action="toggle-theme" role="menuitem">主题颜色</button>
+            <button type="button" class="th-tool-menu-item" data-action="open-tag-color-panel" role="menuitem">标签颜色</button>
+            <button type="button" class="th-tool-menu-item th-connectivity-button" data-action="managed-worldbook-connectivity" data-state="unknown" role="menuitem" aria-label="侦错模式">
+              <span class="th-connectivity-text">侦错模式</span>
+            </button>
+          </div>
+        </details>
+        <button type="button" class="th-btn" data-action="toggle-panel-fullscreen" title="全屏" aria-label="全屏" aria-pressed="false">□</button>
+        <button type="button" class="th-btn" data-action="reload" title="刷新" aria-label="刷新">↻</button>
+        <button type="button" class="th-btn" data-action="close" title="关闭" aria-label="关闭">×</button>
+      </div>
       <div class="th-calendar-shell">
         <section class="th-calendar-main">
           <div class="th-main-head" data-drag-handle="panel">
-            <details class="th-tools-menu th-tools-menu--left">
-              <summary class="th-btn th-menu-status-btn" title="设置菜单" aria-label="设置菜单">
-              </summary>
-              <div class="th-tool-menu-panel" role="menu" aria-label="设置菜单">
-                <button type="button" class="th-tool-menu-item" data-action="toggle-theme" role="menuitem">主题颜色</button>
-                <button type="button" class="th-tool-menu-item" data-action="open-tag-color-panel" role="menuitem">标签颜色</button>
-                <button type="button" class="th-tool-menu-item th-connectivity-button" data-action="managed-worldbook-connectivity" data-state="unknown" role="menuitem" aria-label="侦错模式">
-                  <span class="th-connectivity-text">侦错模式</span>
-                </button>
-              </div>
-            </details>
-            <div class="th-window-actions" aria-label="窗口操作">
-              <button type="button" class="th-btn" data-action="toggle-panel-fullscreen" title="全屏" aria-label="全屏" aria-pressed="false">□</button>
-              <button type="button" class="th-btn" data-action="reload" title="刷新" aria-label="刷新">↻</button>
-              <button type="button" class="th-btn" data-action="close" title="关闭" aria-label="关闭">×</button>
-            </div>
           </div>
           <div data-role="month-grid"></div>
         </section>
@@ -521,7 +528,7 @@ function ensureRoot(): void {
           <div class="th-sidebar-tabs">
             <button type="button" class="th-tab-button" data-action="switch-tab" data-tab="detail">日期详情</button>
             <button type="button" class="th-tab-button" data-action="switch-tab" data-tab="archive">归档</button>
-            <button type="button" class="th-btn th-side-search-btn" data-action="focus-agenda-filter" aria-label="搜索事件" title="搜索事件">⌕</button>
+            <button type="button" class="th-btn th-side-search-btn" data-action="focus-agenda-filter" aria-label="搜索事件" title="搜索事件">🔍</button>
             <button type="button" class="th-tab-button th-primary-btn th-tab-add-button" data-action="open-create-form" data-role="sidebar-create-entry" aria-label="新增事件" title="新增事件">+</button>
           </div>
           <div class="th-side-body">
@@ -1507,7 +1514,13 @@ function getVisibleCalendarDataset(): CalendarDataset | null {
   if (!state.dataset) {
     return null;
   }
-  if (uiState.showAllFestivals) {
+  if (uiState.festivalScopeMode === 'none') {
+    return {
+      ...state.dataset,
+      festivals: [],
+    };
+  }
+  if (uiState.festivalScopeMode === 'all') {
     return state.dataset;
   }
   const localTerms = buildLocalFestivalSearchTerms(state.dataset);
@@ -1533,7 +1546,7 @@ function getLocalFestivalIds(dataset: CalendarDataset): Set<string> {
 }
 
 function getMonthBarDataset(visibleDataset: CalendarDataset): CalendarDataset {
-  if (!state.dataset || !uiState.showAllFestivals) {
+  if (!state.dataset || uiState.festivalScopeMode !== 'all') {
     return visibleDataset;
   }
   const localFestivalIds = getLocalFestivalIds(state.dataset);
@@ -1541,20 +1554,6 @@ function getMonthBarDataset(visibleDataset: CalendarDataset): CalendarDataset {
     ...visibleDataset,
     festivals: visibleDataset.festivals.filter(festival => localFestivalIds.has(festival.id)),
   };
-}
-
-function clampDatePoint(point: DatePoint, range: DateRange): DatePoint {
-  if (compareDatePoint(point, range.start) < 0) {
-    return range.start;
-  }
-  if (compareDatePoint(point, range.end) > 0) {
-    return range.end;
-  }
-  return point;
-}
-
-function isMultiDayRange(range: DateRange): boolean {
-  return compareDatePoint(range.start, range.end) < 0;
 }
 
 function getVisibleRangeDayLength(range: DateRange): number {
@@ -1569,13 +1568,13 @@ function getVisibleRangeDayLength(range: DateRange): number {
 
 function compareCompactFestivalBars(left: CalendarEventRecord, right: CalendarEventRecord): number {
   if (left.range && right.range) {
-    const startOrder = compareDatePoint(left.range.start, right.range.start);
-    if (startOrder !== 0) {
-      return startOrder;
-    }
     const lengthOrder = getVisibleRangeDayLength(right.range) - getVisibleRangeDayLength(left.range);
     if (lengthOrder !== 0) {
       return lengthOrder;
+    }
+    const startOrder = compareDatePoint(left.range.start, right.range.start);
+    if (startOrder !== 0) {
+      return startOrder;
     }
   }
   return left.title.localeCompare(right.title, 'zh-CN') || left.id.localeCompare(right.id);
@@ -1675,7 +1674,7 @@ function addCompactFestivalBars(cells: MonthDayCell[], events: CalendarEventReco
   });
 }
 
-function addCompactFestivalMarkers(
+function addCompactFestivalChips(
   cells: MonthDayCell[],
   markerDataset: CalendarDataset,
   barDataset: CalendarDataset,
@@ -1697,40 +1696,8 @@ function addCompactFestivalMarkers(
       day: cells[cells.length - 1].day,
     },
   };
-  const cellsByKey = new Map(cells.map(cell => [cell.key, cell]));
-  const festivalById = new Map(compactFestivals.map(festival => [festival.id, festival]));
   const compactEvents = buildFestivalEventsForRange(compactFestivals, range);
-  addCompactFestivalBars(
-    cells,
-    compactEvents.filter(event => event.range && isMultiDayRange(event.range)),
-  );
-
-  compactEvents.forEach((event: CalendarEventRecord) => {
-    if (!event.range) {
-      return;
-    }
-    if (isMultiDayRange(event.range)) {
-      return;
-    }
-    const festival = festivalById.get(event.id);
-    if (!festival) {
-      return;
-    }
-    const marker = buildFestivalMarker(festival);
-    let cursor = clampDatePoint(event.range.start, range);
-    const end = clampDatePoint(event.range.end, range);
-    while (compareDatePoint(cursor, end) <= 0) {
-      const cell = cellsByKey.get(formatDateKey(cursor));
-      if (cell && !cell.markers.some(item => item.id === marker.id)) {
-        cell.markers.push(marker);
-      }
-      cursor = addDays(cursor, 1);
-    }
-  });
-
-  cells.forEach(cell => {
-    cell.markers.sort((left, right) => left.title.localeCompare(right.title, 'zh-CN'));
-  });
+  addCompactFestivalBars(cells, compactEvents);
 }
 
 function renderMonthView(cells: MonthDayCell[], visibleDataset: CalendarDataset): string {
@@ -1742,7 +1709,7 @@ function renderMonthView(cells: MonthDayCell[], visibleDataset: CalendarDataset)
       alias: getCurrentMonthAlias(),
     },
     festivalScope: {
-      showAll: uiState.showAllFestivals,
+      mode: uiState.festivalScopeMode,
       currentLocationText: state.dataset?.currentLocationText ?? '',
       visibleFestivalCount: visibleDataset.festivals.length,
       allFestivalCount: state.dataset?.festivals.length ?? visibleDataset.festivals.length,
@@ -1815,13 +1782,81 @@ function renderArchivePanel(): string {
   });
 }
 
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function parseDateKeyPoint(value: string): DatePoint | null {
+  const match = String(value || '')
+    .trim()
+    .match(/^(\d+)[/-](\d{1,2})[/-](\d{1,2})(?:[-/ ]?(?:[01]?\d|2[0-3]):[0-5]\d)?$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+  };
+}
+
+function getWorldTimePrefix(nowText: string): string {
+  const match = String(nowText || '').match(/^(.+?)(?=\d+\s*年)/);
+  return match ? match[1].trim() : '';
+}
+
+function formatWorldTimeForPoint(point: DatePoint, args: { nowText: string; anchor?: CalendarDataset['calendarAnchor'] }): string {
+  const prefix = getWorldTimePrefix(args.nowText);
+  const weekday = WORLD_WEEKDAY_TEXT[getWeekdayFromAnchor(point, args.anchor)] ?? '';
+  const clock = extractClockTimeText(args.nowText);
+  if (String(args.nowText || '').includes('年')) {
+    return `${prefix}${point.year}年-${point.month}月-${point.day}日-${weekday}${clock ? `-${clock}` : ''}`;
+  }
+  return `${point.year}-${pad2(point.month)}-${pad2(point.day)}${clock ? `-${clock}` : ''}`;
+}
+
+function getLatestWorldTimeContext(): { nowText: string; anchor: CalendarDataset['calendarAnchor'] } {
+  const worldTime = readCurrentWorldTime();
+  return {
+    nowText: worldTime.text || state.dataset?.nowText || '',
+    anchor: worldTime.anchor ?? state.dataset?.calendarAnchor,
+  };
+}
+
+function formatSelectedDateForForm(dateKey: string): string {
+  const point = parseDateKeyPoint(dateKey);
+  const context = getLatestWorldTimeContext();
+  if (!point || !context.nowText) {
+    return dateKey;
+  }
+  return formatWorldTimeForPoint(point, context);
+}
+
+function normalizeFormTimeInput(value: string): string {
+  const text = String(value || '').trim();
+  const point = parseDateKeyPoint(text);
+  const context = getLatestWorldTimeContext();
+  if (!point || !context.nowText || text.includes('年')) {
+    return text;
+  }
+  const inputClock = extractClockTimeText(text);
+  return formatWorldTimeForPoint(point, {
+    nowText: inputClock ? context.nowText.replace(/(?:^|[^\d])([01]?\d|2[0-3]):([0-5]\d)(?!\d)/, `-${inputClock}`) : context.nowText,
+    anchor: context.anchor,
+  });
+}
+
 function renderFormSection(): void {
   if (!refs.formPanel || !state.dataset) {
     return;
   }
   const editing = getEditingRecord();
+  const latestWorldTime = getLatestWorldTimeContext();
+  const defaultStart = state.selectedDateKey
+    ? formatSelectedDateForForm(state.selectedDateKey)
+    : latestWorldTime.nowText || state.dataset.nowText || '';
   refs.formPanel.innerHTML = `${buildFormEditingNotice()}${renderFormHtml({
-    nowText: state.dataset.nowText || fallbackDateLabel(state.selectedDateKey),
+    nowText: latestWorldTime.nowText || state.dataset.nowText || fallbackDateLabel(state.selectedDateKey),
     titleCandidates: state.dataset.suggestions.titleCandidates,
     idCandidates: state.dataset.suggestions.idCandidates,
     tagCandidates: state.dataset.suggestions.tagCandidates.map(option => option.label),
@@ -1838,7 +1873,7 @@ function renderFormSection(): void {
         }
       : {
           type: '临时',
-          start: state.selectedDateKey || state.dataset.nowText || '',
+          start: defaultStart,
           rule: '无',
         },
     editing: Boolean(editing),
@@ -1916,7 +1951,7 @@ function renderShell(): void {
     selectedDateKey: state.selectedDateKey,
     dataset: monthBarDataset,
   });
-  addCompactFestivalMarkers(cells, visibleDataset, monthBarDataset);
+  addCompactFestivalChips(cells, visibleDataset, monthBarDataset);
   const elliaTicketEvents = buildElliaBetaTicketCalendarEventsForMonth(cells.map(cell => cell.key));
   if (elliaTicketEvents.length) {
     const cellsByKey = new Map(cells.map(cell => [cell.key, cell]));
@@ -2045,8 +2080,8 @@ async function saveForm(): Promise<void> {
       .map(value => value.trim())
       .filter(Boolean),
     content: readFormValue('content'),
-    start: readFormValue('start'),
-    end: readFormValue('end'),
+    start: normalizeFormTimeInput(readFormValue('start')),
+    end: normalizeFormTimeInput(readFormValue('end')),
     rule: readFormValue('rule') || '无',
     editingRecord: editing ? { id: editing.id } : null,
   });
@@ -2540,7 +2575,8 @@ function bindEvents(): void {
     },
     onToggleTheme: toggleTheme,
     onToggleFestivalScope: () => {
-      uiState.showAllFestivals = !uiState.showAllFestivals;
+      uiState.festivalScopeMode =
+        uiState.festivalScopeMode === 'all' ? 'local' : uiState.festivalScopeMode === 'local' ? 'none' : 'all';
       renderShell();
     },
     onOpenTagColorPanel: openTagColorDialog,

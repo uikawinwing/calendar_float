@@ -109,7 +109,7 @@ export function renderFormHtml(args: {
         </div>
         <div class="th-form-field">
           <label>时间</label>
-          <input data-form-field="start" value="${escapeHtml(values.start || '')}" placeholder="完整世界时间或 04-15" />
+          <input data-form-field="start" value="${escapeHtml(values.start || '')}" placeholder="完整世界时间；短日期会自动补全" />
         </div>
         <div class="th-form-field">
           <label>结束时间</label>

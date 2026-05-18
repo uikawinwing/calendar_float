@@ -91,6 +91,15 @@ function getTouchClientPoint(event: JQuery.TouchEventBase): { clientX: number; c
   return touch ? { clientX: touch.clientX, clientY: touch.clientY } : null;
 }
 
+function triggerSpringFeedback(element: HTMLElement): void {
+  element.classList.remove('is-pressing', 'is-springing');
+  void element.offsetWidth;
+  element.classList.add('is-springing');
+  window.setTimeout(() => {
+    element.classList.remove('is-springing');
+  }, 520);
+}
+
 export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOptions): void {
   const { refs, hostWindow } = options;
   if (!refs.root || !refs.ball) {
@@ -123,6 +132,27 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
 
   $(refs.ball).on('click.calendar-float', () => {
     options.onToggleBall();
+  });
+
+  $(refs.root).on(
+    'mousedown.calendar-float touchstart.calendar-float',
+    '.th-month-nav-btn, .th-window-actions .th-btn',
+    event => {
+      (event.currentTarget as HTMLElement).classList.add('is-pressing');
+    },
+  );
+
+  $(rootDocument).on('mouseup.calendar-float-button touchend.calendar-float-button touchcancel.calendar-float-button', () => {
+    refs.root?.querySelectorAll<HTMLElement>('.is-pressing').forEach(button => {
+      triggerSpringFeedback(button);
+    });
+  });
+
+  $(refs.root).on('click.calendar-float', '.th-month-nav-btn, .th-window-actions .th-btn', event => {
+    const button = event.currentTarget as HTMLElement;
+    if (!button.classList.contains('is-springing')) {
+      triggerSpringFeedback(button);
+    }
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="close"]', () => {

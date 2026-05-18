@@ -75,7 +75,7 @@ function parseEventTextToPoint(text: string, now: DatePoint): DatePoint | null {
     };
   }
 
-  const full = normalized.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  const full = normalized.match(/(\d+)[/-](\d{1,2})[/-](\d{1,2})/);
   if (full) {
     return {
       year: Number(full[1]),

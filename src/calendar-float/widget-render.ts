@@ -12,6 +12,9 @@ import type {
 } from './types';
 
 export type AgendaSortMode = 'date-asc' | 'date-desc' | 'title-asc' | 'festival-first' | 'event-first';
+export type FestivalScopeMode = 'all' | 'local' | 'none';
+
+const MONTH_VISIBLE_SLOT_COUNT = 3;
 
 function escapeWidgetHtml(value: unknown): string {
   return String(value ?? '')
@@ -30,27 +33,51 @@ function buildEditingFlag(itemId: string, editingEventId: string | null): string
   return isEditingItem(itemId, editingEventId) ? '<span class="th-item-editing-flag">当前编辑</span>' : '';
 }
 
+function parseHexColor(value: string): { red: number; green: number; blue: number } | null {
+  const text = String(value || '').trim();
+  const match = text.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+  if (!match) {
+    return null;
+  }
+  const hex =
+    match[1].length === 3
+      ? match[1]
+          .split('')
+          .map(character => `${character}${character}`)
+          .join('')
+      : match[1];
+  return {
+    red: parseInt(hex.slice(0, 2), 16),
+    green: parseInt(hex.slice(2, 4), 16),
+    blue: parseInt(hex.slice(4, 6), 16),
+  };
+}
+
+function getReadableTextColor(background: string): string {
+  const rgb = parseHexColor(background);
+  if (!rgb) {
+    return '#06111f';
+  }
+  const convert = (channel: number): number => {
+    const normalized = channel / 255;
+    return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = 0.2126 * convert(rgb.red) + 0.7152 * convert(rgb.green) + 0.0722 * convert(rgb.blue);
+  return luminance > 0.42 ? '#06111f' : '#fffaf0';
+}
+
 function buildCustomColorStyle(color?: CalendarEventColorStyle): string {
   if (!color) {
     return '';
   }
   const border = color.border || color.background;
-  return `--th-chip-bg: ${escapeWidgetHtml(color.background)}; --th-chip-text: ${escapeWidgetHtml(color.text)}; --th-chip-border: ${escapeWidgetHtml(border)}; --th-card-accent: ${escapeWidgetHtml(color.background)}; --th-card-accent-soft: ${escapeWidgetHtml(color.background)}; --th-card-accent-border: ${escapeWidgetHtml(border)}; --th-card-accent-strong: ${escapeWidgetHtml(color.text)};`;
+  const readableText = getReadableTextColor(color.background);
+  return `--th-chip-bg: ${escapeWidgetHtml(color.background)}; --th-chip-text: ${escapeWidgetHtml(readableText)}; --th-chip-label: ${escapeWidgetHtml(color.text)}; --th-chip-border: ${escapeWidgetHtml(border)}; --th-custom-card-accent: ${escapeWidgetHtml(color.background)}; --th-custom-card-accent-soft: ${escapeWidgetHtml(color.background)}; --th-custom-card-accent-border: ${escapeWidgetHtml(border)}; --th-custom-card-accent-strong: ${escapeWidgetHtml(readableText)}; --th-custom-card-title-text: ${escapeWidgetHtml(readableText)}; --th-card-accent: ${escapeWidgetHtml(color.background)}; --th-card-accent-soft: ${escapeWidgetHtml(color.background)}; --th-card-accent-border: ${escapeWidgetHtml(border)}; --th-card-accent-strong: ${escapeWidgetHtml(readableText)}; --th-card-title-text: ${escapeWidgetHtml(readableText)};`;
 }
 
 function buildCustomColorAttrs(color?: CalendarEventColorStyle): string {
   const style = buildCustomColorStyle(color);
   return style ? ` has-custom-color" style="${style}"` : '"';
-}
-
-function renderInlineMarkerIcon(svg: string): string {
-  const rawSvg = String(svg || '').trim();
-  if (!rawSvg.startsWith('<svg') || !rawSvg.endsWith('</svg>')) {
-    return '<span class="th-corner-marker-dot" aria-hidden="true"></span>';
-  }
-  return rawSvg
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace('<svg ', '<svg class="th-corner-marker-svg" aria-hidden="true" focusable="false" ');
 }
 
 function renderFestivalTitleIcon(svg?: string, iconColor?: string): string {
@@ -226,32 +253,36 @@ function renderWeekChipOverlay(week: MonthDayCell[]): string {
   return bars.length ? `<div class="th-week-chip-grid">${bars.join('')}</div>` : '';
 }
 
-function renderDayFestivalMarkers(cell: MonthDayCell): string {
-  if (!cell.markers.length) {
-    return '';
+function getFestivalScopeButtonCopy(festivalScope: {
+  mode: FestivalScopeMode;
+  currentLocationText: string;
+  allFestivalCount: number;
+}): { label: string; title: string } {
+  if (festivalScope.mode === 'all') {
+    return {
+      label: '全部节庆',
+      title: `当前显示全部节庆，共 ${festivalScope.allFestivalCount} 个；点击切换为本地节庆`,
+    };
   }
-  const visibleMarkers = cell.markers.slice(0, 4);
-  const overflowCount = cell.markers.length - visibleMarkers.length;
-  const markerHtml = visibleMarkers
-    .map(marker => {
-      const border = marker.color.border || marker.color.background;
-      const iconColor = marker.iconColor || marker.color.text;
-      const style = `--th-marker-bg: ${escapeWidgetHtml(marker.color.background)}; --th-marker-text: ${escapeWidgetHtml(marker.color.text)}; --th-marker-border: ${escapeWidgetHtml(border)}; --th-marker-icon: ${escapeWidgetHtml(iconColor)};`;
-      return `<span class="th-corner-marker" style="${style}" title="${escapeWidgetHtml(marker.title)}">${renderInlineMarkerIcon(marker.iconSvg)}</span>`;
-    })
-    .join('');
-  const overflowHtml =
-    overflowCount > 0
-      ? `<span class="th-corner-marker th-corner-marker-overflow" title="另有 ${overflowCount} 个节庆">+${overflowCount}</span>`
-      : '';
-  return `<div class="th-day-corner-markers">${markerHtml}${overflowHtml}</div>`;
+  if (festivalScope.mode === 'none') {
+    return {
+      label: '无节庆',
+      title: '当前隐藏节庆，只显示 LLM 事件；点击切换为全部节庆',
+    };
+  }
+  return {
+    label: '本地节庆',
+    title: festivalScope.currentLocationText
+      ? `当前位置：${festivalScope.currentLocationText}；点击隐藏节庆`
+      : '当前显示本地节庆；未读取到当前位置时等同全部节庆；点击隐藏节庆',
+  };
 }
 
 export function renderCalendarMonthView(options: {
   cells: MonthDayCell[];
   currentMonth: { year: number; month: number; alias?: string };
   festivalScope: {
-    showAll: boolean;
+    mode: FestivalScopeMode;
     currentLocationText: string;
     visibleFestivalCount: number;
     allFestivalCount: number;
@@ -259,13 +290,7 @@ export function renderCalendarMonthView(options: {
 }): string {
   const { cells, currentMonth, festivalScope } = options;
   const weekRows = chunkWeekRows(cells);
-  const scopeLabel = festivalScope.showAll ? '全部节庆' : '本地节庆';
-  const scopeTitle = festivalScope.showAll
-    ? '正在显示全部节庆；点击后只显示当前位置相关节庆'
-    : festivalScope.currentLocationText
-      ? `当前位置：${festivalScope.currentLocationText}；点击后显示全部节庆`
-      : '未读取到当前位置，当前等同显示全部节庆；点击切换显示模式';
-  const scopeCount = `${festivalScope.visibleFestivalCount}/${festivalScope.allFestivalCount}`;
+  const scopeButton = getFestivalScopeButtonCopy(festivalScope);
   return `
     <div class="th-month-view">
       <section class="th-month-header">
@@ -273,13 +298,12 @@ export function renderCalendarMonthView(options: {
           <div class="th-month-title">${escapeWidgetHtml(formatCalendarMonthTitle(currentMonth.year, currentMonth.month, currentMonth.alias))}</div>
         </div>
         <div class="th-month-actions">
-          <button type="button" class="th-btn th-festival-scope-btn${festivalScope.showAll ? ' is-showing-all' : ''}" data-action="toggle-festival-scope" aria-pressed="${festivalScope.showAll ? 'true' : 'false'}" title="${escapeWidgetHtml(scopeTitle)}">
-            <span>${escapeWidgetHtml(scopeLabel)}</span>
-            <span class="th-festival-scope-count">${escapeWidgetHtml(scopeCount)}</span>
+          <button type="button" class="th-btn th-festival-scope-btn is-${festivalScope.mode}" data-action="toggle-festival-scope" aria-label="${escapeWidgetHtml(scopeButton.title)}" title="${escapeWidgetHtml(scopeButton.title)}">
+            <span class="th-scope-label">${escapeWidgetHtml(scopeButton.label)}</span>
           </button>
-          <button type="button" class="th-btn" data-action="month-prev">上个月</button>
-          <button type="button" class="th-btn" data-action="month-today">回到本月</button>
-          <button type="button" class="th-btn" data-action="month-next">下个月</button>
+          <button type="button" class="th-btn th-month-nav-btn th-month-nav-icon-btn" data-action="month-prev" title="上个月" aria-label="上个月"><svg class="th-month-nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 6L5 12M5 12L11 18M5 12H19"></path></svg></button>
+          <button type="button" class="th-btn th-month-nav-btn th-month-today-btn" data-action="month-today" title="回到本月" aria-label="回到本月"><span class="th-nav-label">本月</span></button>
+          <button type="button" class="th-btn th-month-nav-btn th-month-nav-icon-btn" data-action="month-next" title="下个月" aria-label="下个月"><svg class="th-month-nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 6L19 12M19 12L13 18M19 12H5"></path></svg></button>
         </div>
       </section>
       <section class="th-month-board">
@@ -288,10 +312,10 @@ export function renderCalendarMonthView(options: {
           ${weekRows
             .map(week => {
               const weekChipRows = Math.max(
-                1,
+                MONTH_VISIBLE_SLOT_COUNT,
                 ...week.map(cell => {
                   const visibleRows = cell.chips.reduce((maxRow, chip) => Math.max(maxRow, chip.row + 1), 0);
-                  return visibleRows + (cell.overflowCount > 0 ? 1 : 0);
+                  return visibleRows;
                 }),
               );
               return `<div class="th-week-block" style="--th-week-chip-rows: ${weekChipRows};"><div class="th-week-days">${week
@@ -306,7 +330,7 @@ export function renderCalendarMonthView(options: {
                   if (cell.isSelected) {
                     classes.push('is-selected');
                   }
-                  return `<button type="button" class="${classes.join(' ')}" data-action="pick-day" data-date-key="${escapeWidgetHtml(cell.key)}">${renderDayFestivalMarkers(cell)}<div class="th-day-head"><span class="th-day-number">${cell.day}</span></div><div class="th-day-meta">${cell.overflowCount > 0 ? `<div class="th-overflow">+${cell.overflowCount} 条</div>` : ''}</div></button>`;
+                  return `<button type="button" class="${classes.join(' ')}" data-action="pick-day" data-date-key="${escapeWidgetHtml(cell.key)}"><div class="th-day-head"><span class="th-day-number">${cell.day}</span>${cell.overflowCount > 0 ? `<span class="th-overflow" title="还有 ${cell.overflowCount} 个事件未显示" aria-label="还有 ${cell.overflowCount} 个事件未显示"><span class="th-overflow-icon" aria-hidden="true">⋯</span><span class="th-overflow-count">+${cell.overflowCount}</span></span>` : ''}</div><div class="th-day-meta"></div></button>`;
                 })
                 .join('')}</div>${renderWeekChipOverlay(week)}</div>`;
             })

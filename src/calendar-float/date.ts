@@ -245,7 +245,7 @@ export function parseWorldDateAnchor(input: string): { point: DatePoint; weekday
     };
   }
 
-  const full = text.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:[-/ ]?(星期[日天一二三四五六]))?/);
+  const full = text.match(/(\d+)[/-](\d{1,2})[/-](\d{1,2})(?:[-/ ]?(星期[日天一二三四五六]))?/);
   if (full) {
     const weekdayText = full[4] || '';
     return {

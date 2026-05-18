@@ -35,7 +35,7 @@ import type {
   ReminderState,
 } from './types';
 
-export const MONTH_EVENT_ROW_LIMIT = 2;
+export const MONTH_EVENT_ROW_LIMIT = 3;
 
 function nextDay(point: DatePoint): DatePoint {
   return addDays(point, 1);
@@ -182,13 +182,13 @@ function compareMonthEvents(left: CalendarEventRecord, right: CalendarEventRecor
     return sourcePriority;
   }
   if (left.range && right.range) {
-    const startOrder = compareDatePoint(left.range.start, right.range.start);
-    if (startOrder !== 0) {
-      return startOrder;
-    }
     const lengthOrder = getRangeDayLength(right.range) - getRangeDayLength(left.range);
     if (lengthOrder !== 0) {
       return lengthOrder;
+    }
+    const startOrder = compareDatePoint(left.range.start, right.range.start);
+    if (startOrder !== 0) {
+      return startOrder;
     }
   }
   return left.title.localeCompare(right.title, 'zh-CN') || left.id.localeCompare(right.id);
