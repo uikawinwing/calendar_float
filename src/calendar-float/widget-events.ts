@@ -101,6 +101,61 @@ function triggerSpringFeedback(element: HTMLElement): void {
   }, 520);
 }
 
+function syncRepeatWeekdayValue(formPanel: HTMLElement | null): void {
+  const hidden = formPanel?.querySelector<HTMLInputElement>('[data-form-field="repeat_weekdays"]');
+  if (!hidden) {
+    return;
+  }
+  const values = Array.from(formPanel?.querySelectorAll<HTMLInputElement>('[data-action="toggle-repeat-weekday"]') ?? [])
+    .filter(input => input.checked)
+    .map(input => String(input.value || '').trim())
+    .filter(Boolean);
+  hidden.value = values.join(',');
+  formPanel?.querySelectorAll<HTMLElement>('.th-repeat-weekday').forEach(label => {
+    const input = label.querySelector<HTMLInputElement>('input');
+    label.classList.toggle('is-active', Boolean(input?.checked));
+  });
+}
+
+function syncRepeatFormControls(formPanel: HTMLElement | null): void {
+  const typeSelect = formPanel?.querySelector<HTMLSelectElement>('[data-form-field="type"]');
+  const repeatSelect = formPanel?.querySelector<HTMLSelectElement>('[data-form-field="rule"]');
+  const isRepeat = parseCalendarBucketType(String(typeSelect?.value || '临时')) === '重复';
+  const repeatRule = isRepeat ? String(repeatSelect?.value || '每月') : '无';
+
+  formPanel?.querySelectorAll<HTMLElement>('[data-role="absolute-time-field"]').forEach(field => {
+    field.hidden = isRepeat;
+  });
+
+  const repeatField = formPanel?.querySelector<HTMLElement>('[data-role="repeat-rule-field"]');
+  if (repeatField) {
+    repeatField.hidden = !isRepeat;
+  }
+  if (repeatSelect) {
+    repeatSelect.value = isRepeat && repeatSelect.value ? repeatSelect.value : '每月';
+  }
+
+  const repeatDetail = formPanel?.querySelector<HTMLElement>('[data-role="repeat-detail-field"]');
+  if (repeatDetail) {
+    repeatDetail.hidden = !isRepeat || repeatRule === '每天' || repeatRule === '仅工作日';
+  }
+  formPanel?.querySelectorAll<HTMLElement>('[data-repeat-detail]').forEach(group => {
+    group.hidden = !isRepeat || group.getAttribute('data-repeat-detail') !== repeatRule;
+  });
+
+  const monthMode = String(formPanel?.querySelector<HTMLSelectElement>('[data-form-field="repeat_month_mode"]')?.value || 'day');
+  formPanel?.querySelectorAll<HTMLElement>('[data-repeat-mode^="month-"]').forEach(group => {
+    group.hidden = group.getAttribute('data-repeat-mode') !== `month-${monthMode}`;
+  });
+
+  const yearMode = String(formPanel?.querySelector<HTMLSelectElement>('[data-form-field="repeat_year_mode"]')?.value || 'day');
+  formPanel?.querySelectorAll<HTMLElement>('[data-repeat-mode^="year-"]').forEach(group => {
+    group.hidden = group.getAttribute('data-repeat-mode') !== `year-${yearMode}`;
+  });
+
+  syncRepeatWeekdayValue(formPanel);
+}
+
 export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOptions): void {
   const { refs, hostWindow } = options;
   if (!refs.root || !refs.ball) {
@@ -229,6 +284,30 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
 
   $(refs.root).on('click.calendar-float', '[data-action="save-form"]', () => {
     void options.onSaveForm();
+  });
+
+  $(refs.root).on('change.calendar-float', '[data-form-field="type"]', event => {
+    const type = parseCalendarBucketType(String((event.currentTarget as HTMLSelectElement).value || '临时'));
+    const repeatSelect = refs.formPanel?.querySelector<HTMLSelectElement>('[data-form-field="rule"]');
+    if (type === '重复') {
+      if (repeatSelect) {
+        repeatSelect.value = repeatSelect.value || '每月';
+      }
+      repeatSelect?.closest<HTMLDetailsElement>('details')?.setAttribute('open', '');
+    }
+    syncRepeatFormControls(refs.formPanel);
+  });
+
+  $(refs.root).on(
+    'change.calendar-float',
+    '[data-form-field="rule"], [data-form-field="repeat_month_mode"], [data-form-field="repeat_year_mode"]',
+    () => {
+      syncRepeatFormControls(refs.formPanel);
+    },
+  );
+
+  $(refs.root).on('change.calendar-float', '[data-action="toggle-repeat-weekday"]', () => {
+    syncRepeatWeekdayValue(refs.formPanel);
   });
 
   $(refs.root).on('input.calendar-float', '[data-action="tag-search-input"]', event => {

@@ -1,5 +1,5 @@
 import { readActiveBuckets, readArchiveStore, replaceActiveBuckets, replaceArchiveStore } from './storage';
-import type { CalendarBucketType, CalendarEventRecord, RawCalendarEvent, RepeatRule } from './types';
+import type { CalendarBucketType, CalendarEventRecord, CalendarVisibility, RawCalendarEvent, RepeatRule } from './types';
 
 export interface CalendarFormSaveInput {
   type: CalendarBucketType;
@@ -10,6 +10,7 @@ export interface CalendarFormSaveInput {
   start: string;
   end: string;
   rule: string;
+  visibility: CalendarVisibility;
   editingRecord: Pick<CalendarEventRecord, 'id'> | null;
 }
 
@@ -26,17 +27,19 @@ function normalizeRepeatRule(rule: string, type: CalendarBucketType): RepeatRule
   if (type !== '重复') {
     return '无';
   }
-  const allowed: RepeatRule[] = ['无', '每天', '每周', '每月', '每年', '仅工作日', '仅节假日'];
+  const allowed: RepeatRule[] = ['无', '每天', '每周', '每月', '每年', '仅工作日'];
   return allowed.includes(rule as RepeatRule) ? (rule as RepeatRule) : '每天';
 }
 
 function buildRawCalendarEvent(input: CalendarFormSaveInput): RawCalendarEvent {
+  const targetType = input.rule !== '无' ? '重复' : input.type;
   return {
     标题: input.title,
     内容: input.content,
     时间: input.start,
     结束时间: input.end,
-    重复规则: normalizeRepeatRule(input.rule, input.type),
+    重复规则: normalizeRepeatRule(input.rule, targetType),
+    可见性: input.visibility,
     标签: input.tags,
   };
 }
@@ -70,7 +73,7 @@ export async function saveCalendarForm(input: CalendarFormSaveInput): Promise<Ca
     delete archive.completed[input.editingRecord.id];
   }
 
-  const targetBucket = input.type === '重复' ? repeat : temp;
+  const targetBucket = input.rule !== '无' || input.type === '重复' ? repeat : temp;
   targetBucket[input.id] = buildRawCalendarEvent(input);
 
   replaceArchiveStore(archive);

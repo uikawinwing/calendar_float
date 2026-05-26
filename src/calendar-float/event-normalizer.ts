@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import type { ActiveCalendarBuckets, RawCalendarEvent } from './types';
+import type { ActiveCalendarBuckets, CalendarBucketType, RawCalendarEvent } from './types';
 
 export function sanitizeRule(value: unknown): RawCalendarEvent['重复规则'] {
   const rule = String(value ?? '无') as RawCalendarEvent['重复规则'];
@@ -12,28 +12,30 @@ export function sanitizeNarrativeType(value: unknown): NonNullable<RawCalendarEv
 }
 
 export function sanitizeImportance(value: unknown): NonNullable<RawCalendarEvent['重要度']> {
-  const importance = String(value ?? '').trim() as NonNullable<RawCalendarEvent['重要度']>;
-  return ['普通', '重要', '纪念'].includes(importance) ? importance : '普通';
+  const importance = String(value ?? '').trim();
+  if (['重要且紧急', '重要不紧急', '不重要但紧急', '不重要不紧急'].includes(importance)) {
+    return importance as NonNullable<RawCalendarEvent['重要度']>;
+  }
+  if (importance === '重要') {
+    return '重要且紧急';
+  }
+  if (importance === '纪念') {
+    return '重要不紧急';
+  }
+  return '不重要不紧急';
 }
 
 export function sanitizeVisibility(value: unknown): NonNullable<RawCalendarEvent['可见性']> {
   const visibility = String(value ?? '').trim() as NonNullable<RawCalendarEvent['可见性']>;
-  return ['玩家与LLM', '仅玩家', '仅系统'].includes(visibility) ? visibility : '玩家与LLM';
+  return ['玩家与LLM', '仅玩家'].includes(visibility) ? visibility : '玩家与LLM';
 }
 
 export function inferDefaultPostAction(
   type: NonNullable<RawCalendarEvent['类型']>,
   importance: NonNullable<RawCalendarEvent['重要度']>,
 ): NonNullable<RawCalendarEvent['完成后']> {
-  if (type === '回忆') {
-    return '不处理';
-  }
-  if (importance === '纪念') {
-    return '转回忆';
-  }
-  if (type === '日程') {
-    return '自动清理';
-  }
+  void type;
+  void importance;
   return '归档';
 }
 
@@ -42,8 +44,13 @@ export function sanitizePostAction(
   type: NonNullable<RawCalendarEvent['类型']>,
   importance: NonNullable<RawCalendarEvent['重要度']>,
 ): NonNullable<RawCalendarEvent['完成后']> {
-  const action = String(value ?? '').trim() as NonNullable<RawCalendarEvent['完成后']>;
-  return ['不处理', '自动清理', '归档', '转回忆'].includes(action) ? action : inferDefaultPostAction(type, importance);
+  const action = String(value ?? '').trim();
+  if (action === '不处理') {
+    return '历史';
+  }
+  return ['历史', '自动清理', '归档', '转回忆'].includes(action)
+    ? (action as NonNullable<RawCalendarEvent['完成后']>)
+    : inferDefaultPostAction(type, importance);
 }
 
 export function sanitizeTagList(value: unknown): string[] {
@@ -56,16 +63,17 @@ export function sanitizeTagList(value: unknown): string[] {
     .filter((item, index, array) => array.indexOf(item) === index);
 }
 
-export function sanitizeRawEvent(value: unknown): RawCalendarEvent {
+export function sanitizeRawEvent(value: unknown, bucketType?: CalendarBucketType): RawCalendarEvent {
   const source = _.isPlainObject(value) ? (value as Record<string, unknown>) : {};
   const 类型 = sanitizeNarrativeType(source.类型);
   const 重要度 = sanitizeImportance(source.重要度);
+  const 重复规则 = bucketType === '临时' ? '无' : sanitizeRule(source.重复规则 ?? source.重复规则分类);
   return {
     标题: String(source.标题 ?? '').trim(),
     内容: String(source.内容 ?? '').trim(),
     时间: String(source.时间 ?? '').trim(),
     结束时间: String(source.结束时间 ?? '').trim(),
-    重复规则: sanitizeRule(source.重复规则),
+    重复规则,
     类型,
     完成后: sanitizePostAction(source.完成后, 类型, 重要度),
     重要度,
@@ -74,21 +82,22 @@ export function sanitizeRawEvent(value: unknown): RawCalendarEvent {
   };
 }
 
-export function sanitizeBucketRecords(value: unknown): Record<string, RawCalendarEvent> {
+export function sanitizeBucketRecords(
+  value: unknown,
+  bucketType?: CalendarBucketType,
+): Record<string, RawCalendarEvent> {
   if (!_.isPlainObject(value)) {
     return {};
   }
   const source = value as Record<string, unknown>;
-  return Object.fromEntries(Object.entries(source).map(([id, event]) => [id, sanitizeRawEvent(event)])) as Record<
-    string,
-    RawCalendarEvent
-  >;
+  return Object.fromEntries(Object.entries(source).map(([id, event]) => [id, sanitizeRawEvent(event, bucketType)])) as
+    Record<string, RawCalendarEvent>;
 }
 
 export function sanitizeActiveCalendarBuckets(value: unknown): ActiveCalendarBuckets {
   const source = _.isPlainObject(value) ? (value as Record<string, unknown>) : {};
   return {
-    临时: sanitizeBucketRecords(source.临时),
-    重复: sanitizeBucketRecords(source.重复),
+    临时: sanitizeBucketRecords(source.临时, '临时'),
+    重复: sanitizeBucketRecords(source.重复, '重复'),
   };
 }

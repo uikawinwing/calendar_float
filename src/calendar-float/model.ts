@@ -10,6 +10,7 @@ import {
   formatDateKey,
   formatDateLabel,
   formatMonthDay,
+  getDaysInMonth,
   getEndOfMonth,
   getMonthGridEndWithAnchor,
   getMonthGridStartWithAnchor,
@@ -275,6 +276,274 @@ function clampRangeToBoundary(range: DateRange, boundary: DateRange): DateRange 
   };
 }
 
+function clampDayToMonth(year: number, month: number, day: number): DatePoint {
+  return {
+    year,
+    month,
+    day: Math.min(Math.max(1, day), getDaysInMonth(year, month)),
+  };
+}
+
+function addMonths(point: Pick<DatePoint, 'year' | 'month'>, delta: number): Pick<DatePoint, 'year' | 'month'> {
+  const zeroBased = point.year * 12 + (point.month - 1) + delta;
+  return {
+    year: Math.floor(zeroBased / 12),
+    month: (zeroBased % 12) + 1,
+  };
+}
+
+function enumerateMonthsInRange(range: DateRange): Pick<DatePoint, 'year' | 'month'>[] {
+  const values: Pick<DatePoint, 'year' | 'month'>[] = [];
+  let cursor = addMonths(range.start, -1);
+  const end = addMonths(range.end, 1);
+  while (cursor.year < end.year || (cursor.year === end.year && cursor.month <= end.month)) {
+    values.push(cursor);
+    cursor = addMonths(cursor, 1);
+  }
+  return values;
+}
+
+function parseMonthlyDayText(value: string): number | null {
+  const text = String(value || '').trim();
+  const match =
+    text.match(/每月\s*(\d{1,2})\s*[日号]?/) ??
+    text.match(/(?:^|[^\d])(\d{1,2})\s*[日号](?!\d)/) ??
+    text.match(/^(\d{1,2})$/);
+  if (!match) {
+    return null;
+  }
+  const day = Number(match[1]);
+  return Number.isFinite(day) && day >= 1 && day <= 31 ? day : null;
+}
+
+const WEEKDAY_TEXT_MAP: Record<string, number> = {
+  日: 0,
+  天: 0,
+  一: 1,
+  二: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+};
+
+function parseWeeklyDayTexts(value: string): number[] {
+  const text = String(value || '').trim().toLowerCase();
+  if (!text) {
+    return [];
+  }
+  const values = new Set<number>();
+  const normalized = text.replace(/星期/g, '周').replace(/礼拜/g, '周');
+  if (/每周|每星期|周|星期|礼拜/.test(text)) {
+    for (const [, day] of normalized.matchAll(/([日天一二三四五六])/g)) {
+      const weekday = WEEKDAY_TEXT_MAP[day];
+      if (weekday !== undefined) {
+        values.add(weekday);
+      }
+    }
+  }
+  const englishMap: Array<[RegExp, number]> = [
+    [/\b(mon|monday)\b/, 1],
+    [/\b(tue|tues|tuesday)\b/, 2],
+    [/\b(wed|wednesday)\b/, 3],
+    [/\b(thu|thur|thurs|thursday)\b/, 4],
+    [/\b(fri|friday)\b/, 5],
+    [/\b(sat|saturday)\b/, 6],
+    [/\b(sun|sunday)\b/, 0],
+  ];
+  englishMap.forEach(([pattern, weekday]) => {
+    if (pattern.test(text)) {
+      values.add(weekday);
+    }
+  });
+  return [0, 1, 2, 3, 4, 5, 6].filter(weekday => values.has(weekday));
+}
+
+function parseWeeklyDayText(value: string): number | null {
+  return parseWeeklyDayTexts(value)[0] ?? null;
+}
+
+function parseYearlyMonthDayText(value: string): Pick<DatePoint, 'month' | 'day'> | null {
+  const text = String(value || '').trim();
+  const normalized = normalizeMonthDayText(text.replace(/^每年\s*/, ''));
+  if (!normalized) {
+    return null;
+  }
+  const [monthText, dayText] = normalized.split('-');
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (!Number.isFinite(month) || month < 1 || month > 12 || !Number.isFinite(day) || day < 1 || day > 31) {
+    return null;
+  }
+  return { month, day };
+}
+
+function getEventRangeDaySpan(event: CalendarEventRecord): number {
+  if (!event.range) {
+    return 0;
+  }
+  return Math.max(0, getRelativeDayDistance(event.range.start, event.range.end));
+}
+
+function eventWithOccurrenceRange(event: CalendarEventRecord, range: DateRange): CalendarEventRecord {
+  return {
+    ...event,
+    range,
+    metadata: {
+      ...event.metadata,
+      occurrenceStartKey: formatDateKey(range.start),
+    },
+  };
+}
+
+function buildDailyEventOccurrences(event: CalendarEventRecord, targetRange: DateRange): CalendarEventRecord[] {
+  const span = getEventRangeDaySpan(event);
+  const startBoundary = addDays(targetRange.start, -span);
+  const occurrences: CalendarEventRecord[] = [];
+  let cursor = startBoundary;
+  while (compareDatePoint(cursor, targetRange.end) <= 0) {
+    const range = { start: cursor, end: addDays(cursor, span) };
+    if (rangesOverlap(range, targetRange)) {
+      occurrences.push(eventWithOccurrenceRange(event, range));
+    }
+    cursor = addDays(cursor, 1);
+  }
+  return occurrences;
+}
+
+function buildWorkdayEventOccurrences(
+  event: CalendarEventRecord,
+  targetRange: DateRange,
+  anchor?: CalendarDataset['calendarAnchor'],
+): CalendarEventRecord[] {
+  const span = getEventRangeDaySpan(event);
+  const startBoundary = addDays(targetRange.start, -span);
+  const occurrences: CalendarEventRecord[] = [];
+  let cursor = startBoundary;
+  while (compareDatePoint(cursor, targetRange.end) <= 0) {
+    const weekday = getWeekdayFromAnchor(cursor, anchor);
+    if (weekday >= 1 && weekday <= 5) {
+      const range = { start: cursor, end: addDays(cursor, span) };
+      if (rangesOverlap(range, targetRange)) {
+        occurrences.push(eventWithOccurrenceRange(event, range));
+      }
+    }
+    cursor = addDays(cursor, 1);
+  }
+  return occurrences;
+}
+
+function buildWeeklyEventOccurrences(
+  event: CalendarEventRecord,
+  targetRange: DateRange,
+  anchor?: CalendarDataset['calendarAnchor'],
+): CalendarEventRecord[] {
+  const startWeekdays = parseWeeklyDayTexts(event.startText);
+  if (startWeekdays.length > 1 && !event.endText) {
+    const startBoundary = addDays(targetRange.start, -7);
+    const occurrences: CalendarEventRecord[] = [];
+    let cursor = startBoundary;
+    while (compareDatePoint(cursor, targetRange.end) <= 0) {
+      if (startWeekdays.includes(getWeekdayFromAnchor(cursor, anchor))) {
+        const range = { start: cursor, end: cursor };
+        if (rangesOverlap(range, targetRange)) {
+          occurrences.push(eventWithOccurrenceRange(event, range));
+        }
+      }
+      cursor = addDays(cursor, 1);
+    }
+    return occurrences;
+  }
+  const startWeekday = startWeekdays[0] ?? (event.range ? getWeekdayFromAnchor(event.range.start, anchor) : null);
+  if (startWeekday === null) {
+    return event.range && rangesOverlap(event.range, targetRange) ? [event] : [];
+  }
+  const endWeekday = parseWeeklyDayText(event.endText || event.startText) ?? startWeekday;
+  const span = (endWeekday - startWeekday + 7) % 7;
+  const startBoundary = addDays(targetRange.start, -7);
+  const occurrences: CalendarEventRecord[] = [];
+  let cursor = startBoundary;
+  while (compareDatePoint(cursor, targetRange.end) <= 0) {
+    if (getWeekdayFromAnchor(cursor, anchor) === startWeekday) {
+      const range = { start: cursor, end: addDays(cursor, span) };
+      if (rangesOverlap(range, targetRange)) {
+        occurrences.push(eventWithOccurrenceRange(event, range));
+      }
+    }
+    cursor = addDays(cursor, 1);
+  }
+  return occurrences;
+}
+
+function buildMonthlyEventOccurrences(event: CalendarEventRecord, targetRange: DateRange): CalendarEventRecord[] {
+  const startDay = parseMonthlyDayText(event.startText);
+  const endDay = parseMonthlyDayText(event.endText || event.startText);
+  if (!startDay || !endDay) {
+    return event.range && rangesOverlap(event.range, targetRange) ? [event] : [];
+  }
+
+  return enumerateMonthsInRange(targetRange)
+    .map(({ year, month }) => {
+      const start = clampDayToMonth(year, month, startDay);
+      const endMonth = endDay >= startDay ? { year, month } : addMonths({ year, month }, 1);
+      const end = clampDayToMonth(endMonth.year, endMonth.month, endDay);
+      return { start, end };
+    })
+    .filter(range => rangesOverlap(range, targetRange))
+    .map(range => eventWithOccurrenceRange(event, range));
+}
+
+function buildYearlyEventOccurrences(event: CalendarEventRecord, targetRange: DateRange): CalendarEventRecord[] {
+  const startMonthDay =
+    parseYearlyMonthDayText(event.startText) ??
+    (event.range ? { month: event.range.start.month, day: event.range.start.day } : null);
+  if (!startMonthDay) {
+    return event.range && rangesOverlap(event.range, targetRange) ? [event] : [];
+  }
+  const endMonthDay =
+    parseYearlyMonthDayText(event.endText || event.startText) ??
+    (event.range ? { month: event.range.end.month, day: event.range.end.day } : startMonthDay);
+  const startYears = new Set([targetRange.start.year - 1, targetRange.start.year, targetRange.end.year]);
+  return [...startYears]
+    .map(year => {
+      const start = clampDayToMonth(year, startMonthDay.month, startMonthDay.day);
+      const endYear =
+        endMonthDay.month > startMonthDay.month ||
+        (endMonthDay.month === startMonthDay.month && endMonthDay.day >= startMonthDay.day)
+          ? year
+          : year + 1;
+      const end = clampDayToMonth(endYear, endMonthDay.month, endMonthDay.day);
+      return { start, end };
+    })
+    .filter(range => rangesOverlap(range, targetRange))
+    .map(range => eventWithOccurrenceRange(event, range));
+}
+
+function expandCalendarEventsForRange(
+  events: CalendarEventRecord[],
+  targetRange: DateRange,
+  anchor?: CalendarDataset['calendarAnchor'],
+): CalendarEventRecord[] {
+  return events.flatMap(event => {
+    if (event.repeatRule === '每天') {
+      return buildDailyEventOccurrences(event, targetRange);
+    }
+    if (event.repeatRule === '每周') {
+      return buildWeeklyEventOccurrences(event, targetRange, anchor);
+    }
+    if (event.repeatRule === '每月') {
+      return buildMonthlyEventOccurrences(event, targetRange);
+    }
+    if (event.repeatRule === '每年') {
+      return buildYearlyEventOccurrences(event, targetRange);
+    }
+    if (event.repeatRule === '仅工作日') {
+      return buildWorkdayEventOccurrences(event, targetRange, anchor);
+    }
+    return event.range && rangesOverlap(event.range, targetRange) ? [event] : [];
+  });
+}
+
 function incrementOverflowForBlockedSpan(
   week: MonthDayCell[],
   rowOccupancy: boolean[][],
@@ -390,9 +659,13 @@ export function buildMonthCells(args: {
   const monthStart = getMonthGridStartWithAnchor(args.month, args.dataset.calendarAnchor);
   const monthEnd = getMonthGridEndWithAnchor(args.month, args.dataset.calendarAnchor);
   const today = args.dataset.nowDate;
+  const monthRange = { start: monthStart, end: monthEnd };
   const allEvents = [
-    ...args.dataset.activeEvents,
-    ...args.dataset.archivedEvents,
+    ...expandCalendarEventsForRange(
+      [...args.dataset.activeEvents, ...args.dataset.archivedEvents],
+      monthRange,
+      args.dataset.calendarAnchor,
+    ),
     ...buildFestivalMonthChipEventsForRange(args.dataset.festivals, { start: monthStart, end: monthEnd }),
   ];
   const cells: MonthDayCell[] = [];
@@ -511,10 +784,10 @@ export function buildDailyAgenda(dataset: CalendarDataset, startDateKey?: string
   };
   const start = startDateKey ? (parseDateKey(startDateKey) ?? base) : base;
   const end = addDays(start, Math.max(0, dayCount - 1));
+  const targetRange = { start, end };
   const events = [
-    ...dataset.activeEvents,
-    ...dataset.archivedEvents,
-    ...buildFestivalEventsForRange(dataset.festivals, { start, end }),
+    ...expandCalendarEventsForRange([...dataset.activeEvents, ...dataset.archivedEvents], targetRange, dataset.calendarAnchor),
+    ...buildFestivalEventsForRange(dataset.festivals, targetRange),
   ];
 
   return Array.from({ length: dayCount }, (_, index) => {
@@ -538,8 +811,7 @@ export function buildMonthAgenda(dataset: CalendarDataset, month: DatePoint): Da
   const end = getEndOfMonth(month);
   const monthRange = { start, end };
   const events = [
-    ...dataset.activeEvents,
-    ...dataset.archivedEvents,
+    ...expandCalendarEventsForRange([...dataset.activeEvents, ...dataset.archivedEvents], monthRange, dataset.calendarAnchor),
     ...buildFestivalEventsForRange(dataset.festivals, monthRange),
   ];
   const items = events
@@ -573,9 +845,10 @@ export function buildReminderState(dataset: CalendarDataset): ReminderState {
 
   const reasons: string[] = [];
   let maxLevel: ReminderLevel = 'none';
+  const reminderRange = { start: addDays(now, -31), end: addDays(now, 3) };
   const events = [
-    ...dataset.activeEvents,
-    ...buildFestivalEventsForRange(dataset.festivals, { start: addDays(now, -31), end: addDays(now, 3) }),
+    ...expandCalendarEventsForRange(dataset.activeEvents, reminderRange, dataset.calendarAnchor),
+    ...buildFestivalEventsForRange(dataset.festivals, reminderRange),
   ];
   events.forEach(event => {
     if (!event.range) {

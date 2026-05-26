@@ -1,6 +1,16 @@
 import _ from 'lodash';
 import {
-  CHAT_ARCHIVE_KEY,
+  CHAT_ARCHIVE_PATH,
+  CHAT_RUNTIME_PATH,
+  CHAT_TICKET_ALPHA_STORE_PATH,
+  LEGACY_CHAT_BOOK_ABSTRACTS_KEY,
+  LEGACY_CHAT_ARCHIVE_KEY,
+  LEGACY_CHAT_REMINDER_ACTIVE_KEY,
+  LEGACY_CHAT_REMINDER_COMINGSOON_KEY,
+  LEGACY_CHAT_RUNTIME_KEY,
+  LEGACY_TICKET_ALPHA_LATEST_KEY,
+  LEGACY_TICKET_ALPHA_STORE_KEY,
+  MESSAGE_TICKET_ALPHA_LATEST_PATH,
   MVU_MESSAGE_TARGET,
   MVU_REPEAT_PATH,
   MVU_ROOT_PATH,
@@ -9,7 +19,12 @@ import {
   SCRIPT_NAME,
 } from './constants';
 import { formatDateKey, parseWorldDateAnchor } from './date';
-import { sanitizeBucketRecords, sanitizeRawEvent, sanitizeTagList } from './event-normalizer';
+import {
+  sanitizeActiveCalendarBuckets,
+  sanitizeBucketRecords,
+  sanitizeRawEvent,
+  sanitizeTagList,
+} from './event-normalizer';
 import { getCalendarWorldLocationPath, getCalendarWorldTimePath } from './runtime-config';
 import type {
   ActiveCalendarBuckets,
@@ -175,9 +190,103 @@ function sanitizeTagColorMap(
 
 function cloneBucketsSnapshot(buckets: ActiveCalendarBuckets): ActiveCalendarBuckets {
   return {
-    临时: sanitizeBucketRecords(buckets.临时),
-    重复: sanitizeBucketRecords(buckets.重复),
+    临时: sanitizeBucketRecords(buckets.临时, '临时'),
+    重复: sanitizeBucketRecords(buckets.重复, '重复'),
   };
+}
+
+function hasUsableValue(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (_.isPlainObject(value)) {
+    return Object.keys(value as Record<string, unknown>).length > 0;
+  }
+  return value !== undefined && value !== null && value !== '';
+}
+
+export function migrateCalendarChatVariableStore(): boolean {
+  const variables = getVariables({ type: 'chat' });
+  let changed = false;
+
+  if (!hasUsableValue(_.get(variables, CHAT_ARCHIVE_PATH)) && hasUsableValue(variables[LEGACY_CHAT_ARCHIVE_KEY])) {
+    _.set(variables, CHAT_ARCHIVE_PATH, variables[LEGACY_CHAT_ARCHIVE_KEY]);
+    changed = true;
+  }
+
+  if (!hasUsableValue(_.get(variables, CHAT_RUNTIME_PATH))) {
+    if (hasUsableValue(variables[LEGACY_CHAT_RUNTIME_KEY])) {
+      _.set(variables, CHAT_RUNTIME_PATH, variables[LEGACY_CHAT_RUNTIME_KEY]);
+      changed = true;
+    } else if (
+      hasUsableValue(variables[LEGACY_CHAT_REMINDER_COMINGSOON_KEY]) ||
+      hasUsableValue(variables[LEGACY_CHAT_REMINDER_ACTIVE_KEY]) ||
+      hasUsableValue(variables[LEGACY_CHAT_BOOK_ABSTRACTS_KEY])
+    ) {
+      _.set(variables, CHAT_RUNTIME_PATH, {
+        reminder_comingsoon: String(variables[LEGACY_CHAT_REMINDER_COMINGSOON_KEY] ?? ''),
+        reminder_active: String(variables[LEGACY_CHAT_REMINDER_ACTIVE_KEY] ?? ''),
+        book_abstracts: String(variables[LEGACY_CHAT_BOOK_ABSTRACTS_KEY] ?? ''),
+        matched_keywords: [],
+        warnings: [],
+        updated_at: '',
+      });
+      changed = true;
+    }
+  }
+
+  if (
+    !hasUsableValue(_.get(variables, CHAT_TICKET_ALPHA_STORE_PATH)) &&
+    hasUsableValue(variables[LEGACY_TICKET_ALPHA_STORE_KEY])
+  ) {
+    _.set(variables, CHAT_TICKET_ALPHA_STORE_PATH, variables[LEGACY_TICKET_ALPHA_STORE_KEY]);
+    changed = true;
+  }
+
+  [
+    LEGACY_CHAT_ARCHIVE_KEY,
+    LEGACY_CHAT_RUNTIME_KEY,
+    LEGACY_CHAT_REMINDER_COMINGSOON_KEY,
+    LEGACY_CHAT_REMINDER_ACTIVE_KEY,
+    LEGACY_CHAT_BOOK_ABSTRACTS_KEY,
+    LEGACY_TICKET_ALPHA_STORE_KEY,
+  ].forEach(key => {
+    if (_.has(variables, key)) {
+      _.unset(variables, key);
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    replaceVariables(variables, { type: 'chat' });
+  }
+  return changed;
+}
+
+export function migrateCalendarLatestMessageVariableStore(): boolean {
+  const variables = getVariables({ type: 'message', message_id: -1 });
+  if (!hasUsableValue(variables[LEGACY_TICKET_ALPHA_LATEST_KEY])) {
+    return false;
+  }
+
+  if (!hasUsableValue(_.get(variables, MESSAGE_TICKET_ALPHA_LATEST_PATH))) {
+    _.set(variables, MESSAGE_TICKET_ALPHA_LATEST_PATH, variables[LEGACY_TICKET_ALPHA_LATEST_KEY]);
+  }
+  _.unset(variables, LEGACY_TICKET_ALPHA_LATEST_KEY);
+  replaceVariables(variables, { type: 'message', message_id: -1 });
+  return true;
+}
+
+function hasCalendarBucketPath(variables: Record<string, any>): boolean {
+  return _.has(variables, MVU_ROOT_PATH) || _.has(variables, MVU_TEMP_PATH) || _.has(variables, MVU_REPEAT_PATH);
+}
+
+function readBucketsFromMvuVariables(variables: Record<string, any>): ActiveCalendarBuckets {
+  return sanitizeActiveCalendarBuckets(_.get(variables, MVU_ROOT_PATH, {}));
+}
+
+function hasActiveEventId(buckets: ActiveCalendarBuckets, id: string): boolean {
+  return Boolean(buckets.临时[id] || buckets.重复[id]);
 }
 
 function sanitizeArchiveStore(value: unknown): CalendarArchiveStore {
@@ -199,7 +308,7 @@ function sanitizeArchiveStore(value: unknown): CalendarArchiveStore {
         )
           ? (String(raw.archive_reason) as ArchivedCalendarEvent['archive_reason'])
           : 'completed',
-        ...sanitizeRawEvent(raw),
+        ...sanitizeRawEvent(raw, type),
       };
       return [id, archived];
     }),
@@ -219,8 +328,8 @@ function sanitizeArchiveStore(value: unknown): CalendarArchiveStore {
     sources: sanitizeSourceConfig(source.sources),
     policy: sanitizeArchivePolicy(source.policy),
     lastActiveSnapshot: {
-      临时: sanitizeBucketRecords(snapshotSource.临时),
-      重复: sanitizeBucketRecords(snapshotSource.重复),
+      临时: sanitizeBucketRecords(snapshotSource.临时, '临时'),
+      重复: sanitizeBucketRecords(snapshotSource.重复, '重复'),
     },
   };
 }
@@ -260,8 +369,8 @@ export async function readActiveBuckets(): Promise<ActiveCalendarBuckets> {
   const data = readMessageVariableData();
   ensureActiveBucketShape(data);
 
-  const temp = sanitizeBucketRecords(_.get(data, MVU_TEMP_PATH, {}));
-  const repeat = sanitizeBucketRecords(_.get(data, MVU_REPEAT_PATH, {}));
+  const temp = sanitizeBucketRecords(_.get(data, MVU_TEMP_PATH, {}), '临时');
+  const repeat = sanitizeBucketRecords(_.get(data, MVU_REPEAT_PATH, {}), '重复');
   return {
     临时: temp,
     重复: repeat,
@@ -285,12 +394,13 @@ export async function replaceActiveBuckets(nextBuckets: ActiveCalendarBuckets): 
 
 export function readArchiveStore(): CalendarArchiveStore {
   const variables = getVariables({ type: 'chat' });
-  return sanitizeArchiveStore(variables[CHAT_ARCHIVE_KEY]);
+  return sanitizeArchiveStore(_.get(variables, CHAT_ARCHIVE_PATH, variables[LEGACY_CHAT_ARCHIVE_KEY]));
 }
 
 export function replaceArchiveStore(nextStore: CalendarArchiveStore): void {
   const variables = getVariables({ type: 'chat' });
-  variables[CHAT_ARCHIVE_KEY] = sanitizeArchiveStore(nextStore);
+  _.set(variables, CHAT_ARCHIVE_PATH, sanitizeArchiveStore(nextStore));
+  _.unset(variables, LEGACY_CHAT_ARCHIVE_KEY);
   replaceVariables(variables, { type: 'chat' });
 }
 
@@ -341,7 +451,7 @@ export function getAvailableCalendarWorldbooks(): string[] {
 function resolveArchiveReason(raw: RawCalendarEvent): ArchivedCalendarEvent['archive_reason'] {
   return raw.完成后 === '自动清理'
     ? 'auto_cleanup'
-    : raw.完成后 === '转回忆' || raw.类型 === '回忆' || raw.重要度 === '纪念'
+    : raw.完成后 === '转回忆' || raw.类型 === '回忆'
       ? 'memory'
       : 'completed';
 }
@@ -399,7 +509,7 @@ function writeArchivedEvent(args: {
   completedAt?: string;
   archiveReason?: ArchivedCalendarEvent['archive_reason'];
 }): boolean {
-  const normalizedRaw = sanitizeRawEvent(args.raw);
+  const normalizedRaw = sanitizeRawEvent(args.raw, args.type);
   if (shouldSkipArchiveByPolicy({ id: args.id, raw: normalizedRaw, policy: args.archive.policy })) {
     return false;
   }
@@ -504,7 +614,7 @@ export async function syncArchiveOnActiveRemoval(completedAt?: string): Promise<
     const previousBucket = previous[bucketType] || {};
     const currentBucket = buckets[bucketType] || {};
     Object.entries(previousBucket).forEach(([id, raw]) => {
-      if (currentBucket[id]) {
+      if (hasActiveEventId(buckets, id)) {
         return;
       }
       if (archive.completed[id]) {
@@ -550,6 +660,79 @@ export async function syncArchiveOnActiveRemoval(completedAt?: string): Promise<
   return { archived, skipped, deleted, restored };
 }
 
+export function syncArchiveFromMvuVariableDiff(params: {
+  newVariables: Record<string, any>;
+  oldVariables: Record<string, any>;
+  completedAt?: string;
+}): {
+  archived: number;
+  skipped: number;
+  deleted: number;
+  restored: number;
+} {
+  if (!hasCalendarBucketPath(params.oldVariables) && !hasCalendarBucketPath(params.newVariables)) {
+    return { archived: 0, skipped: 0, deleted: 0, restored: 0 };
+  }
+
+  const previous = readBucketsFromMvuVariables(params.oldVariables);
+  const current = readBucketsFromMvuVariables(params.newVariables);
+  const archive = readArchiveStore();
+  let archived = 0;
+  let skipped = 0;
+  let deleted = 0;
+  let restored = 0;
+
+  (['临时', '重复'] as const).forEach(bucketType => {
+    const previousBucket = previous[bucketType] || {};
+    const currentBucket = current[bucketType] || {};
+    Object.entries(previousBucket).forEach(([id, raw]) => {
+      if (hasActiveEventId(current, id)) {
+        return;
+      }
+      if (archive.completed[id]) {
+        return;
+      }
+
+      const policyAction = resolveCalendarEventPolicyAction(id, raw, archive.policy);
+      if (policyAction === 'protect') {
+        currentBucket[id] = raw;
+        restored += 1;
+        return;
+      }
+      if (policyAction === 'delete') {
+        deleted += 1;
+        return;
+      }
+      if (!archive.policy.archiveOnActiveRemoval) {
+        skipped += 1;
+        return;
+      }
+      if (
+        writeArchivedEvent({
+          archive,
+          id,
+          type: bucketType,
+          raw,
+          completedAt: params.completedAt,
+        })
+      ) {
+        archived += 1;
+        return;
+      }
+      skipped += 1;
+    });
+  });
+
+  if (restored > 0) {
+    _.set(params.newVariables, MVU_TEMP_PATH, current.临时);
+    _.set(params.newVariables, MVU_REPEAT_PATH, current.重复);
+  }
+
+  archive.lastActiveSnapshot = cloneBucketsSnapshot(current);
+  replaceArchiveStore(archive);
+  return { archived, skipped, deleted, restored };
+}
+
 export async function restoreArchivedEvent(id: string): Promise<void> {
   const archive = readArchiveStore();
   const archived = archive.completed[id];
@@ -559,7 +742,7 @@ export async function restoreArchivedEvent(id: string): Promise<void> {
 
   const buckets = await readActiveBuckets();
   const targetBucket = archived.type === '重复' ? buckets.重复 : buckets.临时;
-  targetBucket[id] = sanitizeRawEvent(archived);
+  targetBucket[id] = sanitizeRawEvent(archived, archived.type);
   delete archive.completed[id];
 
   archive.lastActiveSnapshot = cloneBucketsSnapshot(buckets);

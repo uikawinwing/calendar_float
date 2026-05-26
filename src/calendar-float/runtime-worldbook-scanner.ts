@@ -3,7 +3,15 @@
  * 流程：读取 index -> 收集最近消息/变量 -> 判定哪些节庆/书籍/提醒命中 -> 写入运行时变量 ->
  * 仅对 worldbook 扫描类内容做 silent scan，同时对提醒 / 摘要做可见 injectprompt。
  */
-import { SCRIPT_NAME } from './constants';
+import _ from 'lodash';
+import {
+  CHAT_RUNTIME_PATH,
+  LEGACY_CHAT_BOOK_ABSTRACTS_KEY,
+  LEGACY_CHAT_REMINDER_ACTIVE_KEY,
+  LEGACY_CHAT_REMINDER_COMINGSOON_KEY,
+  LEGACY_CHAT_RUNTIME_KEY,
+  SCRIPT_NAME,
+} from './constants';
 import { readCalendarTriggerVariableContext, readLatestCalendarTriggerMessages } from './runtime-chat-context';
 import {
   resolveCalendarBookAbstract,
@@ -19,7 +27,6 @@ import { readCurrentWorldTime } from './storage';
 const RUNTIME_SCAN_PROMPT_ID = 'calendar_float_runtime_worldbook_scan';
 const RUNTIME_REMINDER_PROMPT_ID = 'calendar_float_runtime_visible_reminders';
 const RUNTIME_ABSTRACT_PROMPT_ID = 'calendar_float_runtime_visible_abstracts';
-const RUNTIME_STATE_VARIABLE_KEY = 'calendar_float_runtime';
 
 let lastInjectedScanContent = '';
 let lastInjectedReminderContent = '';
@@ -318,10 +325,11 @@ function writeRuntimeScanVariables(result: 日历运行时扫描结果): void {
 
   updateVariablesWith(
     variables => {
-      variables[RUNTIME_STATE_VARIABLE_KEY] = payload;
-      variables.reminder_comingsoon = comingSoon;
-      variables.reminder_active = active;
-      variables.book_abstracts = summaries;
+      _.set(variables, CHAT_RUNTIME_PATH, payload);
+      _.unset(variables, LEGACY_CHAT_RUNTIME_KEY);
+      _.unset(variables, LEGACY_CHAT_REMINDER_COMINGSOON_KEY);
+      _.unset(variables, LEGACY_CHAT_REMINDER_ACTIVE_KEY);
+      _.unset(variables, LEGACY_CHAT_BOOK_ABSTRACTS_KEY);
       return variables;
     },
     { type: 'chat' },

@@ -493,7 +493,7 @@ function getFilteredAgendaGroups(options: {
       .map(group => ({
         ...group,
         items: group.items.filter(item => {
-          if (!showArchived && item.source === 'archive') {
+          if (!showArchived && item.source === 'archive' && item.metadata.archiveVisibleByPolicy !== true) {
             return false;
           }
           return matchesAgendaKeyword(item, keyword);

@@ -1,11 +1,11 @@
-import { clamp } from 'lodash';
+import { clamp, set } from 'lodash';
 import {
   buildElliaBetaTicketCalendarEventsForMonth,
   ensureElliaBetaTicketStyle,
   isElliaBetaTicketBookId,
   renderElliaBetaTicketBookView,
   renderElliaTicketAddOnForDate,
-} from '../dlc_ellia';
+} from './dlc_ellia';
 import {
   MONTH_EVENT_ROW_LIMIT,
   buildDailyAgenda,
@@ -15,7 +15,7 @@ import {
   buildMonthCells,
   buildReminderState,
 } from './calendar-view-model';
-import { INSTANCE_KEY, ROOT_ID, SCRIPT_NAME, STYLE_ID } from './constants';
+import { INSTANCE_KEY, MESSAGE_KNOWN_TAGS_PATH, ROOT_ID, SCRIPT_NAME, STYLE_ID } from './constants';
 import { addDays, compareDatePoint, extractClockTimeText, formatDateKey, getWeekdayFromAnchor } from './date';
 import { getFestivalLocationKeywords } from './festival-visual';
 import { saveCalendarForm } from './form-service';
@@ -139,7 +139,7 @@ const state: WidgetState = {
   reminder: createEmptyReminder(),
   dataset: null,
   filterKeyword: '',
-  showArchived: true,
+  showArchived: false,
   formMode: 'create',
   editingEventId: null,
 };
@@ -147,7 +147,7 @@ const state: WidgetState = {
 let monthAliases: CalendarMonthAliasRecord[] = [];
 
 const BALL_POSITION_VAR_KEY = 'calendar_float_ball_position';
-const BALL_DEFAULT_SIZE = 68;
+const BALL_DEFAULT_SIZE = 60;
 const BALL_VIEWPORT_MARGIN = 8;
 const BALL_DRAG_CLICK_THRESHOLD = 4;
 const WORLD_WEEKDAY_TEXT = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
@@ -483,6 +483,7 @@ function ensureRoot(): void {
   root.dataset.open = 'false';
   root.dataset.hasUpcoming = 'false';
   root.dataset.tab = uiState.sidebarTab;
+  root.dataset.selectedDate = 'false';
   root.dataset.theme = uiState.theme;
   root.dataset.mobileSideOpen = 'false';
   root.dataset.panelFullscreen = 'false';
@@ -601,7 +602,8 @@ function clampBallPosition(left: number, top: number): { left: number; top: numb
 
 function getDefaultBallPosition(): { left: number; top: number } {
   const viewport = getViewportSize({ hostWindow: uiWindow, hostDocument: uiDocument });
-  return clampBallPosition(viewport.width - BALL_DEFAULT_SIZE - 18, Math.round(viewport.height * 0.32));
+  const ballWidth = refs.ball?.offsetWidth || BALL_DEFAULT_SIZE;
+  return clampBallPosition(viewport.width - ballWidth - 18, Math.round(viewport.height * 0.32));
 }
 
 function readSavedBallPosition(): { left: number; top: number } | null {
@@ -1011,10 +1013,10 @@ function renderManagedWorldbookDialog(): void {
   }
 }
 
-function getKnownTagLabels(): string[] {
+function collectKnownTagLabels(dataset: CalendarDataset | null = state.dataset): string[] {
   const archive = readArchiveStore();
   const values = [
-    ...(state.dataset?.suggestions.tagCandidates.map(option => option.label) ?? []),
+    ...(dataset?.suggestions.tagCandidates.map(option => option.label) ?? []),
     ...archive.policy.customTags,
     ...Object.keys(archive.policy.tagColors),
   ];
@@ -1023,6 +1025,20 @@ function getKnownTagLabels(): string[] {
     .filter(Boolean)
     .filter((tag, index, array) => array.indexOf(tag) === index)
     .sort((left, right) => left.localeCompare(right, 'zh-CN'));
+}
+
+function syncKnownTagsVariable(dataset: CalendarDataset | null = state.dataset): void {
+  try {
+    const variables = getVariables({ type: 'message', message_id: -1 }) || {};
+    set(variables, MESSAGE_KNOWN_TAGS_PATH, collectKnownTagLabels(dataset));
+    replaceVariables(variables, { type: 'message', message_id: -1 });
+  } catch (error) {
+    console.warn(`[${SCRIPT_NAME}] 同步月历标签索引失败`, error);
+  }
+}
+
+function getKnownTagLabels(): string[] {
+  return collectKnownTagLabels();
 }
 
 function rememberCustomTags(tags: string[]): void {
@@ -1036,6 +1052,7 @@ function rememberCustomTags(tags: string[]): void {
   const policy = readArchiveStore().policy;
   const nextTags = [...policy.customTags, ...normalized].filter((tag, index, array) => array.indexOf(tag) === index);
   replaceCalendarArchivePolicy({ customTags: nextTags });
+  syncKnownTagsVariable();
 }
 
 function closeTagColorDialog(): void {
@@ -1187,6 +1204,70 @@ function readFormValue(field: string): string {
       `[data-form-field="${field}"]`,
     )?.value || '',
   ).trim();
+}
+
+function readFormInteger(field: string, min: number, max: number): number | null {
+  const value = Number(readFormValue(field));
+  if (!Number.isInteger(value) || value < min || value > max) {
+    return null;
+  }
+  return value;
+}
+
+function buildRepeatFormSchedule(): { rule: string; start: string; end: string; error?: string } {
+  const rule = readFormValue('rule') || '每月';
+  if (rule === '每天') {
+    return { rule, start: '每天', end: '' };
+  }
+  if (rule === '仅工作日') {
+    return { rule, start: '每个工作日', end: '' };
+  }
+  if (rule === '每周') {
+    const weekdays = readFormValue('repeat_weekdays')
+      .split(/[，,、\s]+/)
+      .map(value => value.trim())
+      .filter(Boolean);
+    if (!weekdays.length) {
+      return { rule, start: '', end: '', error: '重复事件需要选择至少一个星期。' };
+    }
+    return { rule, start: `每周${weekdays.join('、')}`, end: '' };
+  }
+  if (rule === '每月') {
+    const mode = readFormValue('repeat_month_mode') === 'period' ? 'period' : 'day';
+    if (mode === 'period') {
+      const startDay = readFormInteger('repeat_month_start_day', 1, 31);
+      const endDay = readFormInteger('repeat_month_end_day', 1, 31);
+      if (!startDay || !endDay) {
+        return { rule, start: '', end: '', error: '每月重复需要填写 1-31 之间的日期。' };
+      }
+      return { rule, start: `每月${startDay}日`, end: `每月${endDay}日` };
+    }
+    const day = readFormInteger('repeat_month_day', 1, 31);
+    if (!day) {
+      return { rule, start: '', end: '', error: '每月重复需要填写 1-31 之间的日期。' };
+    }
+    return { rule, start: `每月${day}日`, end: '' };
+  }
+  if (rule === '每年') {
+    const mode = readFormValue('repeat_year_mode') === 'period' ? 'period' : 'day';
+    if (mode === 'period') {
+      const startMonth = readFormInteger('repeat_year_start_month', 1, 12);
+      const startDay = readFormInteger('repeat_year_start_day', 1, 31);
+      const endMonth = readFormInteger('repeat_year_end_month', 1, 12);
+      const endDay = readFormInteger('repeat_year_end_day', 1, 31);
+      if (!startMonth || !startDay || !endMonth || !endDay) {
+        return { rule, start: '', end: '', error: '每年重复需要填写有效的月日。' };
+      }
+      return { rule, start: `每年${startMonth}月${startDay}日`, end: `每年${endMonth}月${endDay}日` };
+    }
+    const month = readFormInteger('repeat_year_month', 1, 12);
+    const day = readFormInteger('repeat_year_day', 1, 31);
+    if (!month || !day) {
+      return { rule, start: '', end: '', error: '每年重复需要填写有效的月日。' };
+    }
+    return { rule, start: `每年${month}月${day}日`, end: '' };
+  }
+  return { rule: '每月', start: '', end: '', error: '请选择有效的重复规则。' };
 }
 
 function readFormTags(): string[] {
@@ -1515,22 +1596,39 @@ function getVisibleCalendarDataset(): CalendarDataset | null {
   if (!state.dataset) {
     return null;
   }
+  const archivePolicy = readArchiveStore().policy;
+  const autoVisibleArchiveTags = new Set([...archivePolicy.protectedTags, ...archivePolicy.skipArchiveTags]);
+  const archivedEvents = state.showArchived
+    ? state.dataset.archivedEvents
+    : state.dataset.archivedEvents
+        .filter(event => event.tags.some(tag => autoVisibleArchiveTags.has(tag)))
+        .map(event => ({
+          ...event,
+          metadata: {
+            ...event.metadata,
+            archiveVisibleByPolicy: true,
+          },
+        }));
+  const dataset = {
+    ...state.dataset,
+    archivedEvents,
+  };
   if (uiState.festivalScopeMode === 'none') {
     return {
-      ...state.dataset,
+      ...dataset,
       festivals: [],
     };
   }
   if (uiState.festivalScopeMode === 'all') {
-    return state.dataset;
+    return dataset;
   }
-  const localTerms = buildLocalFestivalSearchTerms(state.dataset);
+  const localTerms = buildLocalFestivalSearchTerms(dataset);
   if (!localTerms.length) {
-    return state.dataset;
+    return dataset;
   }
   return {
-    ...state.dataset,
-    festivals: state.dataset.festivals.filter(festival => isFestivalVisibleInLocalScope(festival, localTerms)),
+    ...dataset,
+    festivals: dataset.festivals.filter(festival => isFestivalVisibleInLocalScope(festival, localTerms)),
   };
 }
 
@@ -1907,11 +2005,13 @@ function renderFormSection(): void {
           start: editing.startText,
           end: editing.endText,
           rule: editing.repeatRule,
+          visibility: editing.raw?.可见性 ?? '玩家与LLM',
         }
       : {
           type: '临时',
           start: defaultStart,
           rule: '无',
+          visibility: '玩家与LLM',
         },
     editing: Boolean(editing),
   })}`;
@@ -1954,6 +2054,7 @@ function renderShell(): void {
   refs.root.dataset.open = state.open ? 'true' : 'false';
   refs.root.dataset.hasUpcoming = activeReminder.hasUpcoming ? 'true' : 'false';
   refs.root.dataset.tab = uiState.sidebarTab;
+  refs.root.dataset.selectedDate = state.selectedDateKey ? 'true' : 'false';
   refs.root.dataset.readingBook = uiState.openedBookId ? 'true' : 'false';
   refs.root.dataset.mobileSideOpen = !isDesktopMode() && uiState.mobileSideOpen ? 'true' : 'false';
   refs.root.dataset.panelFullscreen = isDesktopMode() && uiState.panelFullscreen ? 'true' : 'false';
@@ -2071,6 +2172,7 @@ async function refreshDataset(): Promise<void> {
   state.dataset = dataset;
   state.reminder = buildReminderState(dataset);
   syncStateAnchors();
+  syncKnownTagsVariable(dataset);
   renderShell();
 }
 
@@ -2108,8 +2210,14 @@ async function saveForm(): Promise<void> {
   const editing = getEditingRecord();
   const title = readFormValue('title');
   const id = readFormValue('id') || editing?.id || generateEventId(title);
+  const formType = readFormValue('type') === '重复' ? '重复' : '临时';
+  const repeatSchedule = formType === '重复' ? buildRepeatFormSchedule() : null;
+  if (repeatSchedule?.error) {
+    hostWindow.alert(repeatSchedule.error);
+    return;
+  }
   const result = await saveCalendarForm({
-    type: readFormValue('type') === '重复' ? '重复' : '临时',
+    type: formType,
     id,
     title,
     tags: readFormValue('tags')
@@ -2117,9 +2225,10 @@ async function saveForm(): Promise<void> {
       .map(value => value.trim())
       .filter(Boolean),
     content: readFormValue('content'),
-    start: normalizeFormTimeInput(readFormValue('start')),
-    end: normalizeFormTimeInput(readFormValue('end')),
-    rule: readFormValue('rule') || '无',
+    start: repeatSchedule ? repeatSchedule.start : normalizeFormTimeInput(readFormValue('start')),
+    end: repeatSchedule ? repeatSchedule.end : normalizeFormTimeInput(readFormValue('end')),
+    rule: repeatSchedule ? repeatSchedule.rule : '无',
+    visibility: readFormValue('visibility') === '仅玩家' ? '仅玩家' : '玩家与LLM',
     editingRecord: editing ? { id: editing.id } : null,
   });
 

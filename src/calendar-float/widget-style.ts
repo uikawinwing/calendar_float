@@ -1528,7 +1528,72 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
     }
     #${ROOT_ID} .th-form-shell { display: grid; gap: 10px; }
     #${ROOT_ID} .th-form-field { display: grid; gap: 4px; }
+    #${ROOT_ID} .th-form-field[hidden] { display: none; }
     #${ROOT_ID} .th-form-field label { font-size: 12px; color: #6e604f; }
+    #${ROOT_ID} .th-repeat-detail,
+    #${ROOT_ID} .th-repeat-detail-group {
+      display: grid;
+      gap: 8px;
+    }
+    #${ROOT_ID} .th-repeat-detail[hidden],
+    #${ROOT_ID} .th-repeat-detail-group[hidden],
+    #${ROOT_ID} .th-repeat-inline[hidden] {
+      display: none;
+    }
+    #${ROOT_ID} .th-repeat-detail {
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(155, 128, 84, 0.16);
+      background: rgba(255,255,255,0.44);
+    }
+    #${ROOT_ID} .th-repeat-detail-group label {
+      font-size: 12px;
+      color: #6e604f;
+      font-weight: 700;
+    }
+    #${ROOT_ID} .th-repeat-weekday-list {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+    }
+    #${ROOT_ID} .th-repeat-weekday {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      border: 1px solid rgba(155, 128, 84, 0.22);
+      border-radius: 999px;
+      background: rgba(255, 252, 246, 0.92);
+      color: #5a4936;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    #${ROOT_ID} .th-repeat-weekday input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+    #${ROOT_ID} .th-repeat-weekday.is-active {
+      background: #fff0cf;
+      border-color: rgba(191, 143, 68, 0.48);
+      color: #7d5315;
+    }
+    #${ROOT_ID} .th-repeat-inline {
+      display: grid;
+      grid-template-columns: repeat(4, auto);
+      gap: 7px;
+      align-items: center;
+      justify-content: start;
+      color: #6e604f;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    #${ROOT_ID} .th-repeat-inline input {
+      width: 76px;
+      padding: 9px 10px;
+      text-align: center;
+    }
     #${ROOT_ID} .th-form-advanced {
       border: 1px solid rgba(155, 128, 84, 0.16);
       border-radius: 12px;
@@ -1759,6 +1824,7 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
     #${ROOT_ID}[data-theme='dark'] .th-agenda-group,
     #${ROOT_ID}[data-theme='dark'] .th-archive-policy-panel,
     #${ROOT_ID}[data-theme='dark'] .th-form-advanced,
+    #${ROOT_ID}[data-theme='dark'] .th-repeat-detail,
     #${ROOT_ID}[data-theme='dark'] .th-detail-card,
     #${ROOT_ID}[data-theme='dark'] .th-agenda-item,
     #${ROOT_ID}[data-theme='dark'] .th-empty,
@@ -1948,7 +2014,8 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
 
     #${ROOT_ID}[data-theme='dark'] .th-form-tag-chip,
     #${ROOT_ID}[data-theme='dark'] .th-tag-option,
-    #${ROOT_ID}[data-theme='dark'] .th-tag-color-tag {
+    #${ROOT_ID}[data-theme='dark'] .th-tag-color-tag,
+    #${ROOT_ID}[data-theme='dark'] .th-repeat-weekday {
       background: #222b36;
       border-color: #3b4859;
       color: #dbe3ee;
@@ -1956,7 +2023,8 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
 
     #${ROOT_ID}[data-theme='dark'] .th-form-tag-chip,
     #${ROOT_ID}[data-theme='dark'] .th-tag-option.is-active,
-    #${ROOT_ID}[data-theme='dark'] .th-tag-color-tag.is-active {
+    #${ROOT_ID}[data-theme='dark'] .th-tag-color-tag.is-active,
+    #${ROOT_ID}[data-theme='dark'] .th-repeat-weekday.is-active {
       background: #eef3f9;
       border-color: #ffffff;
       color: #16202c;
@@ -2138,16 +2206,20 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
 
     #${ROOT_ID} .th-calendar-ball {
       overflow: hidden;
+      width: 60px;
+      height: 60px;
       border-color: rgba(255, 250, 238, 0.78);
-      border-radius: 20px;
+      border-radius: 18px;
       background:
         radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.82), transparent 35%),
         linear-gradient(145deg, #fff9ed, #efe1c8 54%, #d9c8a9);
       color: var(--th-accent);
+      font-size: 28px;
       box-shadow:
-        0 18px 42px rgba(72, 47, 20, 0.2),
+        0 8px 18px rgba(72, 47, 20, 0.18),
         inset 0 0 0 1px rgba(104, 76, 44, 0.14);
-      backdrop-filter: blur(8px);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
       transition:
         transform 140ms ease,
         box-shadow 140ms ease,
@@ -2158,7 +2230,7 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
       transform: translateY(-1px);
       border-color: rgba(165, 103, 36, 0.42);
       box-shadow:
-        0 22px 48px rgba(72, 47, 20, 0.24),
+        0 10px 22px rgba(72, 47, 20, 0.2),
         inset 0 0 0 1px rgba(104, 76, 44, 0.16);
     }
 
@@ -2172,7 +2244,7 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
       background-size: 96px 96px, 82px 82px, 110px 110px, auto;
       color: #d7e7ff;
       box-shadow:
-        0 20px 46px rgba(0, 0, 0, 0.52),
+        0 10px 22px rgba(0, 0, 0, 0.46),
         inset 0 0 0 1px rgba(187, 214, 255, 0.1);
     }
 
@@ -2813,6 +2885,7 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
     #${ROOT_ID} .th-agenda-group,
     #${ROOT_ID} .th-agenda-item,
     #${ROOT_ID} .th-form-advanced,
+    #${ROOT_ID} .th-repeat-detail,
     #${ROOT_ID} .th-reminder-summary,
     #${ROOT_ID} .th-empty,
     #${ROOT_ID} .th-book-pagination {
@@ -2828,6 +2901,7 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
     #${ROOT_ID}[data-theme='dark'] .th-agenda-group,
     #${ROOT_ID}[data-theme='dark'] .th-agenda-item,
     #${ROOT_ID}[data-theme='dark'] .th-form-advanced,
+    #${ROOT_ID}[data-theme='dark'] .th-repeat-detail,
     #${ROOT_ID}[data-theme='dark'] .th-reminder-summary,
     #${ROOT_ID}[data-theme='dark'] .th-empty,
     #${ROOT_ID}[data-theme='dark'] .th-book-pagination {
@@ -4704,6 +4778,26 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
         overflow: hidden;
         transform: none;
       }
+      #${ROOT_ID} .th-calendar-ball {
+        width: 52px;
+        height: 52px;
+        border-radius: 16px;
+        font-size: 23px;
+        box-shadow:
+          0 6px 14px rgba(72, 47, 20, 0.16),
+          inset 0 0 0 1px rgba(104, 76, 44, 0.12);
+      }
+      #${ROOT_ID} .th-calendar-ball:hover {
+        transform: none;
+        box-shadow:
+          0 6px 14px rgba(72, 47, 20, 0.16),
+          inset 0 0 0 1px rgba(104, 76, 44, 0.12);
+      }
+      #${ROOT_ID}[data-theme='dark'] .th-calendar-ball {
+        box-shadow:
+          0 7px 16px rgba(0, 0, 0, 0.42),
+          inset 0 0 0 1px rgba(187, 214, 255, 0.1);
+      }
       #${ROOT_ID} .th-calendar-panel {
         left: 0 !important;
         top: 0 !important;
@@ -5599,6 +5693,197 @@ export function ensureCalendarWidgetStyle(hostDocument: Document): void {
         opacity: 0;
         pointer-events: none;
         transform: translateY(12px);
+      }
+
+      #${ROOT_ID} [data-role="month-grid"] {
+        padding: 6px 0 calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+        background: color-mix(in srgb, var(--th-surface) 86%, #f7fbff 14%);
+      }
+
+      #${ROOT_ID} .th-month-board {
+        border-inline: 0;
+        border-radius: 0;
+        background: color-mix(in srgb, var(--th-surface) 92%, #f7fbff 8%);
+        box-shadow: none;
+      }
+
+      #${ROOT_ID} .th-week-head {
+        min-height: 30px;
+        background: transparent;
+        border-bottom: 1px solid color-mix(in srgb, var(--th-line) 78%, transparent);
+      }
+
+      #${ROOT_ID} .th-week-head > div {
+        min-height: 30px;
+        padding: 0 1px;
+        color: color-mix(in srgb, var(--th-muted) 84%, var(--th-ink) 16%);
+        border-right: 1px solid color-mix(in srgb, var(--th-line) 62%, transparent);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+      }
+
+      #${ROOT_ID} .th-week-block {
+        border-bottom: 1px solid color-mix(in srgb, var(--th-line) 68%, transparent);
+        background: transparent;
+      }
+
+      #${ROOT_ID} .th-week-days {
+        min-height: calc(40px + var(--th-week-chip-rows) * 18px + 8px) !important;
+      }
+
+      #${ROOT_ID} .th-day-cell {
+        min-height: 92px;
+        padding: 5px 2px 3px;
+        border-right: 1px solid color-mix(in srgb, var(--th-line) 62%, transparent);
+        background: transparent;
+        gap: 0;
+      }
+
+      #${ROOT_ID} .th-day-cell.is-muted {
+        background: color-mix(in srgb, var(--th-surface-2) 66%, transparent);
+      }
+
+      #${ROOT_ID} .th-day-cell.is-selected {
+        background: color-mix(in srgb, var(--th-accent-soft) 38%, transparent);
+      }
+
+      #${ROOT_ID} .th-day-cell.is-selected::after {
+        display: none;
+      }
+
+      #${ROOT_ID} .th-day-head {
+        min-height: 28px;
+        padding: 0 2px;
+        align-items: flex-start;
+        justify-content: center;
+      }
+
+      #${ROOT_ID} .th-day-number {
+        width: 28px;
+        min-width: 28px;
+        height: 28px;
+        padding: 0;
+        color: color-mix(in srgb, var(--th-ink) 82%, var(--th-muted) 18%);
+        font-size: 18px;
+        font-weight: 650;
+        line-height: 28px;
+      }
+
+      #${ROOT_ID} .th-day-cell.is-muted .th-day-number {
+        color: color-mix(in srgb, var(--th-muted) 76%, transparent);
+      }
+
+      #${ROOT_ID} .th-day-cell.is-today .th-day-number {
+        color: #fffaf0;
+        background: var(--th-accent);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--th-accent) 20%, transparent);
+      }
+
+      #${ROOT_ID} .th-week-chip-grid {
+        top: 34px;
+        grid-auto-rows: 18px;
+        row-gap: 2px;
+        padding: 0;
+      }
+
+      #${ROOT_ID} .th-week-chip-grid .th-chip,
+      #${ROOT_ID} .th-chip {
+        height: 18px;
+        min-height: 18px;
+        padding: 0 4px;
+        border-width: 0;
+        border-radius: 4px !important;
+        box-shadow: none !important;
+        gap: 0;
+        font-size: 10.5px;
+        font-weight: 750;
+        line-height: 18px;
+        text-shadow: none !important;
+      }
+
+      #${ROOT_ID} .th-chip::before {
+        display: none !important;
+      }
+
+      #${ROOT_ID} .th-week-chip-bar {
+        margin: 0 1px;
+      }
+
+      #${ROOT_ID} .th-chip.is-continue-left {
+        width: calc(100% + 1px);
+        margin-left: -1px;
+        padding-left: 4px;
+      }
+
+      #${ROOT_ID} .th-chip.is-continue-right {
+        width: calc(100% + 1px);
+        margin-right: -1px;
+        padding-right: 4px;
+      }
+
+      #${ROOT_ID} .th-chip.is-continue-left.is-continue-right {
+        width: calc(100% + 2px);
+      }
+
+      #${ROOT_ID} .th-overflow {
+        right: 2px;
+        top: 2px;
+        transform: none;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        border-radius: 999px;
+        font-size: 9px;
+      }
+
+      #${ROOT_ID} .th-overflow-icon {
+        display: none;
+      }
+
+      #${ROOT_ID}[data-selected-date='true'][data-tab='detail'] .th-calendar-side {
+        height: min(48dvh, 420px) !important;
+        max-height: calc(100dvh - 12px) !important;
+      }
+
+      #${ROOT_ID} .th-fab-add,
+      #${ROOT_ID} .th-fab-list {
+        right: 14px;
+        left: auto;
+        width: 48px;
+        height: 48px;
+        border-color: color-mix(in srgb, var(--th-line-strong) 74%, transparent);
+        background: color-mix(in srgb, var(--th-surface) 94%, transparent);
+        color: var(--th-ink);
+        box-shadow: 0 8px 18px rgba(40, 27, 13, 0.18);
+      }
+
+      #${ROOT_ID} .th-fab-add {
+        bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+        border-top-color: transparent;
+        border-radius: 0 0 14px 14px;
+        font-size: 28px;
+      }
+
+      #${ROOT_ID} .th-fab-list {
+        bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+        border-radius: 14px 14px 0 0;
+        font-size: 20px;
+      }
+
+      #${ROOT_ID}[data-theme='dark'] [data-role="month-grid"],
+      #${ROOT_ID}[data-theme='dark'] .th-month-board {
+        background: #09111f;
+      }
+
+      #${ROOT_ID}[data-theme='dark'] .th-week-head,
+      #${ROOT_ID}[data-theme='dark'] .th-week-block {
+        border-color: rgba(151, 184, 235, 0.13);
+      }
+
+      #${ROOT_ID}[data-theme='dark'] .th-week-head > div,
+      #${ROOT_ID}[data-theme='dark'] .th-day-cell {
+        border-right-color: rgba(151, 184, 235, 0.11);
       }
     }
 

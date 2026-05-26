@@ -1,9 +1,11 @@
 import { SCRIPT_NAME } from './constants';
 import { bootstrapCalendarFloatHostAdapter, teardownCalendarFloatHostAdapter } from './host-adapter';
+import { bootstrapCalendarMvuRemovalArchive, teardownCalendarMvuRemovalArchive } from './mvu-removal-archive';
 import {
   bootstrapCalendarRuntimeWorldbookScanner,
   teardownCalendarRuntimeWorldbookScanner,
 } from './runtime-worldbook-scanner';
+import { migrateCalendarChatVariableStore, migrateCalendarLatestMessageVariableStore } from './storage';
 import { bootstrapCalendarWidget } from './widget';
 import {
   ensureCalendarManagedWorldbookEntries,
@@ -25,11 +27,14 @@ function notifyManagedWorldbookEnsure(result: Awaited<ReturnType<typeof ensureCa
 
 function init(): void {
   console.info(`[${SCRIPT_NAME}] 开始初始化`);
+  migrateCalendarChatVariableStore();
+  migrateCalendarLatestMessageVariableStore();
   void ensureCalendarManagedWorldbookEntries()
     .then(notifyManagedWorldbookEnsure)
     .catch(error => {
       console.warn(`[${SCRIPT_NAME}] 初始化托管 worldbook 条目失败`, error);
     });
+  bootstrapCalendarMvuRemovalArchive();
   bootstrapCalendarRuntimeWorldbookScanner();
   bootstrapCalendarWidget();
   void bootstrapCalendarFloatHostAdapter();
@@ -44,6 +49,7 @@ function init(): void {
 
 function cleanup(): void {
   console.info(`[${SCRIPT_NAME}] 开始卸载`);
+  teardownCalendarMvuRemovalArchive();
   teardownCalendarFloatHostAdapter({ unregister: true, silent: true });
   teardownCalendarRuntimeWorldbookScanner();
   window.CalendarFloatWidget?.destroy('pagehide');

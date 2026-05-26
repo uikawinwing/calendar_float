@@ -1,12 +1,15 @@
-import { ROOT_ID } from '../calendar-float/constants';
-import { formatDateKey, parseWorldDateText } from '../calendar-float/date';
-import type { CalendarEventRecord } from '../calendar-float/types';
+import {
+  CHAT_TICKET_ALPHA_STORE_PATH,
+  LEGACY_TICKET_ALPHA_STORE_KEY,
+  ROOT_ID,
+} from '../constants';
+import { formatDateKey, getDaysInMonth, parseWorldDateText } from '../date';
+import type { CalendarEventRecord } from '../types';
 
 const ELLIA_BETA_TICKET_STYLE_ID = `${ROOT_ID}-dlc-ellia-beta-ticket-style`;
 const ELLIA_BETA_TICKET_BOOK_ID_PREFIX = 'dlc-ellia-ticket:';
 const ELLIA_CORE_KEY = '系统核心';
 const ELLIA_CORE_VALUE = '艾莉亚';
-const ALPHA_TICKET_STORE_KEY = 'calendar_float_ticket_alpha_store';
 const HTML_ESCAPE_MAP: Record<string, string> = {
   '&': String.fromCharCode(38, 97, 109, 112, 59),
   '<': String.fromCharCode(38, 108, 116, 59),
@@ -33,6 +36,8 @@ interface ElliaAlphaTicketRecord {
   raw: string;
   fields: ElliaAlphaTicketFields;
 }
+
+let hasWarnedElliaCoreMismatch = false;
 
 export function ensureElliaBetaTicketStyle(hostDocument: Document): void {
   if (!hostDocument || hostDocument.getElementById(ELLIA_BETA_TICKET_STYLE_ID)) {
@@ -718,12 +723,28 @@ function readChatVariables(): Record<string, unknown> {
   }
 }
 
+function readLatestMessageVariables(): Record<string, unknown> {
+  try {
+    return getVariables({ type: 'message', message_id: -1 }) || {};
+  } catch (error) {
+    console.warn('[CalendarFloat][DLC:Ellia] 读取最新消息变量失败', error);
+    return {};
+  }
+}
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 function asText(value: unknown): string {
   return String(value ?? '').trim();
+}
+
+function getByPath(source: Record<string, unknown>, path: string): unknown {
+  return String(path || '')
+    .split('.')
+    .filter(Boolean)
+    .reduce<unknown>((current, key) => (isPlainRecord(current) ? current[key] : undefined), source);
 }
 
 function escapeElliaHtml(value: unknown): string {
@@ -816,7 +837,7 @@ function sanitizeTicketRecord(value: unknown): ElliaAlphaTicketRecord | null {
 }
 
 function readElliaTicketRecords(chatVariables: Record<string, unknown>): ElliaAlphaTicketRecord[] {
-  const store = chatVariables[ALPHA_TICKET_STORE_KEY];
+  const store = getByPath(chatVariables, CHAT_TICKET_ALPHA_STORE_PATH) ?? chatVariables[LEGACY_TICKET_ALPHA_STORE_KEY];
   if (!isPlainRecord(store) || !isPlainRecord(store.tickets)) {
     return [];
   }
@@ -827,10 +848,112 @@ function readElliaTicketRecords(chatVariables: Record<string, unknown>): ElliaAl
     .sort((left, right) => left.savedAt.localeCompare(right.savedAt));
 }
 
-function resolveTicketDateKey(ticket: ElliaAlphaTicketRecord): string {
-  const parsed =
-    parseWorldDateText(ticket.time) || parseWorldDateText(ticket.fields.date) || parseWorldDateText(ticket.raw);
-  return parsed ? formatDateKey(parsed) : '';
+function warnElliaTicketCoreMismatchIfNeeded(variableSources: Record<string, unknown>[], ticketsCount: number): void {
+  if (hasWarnedElliaCoreMismatch || ticketsCount <= 0 || variableSources.some(isElliaDlcUnlocked)) {
+    return;
+  }
+  hasWarnedElliaCoreMismatch = true;
+  const coreValue = variableSources.map(source => asText(source[ELLIA_CORE_KEY])).find(Boolean) || '未设置';
+  toastr.warning(
+    `检测到艾莉亚票券，但「系统核心」目前是「${coreValue}」。请检查 core 是否应为 Ellia / 艾莉亚。`,
+    '月历悬浮球',
+  );
+}
+
+function readElliaTicketRuntimeState(): { unlocked: boolean; tickets: ElliaAlphaTicketRecord[] } {
+  const variableSources = [readChatVariables(), readLatestMessageVariables()];
+  const ticketsById = new Map<string, ElliaAlphaTicketRecord>();
+  variableSources.flatMap(readElliaTicketRecords).forEach(ticket => {
+    ticketsById.set(ticket.id, ticket);
+  });
+  const tickets = [...ticketsById.values()].sort((left, right) => left.savedAt.localeCompare(right.savedAt));
+  warnElliaTicketCoreMismatchIfNeeded(variableSources, tickets.length);
+  return {
+    unlocked: tickets.length > 0 || variableSources.some(isElliaDlcUnlocked),
+    tickets,
+  };
+}
+
+function parseFullTicketDate(ticket: ElliaAlphaTicketRecord) {
+  return parseWorldDateText(ticket.time) || parseWorldDateText(ticket.fields.date) || parseWorldDateText(ticket.raw);
+}
+
+function parseTicketMonthDayText(value: unknown): { month: number; day: number } | null {
+  const text = asText(value);
+  if (!text) {
+    return null;
+  }
+
+  const match =
+    text.match(/^(\d{1,2})[-/月](\d{1,2})日?$/) ||
+    text.match(/(?:^|[^\d])(\d{1,2})[-/月](\d{1,2})日?(?!\d)/);
+  if (!match) {
+    return null;
+  }
+
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  if (!Number.isFinite(month) || month < 1 || month > 12 || !Number.isFinite(day) || day < 1 || day > 31) {
+    return null;
+  }
+  return { month, day };
+}
+
+function parseTicketMonthDay(ticket: ElliaAlphaTicketRecord): { month: number; day: number } | null {
+  return parseTicketMonthDayText(ticket.time) || parseTicketMonthDayText(ticket.fields.date) || parseTicketMonthDayText(ticket.raw);
+}
+
+function getYearFromDateKey(dateKey: string): number | null {
+  const match = String(dateKey || '').match(/^(\d+)-\d{2}-\d{2}$/);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  return Number.isFinite(year) ? year : null;
+}
+
+function buildTicketMonthDayDateKey(monthDay: { month: number; day: number }, year: number): string {
+  return formatDateKey({
+    year,
+    month: monthDay.month,
+    day: Math.min(monthDay.day, getDaysInMonth(year, monthDay.month)),
+  });
+}
+
+function resolveTicketDateKey(ticket: ElliaAlphaTicketRecord, anchorDateKey = ''): string {
+  const parsed = parseFullTicketDate(ticket);
+  if (parsed) {
+    return formatDateKey(parsed);
+  }
+
+  const monthDay = parseTicketMonthDay(ticket);
+  const year = getYearFromDateKey(anchorDateKey);
+  return monthDay && year ? buildTicketMonthDayDateKey(monthDay, year) : '';
+}
+
+function resolveTicketDateKeyForTargets(ticket: ElliaAlphaTicketRecord, dateKeys: string[], targetKeys: Set<string>): string {
+  const parsed = parseFullTicketDate(ticket);
+  if (parsed) {
+    const dateKey = formatDateKey(parsed);
+    return targetKeys.has(dateKey) ? dateKey : '';
+  }
+
+  const monthDay = parseTicketMonthDay(ticket);
+  if (!monthDay) {
+    return '';
+  }
+
+  for (const targetKey of dateKeys) {
+    const year = getYearFromDateKey(targetKey);
+    if (!year) {
+      continue;
+    }
+    const dateKey = buildTicketMonthDayDateKey(monthDay, year);
+    if (targetKeys.has(dateKey)) {
+      return dateKey;
+    }
+  }
+  return '';
 }
 
 function isElliaDlcUnlocked(chatVariables: Record<string, unknown>): boolean {
@@ -849,11 +972,11 @@ function getElliaBetaTicketRecordsForDate(dateKey: string): ElliaAlphaTicketReco
   if (!dateKey) {
     return [];
   }
-  const chatVariables = readChatVariables();
-  if (!isElliaDlcUnlocked(chatVariables)) {
+  const runtimeState = readElliaTicketRuntimeState();
+  if (!runtimeState.unlocked) {
     return [];
   }
-  return readElliaTicketRecords(chatVariables).filter(ticket => resolveTicketDateKey(ticket) === dateKey);
+  return runtimeState.tickets.filter(ticket => resolveTicketDateKey(ticket, dateKey) === dateKey);
 }
 
 function fromElliaBetaTicketBookId(bookId: string): string {
@@ -881,13 +1004,13 @@ export function buildElliaBetaTicketCalendarEventsForMonth(dateKeys: string[]): 
     return [];
   }
 
-  const chatVariables = readChatVariables();
-  if (!isElliaDlcUnlocked(chatVariables)) {
+  const runtimeState = readElliaTicketRuntimeState();
+  if (!runtimeState.unlocked) {
     return [];
   }
 
-  return readElliaTicketRecords(chatVariables)
-    .map(ticket => ({ ticket, dateKey: resolveTicketDateKey(ticket) }))
+  return runtimeState.tickets
+    .map(ticket => ({ ticket, dateKey: resolveTicketDateKeyForTargets(ticket, dateKeys, targetKeys) }))
     .filter(({ dateKey }) => targetKeys.has(dateKey))
     .map(({ ticket, dateKey }): CalendarEventRecord => {
       const [yearText, monthText, dayText] = dateKey.split('-');
@@ -929,8 +1052,8 @@ function renderElliaBetaTicket(ticket: ElliaAlphaTicketRecord, index: number, re
 
 export function renderElliaBetaTicketBookView(bookId: string): string {
   const ticketId = fromElliaBetaTicketBookId(bookId);
-  const chatVariables = readChatVariables();
-  const tickets = isElliaDlcUnlocked(chatVariables) ? readElliaTicketRecords(chatVariables) : [];
+  const runtimeState = readElliaTicketRuntimeState();
+  const tickets = runtimeState.unlocked ? runtimeState.tickets : [];
   const ticket = tickets.find(item => item.id === ticketId) ?? null;
   if (!ticket) {
     return `<article class="th-book-main-card dlc-ellia-ticket-reader"><div class="th-book-main-head"><div class="th-book-main-title-wrap"><div class="th-month-title">艾莉亚票券</div><div class="th-month-subtitle">票券不存在或 DLC 未解锁</div></div><button type="button" class="th-btn th-book-return-btn" data-action="close-book-reader">返回日期详情</button></div><div class="th-empty">无法读取这张票券。</div></article>`;

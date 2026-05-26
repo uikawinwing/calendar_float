@@ -50,7 +50,7 @@ function common_path(lhs: string, rhs: string) {
 
 function is_bundle_only_entry(file: string): boolean {
   const normalized = normalize_entry_path(file);
-  return normalized === 'src/dlc_ellia/index.ts';
+  return normalized === 'src/calendar-float/dlc_ellia/index.ts';
 }
 
 function glob_script_files() {

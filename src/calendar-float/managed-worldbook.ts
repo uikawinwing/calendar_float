@@ -22,7 +22,6 @@ const VARIABLE_LIST_ENTRY_NAME = `${MANAGED_ENTRY_PREFIX}[当前日历内容展�
 const MANAGED_WORLDBOOK_STORAGE_KEY = `${SCRIPT_NAME}:managed-worldbook-enabled`;
 const MANAGED_WORLDBOOK_TARGET_STORAGE_KEY = `${SCRIPT_NAME}:managed-worldbook-target`;
 const CALENDAR_MANAGED_WORLDBOOK_VERSION = 'v4.1.0';
-const DEFAULT_WORLDINFO_ORDER_BASE = 8800000;
 
 export const CALENDAR_MANAGED_ENTRY_PREFIX = MANAGED_ENTRY_PREFIX;
 
@@ -112,7 +111,7 @@ export interface CalendarManagedWorldbookDiagnostics {
 }
 
 type ManagedWorldbookEntrySeed = Partial<WorldbookEntry>;
-type PositionSlot = 'after_character_definition' | 'd1';
+type PositionSlot = 'after_character_definition' | 'd1' | 'd2';
 
 const diagnostics: CalendarManagedWorldbookDiagnostics = {
   worldbookName: '',
@@ -228,7 +227,7 @@ function resolvePosition(slot: PositionSlot, order: number): WorldbookEntry['pos
   return {
     type: 'at_depth',
     role: 'system',
-    depth: 1,
+    depth: slot === 'd2' ? 2 : 1,
     order,
   };
 }
@@ -285,14 +284,14 @@ function buildManagedWorldbookEntries(): ManagedWorldbookEntrySeed[] {
     buildManagedEntryBase({
       name: UPDATE_RULES_ENTRY_NAME,
       content: buildCalendarUpdateRulesEntryContent(),
-      order: DEFAULT_WORLDINFO_ORDER_BASE + 10,
-      slot: 'd1',
+      order: 99998,
+      slot: 'd2',
       entryKind: 'mvu_update_rule',
     }),
     buildManagedEntryBase({
       name: VARIABLE_LIST_ENTRY_NAME,
       content: buildCalendarVariableListEntryContent(),
-      order: DEFAULT_WORLDINFO_ORDER_BASE + 20,
+      order: 99999,
       slot: 'd1',
       entryKind: 'variable_list',
     }),
@@ -580,6 +579,17 @@ async function upsertManagedEntriesToTargetWorldbook(args: {
   const existingExpectedCount = entries.filter(entry => desiredEntryNames.has(normalizeEntryName(entry.name))).length;
   const missingEntries = desiredEntries.filter(entry => !existingExpectedMap.has(normalizeEntryName(entry.name)));
   const hasDuplicateManagedEntries = existingExpectedCount > existingExpectedMap.size;
+  const outdatedEntries = desiredEntries.filter(entry => {
+    const entryName = normalizeEntryName(entry.name);
+    const existingEntry = existingExpectedMap.get(entryName);
+    if (!existingEntry) {
+      return true;
+    }
+    return (
+      String(existingEntry.content ?? '').trim() !== String(entry.content ?? '').trim() ||
+      String(existingEntry.extra?.version ?? '') !== CALENDAR_MANAGED_WORLDBOOK_VERSION
+    );
+  });
 
   await updateWorldbookWith(worldbookName, currentEntries => {
     const currentExpectedMap = new Map(
@@ -603,12 +613,7 @@ async function upsertManagedEntriesToTargetWorldbook(args: {
 
   const refreshedEntries = await getWorldbook(worldbookName);
   assertManagedEntriesWritten(refreshedEntries, desiredEntries);
-  const updated =
-    missingEntries.length > 0 ||
-    hasDuplicateManagedEntries ||
-    refreshedEntries.filter(
-      entry => isManagedWorldbookEntry(entry) && desiredEntryNames.has(normalizeEntryName(entry.name)),
-    ).length === desiredEntries.length;
+  const updated = outdatedEntries.length > 0 || hasDuplicateManagedEntries;
 
   if (syncDiagnostics) {
     syncEntryDiagnostics(refreshedEntries, worldbookName);
@@ -665,18 +670,13 @@ async function upsertManagedEntries(): Promise<EnsureCalendarManagedWorldbookEnt
   const existing = await findAvailableWorldbookWithExpectedEntries();
   if (existing) {
     writeStoredManagedWorldbookTargetName(existing.worldbookName);
-    syncEntryDiagnostics(existing.entries, existing.worldbookName);
-    diagnostics.existsInRegistry = readAvailableWorldbookNames().includes(existing.worldbookName);
-    diagnostics.foundByScript = true;
-    diagnostics.createdDuringEnsure = false;
-    diagnostics.updatedDuringEnsure = false;
-    diagnostics.lastEnsureSucceeded = true;
-    diagnostics.connectivity = 'ready';
-    resetDiagnosticsError();
+    const result = await upsertManagedEntriesToTargetWorldbook({
+      worldbookName: existing.worldbookName,
+      entries: existing.entries,
+      syncDiagnostics: true,
+    });
     return {
-      name: existing.worldbookName,
-      created: false,
-      updated: false,
+      ...result,
       targetMode: AVAILABLE_WORLDBOOK_TARGET_MODE,
     };
   }

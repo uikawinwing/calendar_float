@@ -13,9 +13,9 @@ export type CalendarSourceKind =
   | 'dev';
 
 export type CalendarNarrativeEventType = '日程' | '事件' | '回忆';
-export type CalendarPostAction = '不处理' | '自动清理' | '归档' | '转回忆';
-export type CalendarImportance = '普通' | '重要' | '纪念';
-export type CalendarVisibility = '玩家与LLM' | '仅玩家' | '仅系统';
+export type CalendarPostAction = '历史' | '自动清理' | '归档' | '转回忆';
+export type CalendarImportance = '重要且紧急' | '重要不紧急' | '不重要但紧急' | '不重要不紧急';
+export type CalendarVisibility = '玩家与LLM' | '仅玩家';
 
 export interface CalendarEventColorStyle {
   background: string;

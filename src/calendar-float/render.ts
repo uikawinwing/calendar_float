@@ -53,6 +53,164 @@ function renderTagPicker(args: { selectedTags: string[]; tagCandidates: string[]
   `;
 }
 
+const repeatRules = ['每天', '每周', '每月', '每年', '仅工作日'];
+const weekdayOptions = [
+  { value: '日', label: '日' },
+  { value: '一', label: '一' },
+  { value: '二', label: '二' },
+  { value: '三', label: '三' },
+  { value: '四', label: '四' },
+  { value: '五', label: '五' },
+  { value: '六', label: '六' },
+];
+
+function parseMonthlyRepeatDay(value: string): number | null {
+  const text = String(value || '').trim();
+  const match =
+    text.match(/每月\s*(\d{1,2})\s*[日号]?/) ??
+    text.match(/(?:^|[^\d])(\d{1,2})\s*[日号](?!\d)/) ??
+    text.match(/^(\d{1,2})$/);
+  if (!match) {
+    return null;
+  }
+  const day = Number(match[1]);
+  return Number.isFinite(day) && day >= 1 && day <= 31 ? day : null;
+}
+
+function parseYearlyRepeatDate(value: string): { month: number; day: number } | null {
+  const text = String(value || '').trim();
+  const match =
+    text.match(/(?:每年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/) ??
+    text.match(/(?:每年\s*)?(\d{1,2})[-/](\d{1,2})/);
+  if (!match) {
+    return null;
+  }
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  return Number.isFinite(month) && month >= 1 && month <= 12 && Number.isFinite(day) && day >= 1 && day <= 31
+    ? { month, day }
+    : null;
+}
+
+function parseMonthDayFromText(value: string): { month: number; day: number } | null {
+  const text = String(value || '').trim();
+  const match = text.match(/(\d{1,2})\s*月[-/ ]?(\d{1,2})\s*[日号]?/) ?? text.match(/(\d{1,2})[-/](\d{1,2})/);
+  if (!match) {
+    return null;
+  }
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  return Number.isFinite(month) && month >= 1 && month <= 12 && Number.isFinite(day) && day >= 1 && day <= 31
+    ? { month, day }
+    : null;
+}
+
+function parseWeeklyRepeatDays(value: string): string[] {
+  const text = String(value || '').toLowerCase();
+  const values = new Set<string>();
+  const normalized = text.replace(/星期/g, '周').replace(/礼拜/g, '周');
+  if (/每周|每星期|周|星期|礼拜/.test(text)) {
+    for (const [, day] of normalized.matchAll(/([日天一二三四五六])/g)) {
+      values.add(day === '天' ? '日' : day);
+    }
+  }
+  if (normalized.includes('weekend')) {
+    values.add('六');
+    values.add('日');
+  }
+  const englishMap: Array<[RegExp, string]> = [
+    [/\b(mon|monday)\b/, '一'],
+    [/\b(tue|tues|tuesday)\b/, '二'],
+    [/\b(wed|wednesday)\b/, '三'],
+    [/\b(thu|thur|thurs|thursday)\b/, '四'],
+    [/\b(fri|friday)\b/, '五'],
+    [/\b(sat|saturday)\b/, '六'],
+    [/\b(sun|sunday)\b/, '日'],
+  ];
+  englishMap.forEach(([pattern, day]) => {
+    if (pattern.test(text)) {
+      values.add(day);
+    }
+  });
+  return weekdayOptions.map(option => option.value).filter(day => values.has(day));
+}
+
+function renderRepeatDetail(args: {
+  isRepeat: boolean;
+  rule: string;
+  start: string;
+  end: string;
+  defaultMonth: number;
+  defaultDay: number;
+}): string {
+  const weeklyDays = parseWeeklyRepeatDays(args.start);
+  const selectedWeeklyDays = weeklyDays.length ? weeklyDays : ['一'];
+  const monthlyStartDay = parseMonthlyRepeatDay(args.start) ?? args.defaultDay;
+  const monthlyEndDay = parseMonthlyRepeatDay(args.end);
+  const monthlyMode = monthlyEndDay ? 'period' : 'day';
+  const yearlyStart = parseYearlyRepeatDate(args.start) ?? { month: args.defaultMonth, day: args.defaultDay };
+  const yearlyEnd = parseYearlyRepeatDate(args.end);
+  const yearlyMode = yearlyEnd ? 'period' : 'day';
+  const detailHidden = !args.isRepeat || args.rule === '每天' || args.rule === '仅工作日';
+
+  return `
+    <div class="th-repeat-detail" data-role="repeat-detail-field" ${detailHidden ? 'hidden' : ''}>
+      <div class="th-repeat-detail-group" data-repeat-detail="每周" ${args.isRepeat && args.rule === '每周' ? '' : 'hidden'}>
+        <label>每周哪几天</label>
+        <input type="hidden" data-form-field="repeat_weekdays" value="${escapeHtml(selectedWeeklyDays.join(','))}" />
+        <div class="th-repeat-weekday-list">
+          ${weekdayOptions
+            .map(option => {
+              const checked = selectedWeeklyDays.includes(option.value);
+              return `<label class="th-repeat-weekday ${checked ? 'is-active' : ''}"><input type="checkbox" data-action="toggle-repeat-weekday" value="${escapeHtml(option.value)}" ${checked ? 'checked' : ''} /><span>${escapeHtml(option.label)}</span></label>`;
+            })
+            .join('')}
+        </div>
+      </div>
+      <div class="th-repeat-detail-group" data-repeat-detail="每月" ${args.isRepeat && args.rule === '每月' ? '' : 'hidden'}>
+        <label>每月模式</label>
+        <select data-form-field="repeat_month_mode">
+          <option value="day" ${monthlyMode === 'day' ? 'selected' : ''}>每月某一天</option>
+          <option value="period" ${monthlyMode === 'period' ? 'selected' : ''}>每月一段日期</option>
+        </select>
+        <div class="th-repeat-inline" data-repeat-mode="month-day" ${monthlyMode === 'day' ? '' : 'hidden'}>
+          <input type="number" min="1" max="31" data-form-field="repeat_month_day" value="${escapeHtml(monthlyStartDay)}" />
+          <span>日</span>
+        </div>
+        <div class="th-repeat-inline" data-repeat-mode="month-period" ${monthlyMode === 'period' ? '' : 'hidden'}>
+          <input type="number" min="1" max="31" data-form-field="repeat_month_start_day" value="${escapeHtml(monthlyStartDay)}" />
+          <span>日至</span>
+          <input type="number" min="1" max="31" data-form-field="repeat_month_end_day" value="${escapeHtml(monthlyEndDay ?? monthlyStartDay)}" />
+          <span>日</span>
+        </div>
+      </div>
+      <div class="th-repeat-detail-group" data-repeat-detail="每年" ${args.isRepeat && args.rule === '每年' ? '' : 'hidden'}>
+        <label>每年模式</label>
+        <select data-form-field="repeat_year_mode">
+          <option value="day" ${yearlyMode === 'day' ? 'selected' : ''}>每年某一天</option>
+          <option value="period" ${yearlyMode === 'period' ? 'selected' : ''}>每年一段日期</option>
+        </select>
+        <div class="th-repeat-inline" data-repeat-mode="year-day" ${yearlyMode === 'day' ? '' : 'hidden'}>
+          <input type="number" min="1" max="12" data-form-field="repeat_year_month" value="${escapeHtml(yearlyStart.month)}" />
+          <span>月</span>
+          <input type="number" min="1" max="31" data-form-field="repeat_year_day" value="${escapeHtml(yearlyStart.day)}" />
+          <span>日</span>
+        </div>
+        <div class="th-repeat-inline" data-repeat-mode="year-period" ${yearlyMode === 'period' ? '' : 'hidden'}>
+          <input type="number" min="1" max="12" data-form-field="repeat_year_start_month" value="${escapeHtml(yearlyStart.month)}" />
+          <span>月</span>
+          <input type="number" min="1" max="31" data-form-field="repeat_year_start_day" value="${escapeHtml(yearlyStart.day)}" />
+          <span>日至</span>
+          <input type="number" min="1" max="12" data-form-field="repeat_year_end_month" value="${escapeHtml(yearlyEnd?.month ?? yearlyStart.month)}" />
+          <span>月</span>
+          <input type="number" min="1" max="31" data-form-field="repeat_year_end_day" value="${escapeHtml(yearlyEnd?.day ?? yearlyStart.day)}" />
+          <span>日</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 export function renderFormHtml(args: {
   nowText: string;
   titleCandidates: string[];
@@ -67,11 +225,18 @@ export function renderFormHtml(args: {
     start?: string;
     end?: string;
     rule?: string;
+    visibility?: string;
   };
   editing?: boolean;
 }): string {
   const values = args.values ?? {};
   const selectedTags = parseTagText(values.tags);
+  const isRepeat = values.type === '重复';
+  const rule = isRepeat && repeatRules.includes(String(values.rule || '')) ? String(values.rule) : isRepeat ? '每月' : '无';
+  const selectedRepeatRule = isRepeat ? rule : '每月';
+  const defaultDate = parseMonthDayFromText(args.nowText);
+  const defaultMonth = defaultDate?.month ?? 1;
+  const defaultDay = defaultDate?.day ?? 1;
   return `
     <section class="th-calendar-section">
       <div class="th-section-title-row">
@@ -94,6 +259,40 @@ export function renderFormHtml(args: {
             <label>事件 ID</label>
             <input data-form-field="id" value="${escapeHtml(values.id || '')}" placeholder="留空自动生成，例如 quest_01" />
           </div>
+          <div class="th-form-field">
+            <label>可见性</label>
+            <select data-form-field="visibility">
+              <option value="玩家与LLM" ${values.visibility === '仅玩家' ? '' : 'selected'}>玩家与 LLM</option>
+              <option value="仅玩家" ${values.visibility === '仅玩家' ? 'selected' : ''}>仅玩家</option>
+            </select>
+          </div>
+          <div class="th-form-field" data-role="absolute-time-field" ${isRepeat ? 'hidden' : ''}>
+            <label>时间</label>
+            <input data-form-field="start" value="${escapeHtml(values.start || '')}" placeholder="默认使用选中日期或当前世界时间" />
+          </div>
+          <div class="th-form-field" data-role="absolute-time-field" ${isRepeat ? 'hidden' : ''}>
+            <label>结束时间</label>
+            <input data-form-field="end" value="${escapeHtml(values.end || '')}" placeholder="可留空" />
+          </div>
+          <div class="th-form-field" data-role="repeat-rule-field" ${isRepeat ? '' : 'hidden'}>
+            <label>重复规则</label>
+            <select data-form-field="rule">
+              ${repeatRules
+                .map(
+                  option =>
+                    `<option value="${escapeHtml(option)}" ${option === selectedRepeatRule ? 'selected' : ''}>${escapeHtml(option)}</option>`,
+                )
+                .join('')}
+            </select>
+          </div>
+          ${renderRepeatDetail({
+            isRepeat,
+            rule,
+            start: values.start || '',
+            end: values.end || '',
+            defaultMonth,
+            defaultDay,
+          })}
         </details>
         <div class="th-form-field">
           <label>标题</label>
@@ -106,25 +305,6 @@ export function renderFormHtml(args: {
         <div class="th-form-field">
           <label>内容</label>
           <textarea data-form-field="content" rows="4" placeholder="详细描述、备忘信息">${escapeHtml(values.content || '')}</textarea>
-        </div>
-        <div class="th-form-field">
-          <label>时间</label>
-          <input data-form-field="start" value="${escapeHtml(values.start || '')}" placeholder="完整世界时间；短日期会自动补全" />
-        </div>
-        <div class="th-form-field">
-          <label>结束时间</label>
-          <input data-form-field="end" value="${escapeHtml(values.end || '')}" placeholder="可留空" />
-        </div>
-        <div class="th-form-field">
-          <label>重复规则</label>
-          <select data-form-field="rule">
-            ${['无', '每天', '每周', '每月', '每年', '仅工作日', '仅节假日']
-              .map(
-                rule =>
-                  `<option value="${escapeHtml(rule)}" ${values.rule === rule ? 'selected' : rule === '无' && !values.rule ? 'selected' : ''}>${escapeHtml(rule)}</option>`,
-              )
-              .join('')}
-          </select>
         </div>
         <div class="th-form-actions">
           <button type="button" class="th-btn" data-action="fill-now-time">填入当前时间</button>
