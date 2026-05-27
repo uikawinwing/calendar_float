@@ -5,7 +5,11 @@ import {
   bootstrapCalendarRuntimeWorldbookScanner,
   teardownCalendarRuntimeWorldbookScanner,
 } from './runtime-worldbook-scanner';
-import { migrateCalendarChatVariableStore, migrateCalendarLatestMessageVariableStore } from './storage';
+import {
+  ensureCalendarLatestMessageVariableStore,
+  migrateCalendarChatVariableStore,
+  migrateCalendarLatestMessageVariableStore,
+} from './storage';
 import { bootstrapCalendarWidget } from './widget';
 import {
   ensureCalendarManagedWorldbookEntries,
@@ -21,7 +25,7 @@ function notifyManagedWorldbookEnsure(result: Awaited<ReturnType<typeof ensureCa
   }
   const target = getCalendarManagedWorldbookTargetName() || result.name;
   const targetModeText =
-    result.targetMode === 'stored_external' ? '已使用你上次选择的外部 worldbook' : '首次自动写入当前角色主 worldbook';
+    result.targetMode === 'stored_external' ? '已使用你上次选择的外部世界书' : '首次自动写入当前角色主世界书';
   toastr.info(`月历球已写入后端基础条目：${target}\n${targetModeText}\n可在后端面板查看/搬运来源。`);
 }
 
@@ -29,10 +33,13 @@ function init(): void {
   console.info(`[${SCRIPT_NAME}] 开始初始化`);
   migrateCalendarChatVariableStore();
   migrateCalendarLatestMessageVariableStore();
+  void ensureCalendarLatestMessageVariableStore().catch(error => {
+    console.warn(`[${SCRIPT_NAME}] 初始化最新消息变量失败`, error);
+  });
   void ensureCalendarManagedWorldbookEntries()
     .then(notifyManagedWorldbookEnsure)
     .catch(error => {
-      console.warn(`[${SCRIPT_NAME}] 初始化托管 worldbook 条目失败`, error);
+      console.warn(`[${SCRIPT_NAME}] 初始化托管世界书条目失败`, error);
     });
   bootstrapCalendarMvuRemovalArchive();
   bootstrapCalendarRuntimeWorldbookScanner();

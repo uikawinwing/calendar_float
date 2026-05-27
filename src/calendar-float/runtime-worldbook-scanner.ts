@@ -6,10 +6,6 @@
 import _ from 'lodash';
 import {
   CHAT_RUNTIME_PATH,
-  LEGACY_CHAT_BOOK_ABSTRACTS_KEY,
-  LEGACY_CHAT_REMINDER_ACTIVE_KEY,
-  LEGACY_CHAT_REMINDER_COMINGSOON_KEY,
-  LEGACY_CHAT_RUNTIME_KEY,
   SCRIPT_NAME,
 } from './constants';
 import { readCalendarTriggerVariableContext, readLatestCalendarTriggerMessages } from './runtime-chat-context';
@@ -326,10 +322,6 @@ function writeRuntimeScanVariables(result: 日历运行时扫描结果): void {
   updateVariablesWith(
     variables => {
       _.set(variables, CHAT_RUNTIME_PATH, payload);
-      _.unset(variables, LEGACY_CHAT_RUNTIME_KEY);
-      _.unset(variables, LEGACY_CHAT_REMINDER_COMINGSOON_KEY);
-      _.unset(variables, LEGACY_CHAT_REMINDER_ACTIVE_KEY);
-      _.unset(variables, LEGACY_CHAT_BOOK_ABSTRACTS_KEY);
       return variables;
     },
     { type: 'chat' },

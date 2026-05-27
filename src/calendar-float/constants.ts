@@ -5,7 +5,6 @@ export const ROOT_ID = 'th-calendar-float-root';
 export const STYLE_ID = 'th-calendar-float-style';
 export const INSTANCE_KEY = 'CalendarFloatWidget';
 
-export const MVU_MESSAGE_TARGET = { type: 'message', message_id: -1 } as const;
 export const MVU_ROOT_PATH = 'stat_data.事件.日历';
 export const MVU_TEMP_PATH = 'stat_data.事件.日历.临时';
 export const MVU_REPEAT_PATH = 'stat_data.事件.日历.重复';

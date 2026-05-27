@@ -23,8 +23,10 @@ import { buildSelectedDayDetail, fallbackDateLabel, renderFormHtml } from './ren
 import { loadCalendarDatasetFromRuntimeWorldbook } from './runtime-ui-dataset';
 import {
   archiveCompletedEvent,
+  ensureCalendarLatestMessageVariableStore,
   ensureMvuReady,
   getAvailableCalendarWorldbooks,
+  getLatestMessageVariableTarget,
   purgeArchivedEventWithPolicy,
   purgeAutoDeleteArchivedEvents,
   readArchiveStore,
@@ -505,8 +507,8 @@ function ensureRoot(): void {
           <div class="th-tool-menu-panel" role="menu" aria-label="设置菜单">
             <button type="button" class="th-tool-menu-item" data-action="toggle-theme" role="menuitem">主题颜色</button>
             <button type="button" class="th-tool-menu-item" data-action="open-tag-color-panel" role="menuitem">标签颜色</button>
-            <button type="button" class="th-tool-menu-item th-connectivity-button" data-action="managed-worldbook-connectivity" data-state="unknown" role="menuitem" aria-label="侦错模式">
-              <span class="th-connectivity-text">侦错模式</span>
+            <button type="button" class="th-tool-menu-item th-connectivity-button" data-action="managed-worldbook-connectivity" data-state="unknown" role="menuitem" aria-label="规则检查">
+              <span class="th-connectivity-text">规则检查</span>
             </button>
           </div>
         </details>
@@ -699,54 +701,23 @@ function setPanelFullscreen(fullscreen: boolean): void {
 }
 
 function buildManagedWorldbookSummaryLines(diagnostics: CalendarManagedWorldbookDiagnostics): string[] {
+  const canUseDiagnosticWorldbook = Boolean(diagnostics.worldbookName && diagnostics.existsInRegistry);
+  const formatLocation = (entryLabel: string, found: boolean): string =>
+    found && canUseDiagnosticWorldbook
+      ? `${diagnostics.worldbookName}；条目：${entryLabel}`
+      : '未找到';
+  const reinstallTarget = canUseDiagnosticWorldbook
+    ? diagnostics.worldbookName
+    : '当前角色主世界书';
   return [
-    `当前后端目标：${diagnostics.worldbookName || '（未绑定）'}`,
-    `基础条目：${diagnostics.managedEntryCount}/${diagnostics.expectedManagedEntryCount}`,
-    `更新规则：${diagnostics.hasUpdateRulesEntry ? '已找到' : '缺失'}`,
-    `变量展示：${diagnostics.hasVariableListEntry ? '已找到' : '缺失'}`,
-    `运行时索引：${diagnostics.runtimeIndexWorldbookName || '（未找到）'}`,
-    `正文来源：${
-      diagnostics.runtimeContentWorldbookNames.length > 0
-        ? diagnostics.runtimeContentWorldbookNames.join('、')
-        : '（未找到）'
-    }`,
+    `基础规则：${diagnostics.hasUpdateRulesEntry ? '已找到' : '未找到'}｜位置：${formatLocation('月历变量更新规则', diagnostics.hasUpdateRulesEntry)}`,
+    `变量展示：${diagnostics.hasVariableListEntry ? '已找到' : '未找到'}｜位置：${formatLocation('当前日历内容展示', diagnostics.hasVariableListEntry)}`,
+    `重装位置：${reinstallTarget}`,
   ];
-}
-
-function buildManagedWorldbookSourceHtml(diagnostics: CalendarManagedWorldbookDiagnostics): string {
-  const groups: Array<{ group: 'event' | 'book' | 'utility'; title: string }> = [
-    { group: 'event', title: 'event / 节庆' },
-    { group: 'book', title: 'book / 读物' },
-    { group: 'utility', title: 'utility / 基础规则' },
-  ];
-  const items = diagnostics.sourceItems ?? [];
-  return groups
-    .map(({ group, title }) => {
-      const groupItems = items.filter(item => item.group === group);
-      const body = groupItems.length
-        ? groupItems
-            .map(
-              item => `
-                <li class="th-managed-source-item">
-                  <span class="th-managed-source-name">${escapeHtml(item.label)}</span>
-                  <span class="th-managed-source-path">source: ${escapeHtml(item.sourceWorldbookName || '（未找到）')} / ${escapeHtml(item.entryName || '（无条目名）')}</span>
-                </li>
-              `,
-            )
-            .join('')
-        : '<li class="th-managed-source-empty">没有读取到来源</li>';
-      return `
-        <section class="th-managed-source-group">
-          <div class="th-managed-source-title">${escapeHtml(title)}</div>
-          <ul class="th-managed-source-list">${body}</ul>
-        </section>
-      `;
-    })
-    .join('');
 }
 
 /**
- * UI 入口保持为“侦错模式”；正常状态不在菜单按钮上显示后端诊断，只在弹窗内展示调试信息。
+ * UI 入口只展示基础规则检查；完整来源诊断保留在控制台，避免弹窗把整本世界书摊出来。
  */
 function getConnectivityButtonCopy(diagnostics: CalendarManagedWorldbookDiagnostics): {
   text: string;
@@ -755,12 +726,12 @@ function getConnectivityButtonCopy(diagnostics: CalendarManagedWorldbookDiagnost
   const installedText = `${diagnostics.managedEntryCount}/${diagnostics.expectedManagedEntryCount}`;
   const stateText =
     diagnostics.connectivity === 'checking'
-      ? '正在检查世界书后端条目'
+      ? '正在检查世界书基础规则'
       : diagnostics.connectivity === 'error'
-        ? `世界书后端检查失败；当前 ${installedText}`
-        : `打开侦错模式；世界书后端 ${installedText}`;
+        ? `世界书基础规则检查失败；当前 ${installedText}`
+        : `检查月历基础规则；当前 ${installedText}`;
   return {
-    text: uiState.managedWorldbookBusy ? '侦错模式…' : '侦错模式',
+    text: uiState.managedWorldbookBusy ? '检查中…' : '规则检查',
     title: stateText,
   };
 }
@@ -841,27 +812,26 @@ function renderManagedWorldbookDialog(): void {
     .map(line => `<li class="th-managed-worldbook-dialog-summary-item">${escapeHtml(line)}</li>`)
     .join('');
   const uninstallDisabled = diagnostics.managedEntryCount <= 0;
-  const sourceHtml = buildManagedWorldbookSourceHtml(diagnostics);
 
-  let title = '侦错模式';
+  let title = '规则检查';
   let description =
-    '这里显示脚本实际读到的 event / book / utility 来源与后端诊断。正常使用时不需要操作；重装/卸载仅作为 debug/dev 工具。';
+    '这里只检查月历需要的两条基础规则。重装会写回上面显示的位置；如果没有找到旧位置，就写入当前角色主世界书。';
   let bodyHtml = '';
   let actionHtml = [
     '<div class="th-managed-worldbook-action-row is-primary">',
-    '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-menu-export-external">搬运到其他 worldbook</button>',
+    '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-menu-export-external">搬运到其他世界书</button>',
     '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-dialog-return">关闭</button>',
     '</div>',
     '<div class="th-managed-worldbook-action-row is-secondary th-managed-worldbook-dev-actions">',
-    '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-menu-reinstall">Dev: 重装后端条目</button>',
-    `<button type="button" class="th-btn th-managed-worldbook-dialog-btn is-danger" data-action="managed-worldbook-menu-uninstall" ${uninstallDisabled ? 'disabled' : ''}>Dev: 卸载后端条目</button>`,
+    '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-menu-reinstall">重装这两条规则</button>',
+    `<button type="button" class="th-btn th-managed-worldbook-dialog-btn is-danger" data-action="managed-worldbook-menu-uninstall" ${uninstallDisabled ? 'disabled' : ''}>卸载这两条规则</button>`,
     '</div>',
   ].join('');
 
   if (uiState.managedWorldbookDialogMode === 'confirm-uninstall') {
     title = '确认卸载';
     description =
-      '确定要卸载吗？这只会从当前后端目标 worldbook 中删除脚本托管的 utility 条目，不会删除节庆/书籍正文来源。';
+      '确定要卸载吗？只会删除月历脚本托管的两条基础规则，不会删除节庆、读物或正文来源。';
     actionHtml = [
       '<div class="th-managed-worldbook-action-row is-secondary">',
       '<button type="button" class="th-btn th-managed-worldbook-dialog-btn is-danger" data-action="managed-worldbook-confirm-uninstall">确认卸载</button>',
@@ -870,7 +840,7 @@ function renderManagedWorldbookDialog(): void {
     ].join('');
   } else if (uiState.managedWorldbookDialogMode === 'confirm-reinstall') {
     title = '确认重装';
-    description = '两个托管后端条目会重置为默认内容：mvu_update 规则与当前日历内容展示。确定要继续吗？';
+    description = '会重置两条基础规则：月历变量更新规则、当前日历内容展示。确定要继续吗？';
     actionHtml = [
       '<div class="th-managed-worldbook-action-row is-primary">',
       '<button type="button" class="th-btn th-primary-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-confirm-reinstall">确认重装</button>',
@@ -882,15 +852,15 @@ function renderManagedWorldbookDialog(): void {
     const availableNames = getAvailableCalendarWorldbooks()
       .map(name => String(name || '').trim())
       .filter(Boolean);
-    const suggestedName = availableNames.find(name => name !== diagnosticsWorldbookName) ?? `${SCRIPT_NAME}-backend`;
+    const suggestedName = availableNames.find(name => name !== diagnosticsWorldbookName) ?? `${SCRIPT_NAME}-基础规则`;
     const worldbookListHtml = availableNames.length
       ? availableNames
           .map(
             name =>
-              `<button type="button" class="th-worldbook-picker-item" data-action="managed-worldbook-pick-export-target" data-worldbook-name="${escapeHtml(name)}"><span>${escapeHtml(name)}</span>${name === diagnosticsWorldbookName ? '<em>当前主世界书</em>' : ''}</button>`,
+              `<button type="button" class="th-worldbook-picker-item" data-action="managed-worldbook-pick-export-target" data-worldbook-name="${escapeHtml(name)}"><span>${escapeHtml(name)}</span>${name === diagnosticsWorldbookName ? '<em>当前规则位置</em>' : ''}</button>`,
           )
           .join('')
-      : '<div class="th-worldbook-picker-empty">没有读到可复用的 worldbook；可以直接在上方输入新名称创建。</div>';
+      : '<div class="th-worldbook-picker-empty">没有读到可复用的世界书；可以直接在上方输入新名称创建。</div>';
     const moveCandidateHtml = uiState.managedWorldbookMoveCandidates.length
       ? uiState.managedWorldbookMoveCandidates
           .map(
@@ -905,20 +875,19 @@ function renderManagedWorldbookDialog(): void {
             `,
           )
           .join('')
-      : '<div class="th-worldbook-picker-empty">没有从当前打开来源里找到可搬运的索引/正文条目；仍可只搬运基础规则。</div>';
+      : '<div class="th-worldbook-picker-empty">没有找到可搬运的索引或正文条目；仍可只搬运基础规则。</div>';
     const warningHtml = uiState.managedWorldbookMoveWarnings.length
-      ? `<div class="th-worldbook-picker-meta">读取提示：${escapeHtml(uiState.managedWorldbookMoveWarnings.slice(-2).join('；'))}</div>`
+      ? '<div class="th-worldbook-picker-meta">有来源读取提示，已写入控制台，不在这里展开整本世界书。</div>'
       : '';
-    title = '搬运到其他 worldbook';
+    title = '搬运到其他世界书';
     description =
-      '先选目标 worldbook，再勾选要搬运的条目。列表来自当前运行时索引引用到的世界书条目，并包含基础规则与当前日历内容展示。';
+      '先选目标世界书，再勾选要搬运的条目。基础规则会一起列出；节庆和读物只显示被索引引用到的条目。';
     bodyHtml = `
       <div class="th-worldbook-export-panel">
         <label class="th-worldbook-export-field">
-          <span>目标 worldbook</span>
-          <input type="text" data-role="managed-worldbook-export-target" value="${escapeHtml(suggestedName)}" placeholder="搜索或输入 worldbook 名称" autocomplete="off" />
+          <span>目标世界书</span>
+          <input type="text" data-role="managed-worldbook-export-target" value="${escapeHtml(suggestedName)}" placeholder="搜索或输入世界书名称" autocomplete="off" />
         </label>
-        <div class="th-worldbook-picker-meta">当前后端目标：${escapeHtml(diagnosticsWorldbookName || '（未绑定）')}；目标可以是已有 worldbook 或新名称。</div>
         <div class="th-worldbook-picker-list" data-role="managed-worldbook-export-list">${worldbookListHtml}</div>
         <div class="th-worldbook-move-panel">
           <div class="th-worldbook-move-head">
@@ -931,7 +900,7 @@ function renderManagedWorldbookDialog(): void {
           <div class="th-worldbook-move-list">${moveCandidateHtml}</div>
           <label class="th-worldbook-move-option">
             <input type="checkbox" data-role="managed-worldbook-remove-source" checked />
-            <span>搬运后从原来源删除已选索引/正文条目，避免多个打开 worldbook 重复注入；脚本内置基础规则不会删除。</span>
+            <span>搬运后从原来源删除已选索引和正文条目，避免多个打开的世界书重复注入；脚本内置基础规则不会从原处删除。</span>
           </label>
         </div>
         ${warningHtml}
@@ -953,7 +922,6 @@ function renderManagedWorldbookDialog(): void {
         <div class="th-managed-worldbook-dialog-desc">${escapeHtml(description)}</div>
       </div>
       <ul class="th-managed-worldbook-dialog-summary">${summaryHtml}</ul>
-      ${uiState.managedWorldbookDialogMode === 'menu' ? `<div class="th-managed-source-board">${sourceHtml}</div>` : ''}
       ${bodyHtml}
       <div class="th-managed-worldbook-dialog-actions">${actionHtml}</div>
     </section>
@@ -1028,10 +996,14 @@ function collectKnownTagLabels(dataset: CalendarDataset | null = state.dataset):
 }
 
 function syncKnownTagsVariable(dataset: CalendarDataset | null = state.dataset): void {
+  const target = getLatestMessageVariableTarget();
+  if (!target) {
+    return;
+  }
   try {
-    const variables = getVariables({ type: 'message', message_id: -1 }) || {};
+    const variables = getVariables(target) || {};
     set(variables, MESSAGE_KNOWN_TAGS_PATH, collectKnownTagLabels(dataset));
-    replaceVariables(variables, { type: 'message', message_id: -1 });
+    replaceVariables(variables, target);
   } catch (error) {
     console.warn(`[${SCRIPT_NAME}] 同步月历标签索引失败`, error);
   }
@@ -2166,6 +2138,7 @@ function renderShell(): void {
 }
 
 async function refreshDataset(): Promise<void> {
+  await ensureCalendarLatestMessageVariableStore();
   const dataset = await loadCalendarDatasetFromRuntimeWorldbook();
   await syncArchiveOnActiveRemoval(dataset.nowText || '');
   monthAliases = dataset.monthAliases ?? [];
@@ -2464,7 +2437,7 @@ function filterExternalWorldbookPicker(layer: HTMLElement): void {
   if (!hasVisibleButton && buttons.length > 0 && !empty) {
     list.insertAdjacentHTML(
       'beforeend',
-      '<div class="th-worldbook-picker-empty" data-role="managed-worldbook-export-filter-empty">列表里没有匹配项；继续点击“导出 / 创建”会用当前输入创建新 worldbook。</div>',
+      '<div class="th-worldbook-picker-empty" data-role="managed-worldbook-export-filter-empty">列表里没有匹配项；继续点击“搬运 / 创建”会用当前输入创建新世界书。</div>',
     );
   } else if ((hasVisibleButton || buttons.length === 0) && empty) {
     empty.remove();
@@ -2495,7 +2468,7 @@ async function confirmExternalManagedWorldbookInstall(layer: HTMLElement): Promi
 
   const targetName = readExternalWorldbookTargetName(layer);
   if (!targetName) {
-    hostWindow.alert('请先选择或输入目标 worldbook 名称。');
+    hostWindow.alert('请先选择或输入目标世界书名称。');
     return;
   }
 
@@ -2516,15 +2489,15 @@ async function confirmExternalManagedWorldbookInstall(layer: HTMLElement): Promi
       candidateIds,
       removeFromSource,
     });
-    console.info(`[${SCRIPT_NAME}] 已搬运 worldbook 条目`, result);
+    console.info(`[${SCRIPT_NAME}] 已搬运世界书条目`, result);
     hostWindow.alert(
-      `已搬运 ${result.movedCount ?? candidateIds.length} 个条目到 worldbook\nWorldbook: ${result.name}${
+      `已搬运 ${result.movedCount ?? candidateIds.length} 个条目到世界书\n世界书：${result.name}${
         removeFromSource ? `\n已从原来源删除 ${result.removedSourceCount ?? 0} 个条目` : ''
       }`,
     );
   } catch (error) {
-    console.warn(`[${SCRIPT_NAME}] 搬运 worldbook 条目失败`, error);
-    hostWindow.alert(`搬运 worldbook 条目失败：${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`[${SCRIPT_NAME}] 搬运世界书条目失败`, error);
+    hostWindow.alert(`搬运世界书条目失败：${error instanceof Error ? error.message : String(error)}`);
   } finally {
     uiState.managedWorldbookBusy = false;
     renderShell();
@@ -2543,11 +2516,11 @@ async function confirmManagedWorldbookUninstall(): Promise<void> {
   renderShell();
   try {
     const result = await uninstallCalendarManagedWorldbookEntries();
-    console.info(`[${SCRIPT_NAME}] 一键卸载 worldbook backend 条目成功`, result);
-    hostWindow.alert(`已卸载 ${result.removedCount} 个 backend 条目\nWorldbook: ${result.worldbookName}`);
+    console.info(`[${SCRIPT_NAME}] 一键卸载世界书基础规则成功`, result);
+    hostWindow.alert(`已卸载 ${result.removedCount} 条基础规则\n世界书：${result.worldbookName}`);
   } catch (error) {
-    console.warn(`[${SCRIPT_NAME}] 一键卸载 worldbook backend 条目失败`, error);
-    hostWindow.alert(`卸载 backend 条目失败：${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`[${SCRIPT_NAME}] 一键卸载世界书基础规则失败`, error);
+    hostWindow.alert(`卸载基础规则失败：${error instanceof Error ? error.message : String(error)}`);
   } finally {
     uiState.managedWorldbookBusy = false;
     renderShell();
@@ -2566,11 +2539,11 @@ async function confirmManagedWorldbookReinstall(): Promise<void> {
   renderShell();
   try {
     const result = await installCalendarManagedWorldbookEntries();
-    console.info(`[${SCRIPT_NAME}] 手动重装 worldbook backend 条目成功`, result);
-    hostWindow.alert(`已重装 backend 条目，所有托管条目已恢复默认状态\nWorldbook: ${result.name}`);
+    console.info(`[${SCRIPT_NAME}] 手动重装世界书基础规则成功`, result);
+    hostWindow.alert(`已重装基础规则，两条规则已恢复默认内容\n世界书：${result.name}`);
   } catch (error) {
-    console.warn(`[${SCRIPT_NAME}] 手动重装 worldbook backend 条目失败`, error);
-    hostWindow.alert(`重装 backend 条目失败：${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`[${SCRIPT_NAME}] 手动重装世界书基础规则失败`, error);
+    hostWindow.alert(`重装基础规则失败：${error instanceof Error ? error.message : String(error)}`);
   } finally {
     uiState.managedWorldbookBusy = false;
     renderShell();
@@ -2946,6 +2919,16 @@ async function reload(): Promise<void> {
   await refreshDataset();
 }
 
+function scheduleInitialDatasetRefreshRetries(): void {
+  [600, 1800].forEach(delay => {
+    uiWindow.setTimeout(() => {
+      if (!state.destroyed) {
+        void refreshDataset();
+      }
+    }, delay);
+  });
+}
+
 function setExternalHostMode(enabled: boolean): void {
   if (refs.root) {
     refs.root.dataset.externalHost = enabled ? 'true' : 'false';
@@ -2964,6 +2947,7 @@ export function bootstrapCalendarWidget(): void {
   resetPanelPosition();
   renderShell();
   void refreshDataset();
+  scheduleInitialDatasetRefreshRetries();
   hostWindow[INSTANCE_KEY] = {
     destroy,
     open: () => setOpen(true),

@@ -4,6 +4,7 @@ import {
   ROOT_ID,
 } from '../constants';
 import { formatDateKey, getDaysInMonth, parseWorldDateText } from '../date';
+import { getLatestMessageVariableTarget } from '../storage';
 import type { CalendarEventRecord } from '../types';
 
 const ELLIA_BETA_TICKET_STYLE_ID = `${ROOT_ID}-dlc-ellia-beta-ticket-style`;
@@ -724,8 +725,12 @@ function readChatVariables(): Record<string, unknown> {
 }
 
 function readLatestMessageVariables(): Record<string, unknown> {
+  const target = getLatestMessageVariableTarget();
+  if (!target) {
+    return {};
+  }
   try {
-    return getVariables({ type: 'message', message_id: -1 }) || {};
+    return getVariables(target) || {};
   } catch (error) {
     console.warn('[CalendarFloat][DLC:Ellia] 读取最新消息变量失败', error);
     return {};

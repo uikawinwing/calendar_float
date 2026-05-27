@@ -1,4 +1,5 @@
 import _ from 'lodash';
+import { getLatestMessageVariableTarget } from './storage';
 
 export interface 日历运行时消息文本 {
   messageId: number;
@@ -62,7 +63,8 @@ export function readLatestCalendarTriggerMessages(depth = 2): 日历运行时消
 }
 
 export function readCalendarTriggerVariableContext(): Record<string, unknown> {
-  const messageVariables = getVariables({ type: 'message', message_id: -1 });
+  const target = getLatestMessageVariableTarget();
+  const messageVariables = target ? getVariables(target) : {};
   const chatVariables = getVariables({ type: 'chat' });
   return _.merge({}, chatVariables, messageVariables);
 }

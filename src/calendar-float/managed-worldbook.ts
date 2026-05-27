@@ -24,6 +24,8 @@ const MANAGED_WORLDBOOK_TARGET_STORAGE_KEY = `${SCRIPT_NAME}:managed-worldbook-t
 const CALENDAR_MANAGED_WORLDBOOK_VERSION = 'v4.1.0';
 
 export const CALENDAR_MANAGED_ENTRY_PREFIX = MANAGED_ENTRY_PREFIX;
+export const CALENDAR_UPDATE_RULES_ENTRY_NAME = UPDATE_RULES_ENTRY_NAME;
+export const CALENDAR_VARIABLE_LIST_ENTRY_NAME = VARIABLE_LIST_ENTRY_NAME;
 
 const EXPECTED_MANAGED_ENTRY_NAMES = new Set([UPDATE_RULES_ENTRY_NAME, VARIABLE_LIST_ENTRY_NAME]);
 const EXPECTED_MANAGED_ENTRY_COUNT = EXPECTED_MANAGED_ENTRY_NAMES.size;
@@ -486,7 +488,10 @@ function readManagedWorldbookTargetName(): {
 } {
   const storedTarget = readStoredManagedWorldbookTargetName();
   if (storedTarget) {
-    return { worldbookName: storedTarget, targetMode: 'stored_external' };
+    if (readAvailableWorldbookNames().includes(storedTarget)) {
+      return { worldbookName: storedTarget, targetMode: 'stored_external' };
+    }
+    writeStoredManagedWorldbookTargetName('');
   }
   return { worldbookName: readCurrentCharacterPrimaryWorldbookName(), targetMode: 'character_primary' };
 }
@@ -498,7 +503,7 @@ async function readManagedTargetWorldbookEntries(): Promise<{
 }> {
   const target = readManagedWorldbookTargetName();
   if (!target.worldbookName) {
-    throw new Error('当前没有可用 worldbook 后端目标：请先绑定角色主 worldbook，或在搬运面板选择外部 worldbook');
+    throw new Error('当前没有可用世界书目标：请先绑定角色主世界书，或在搬运面板选择外部世界书');
   }
   const entries = await getWorldbook(target.worldbookName);
   return { ...target, entries };
@@ -510,7 +515,7 @@ async function readWorldbookEntriesByName(
 ): Promise<{ worldbookName: string; entries: WorldbookEntry[]; existed: boolean }> {
   const normalizedWorldbookName = normalizeEntryName(worldbookName);
   if (!normalizedWorldbookName) {
-    throw new Error('worldbook 名称不能为空');
+    throw new Error('世界书名称不能为空');
   }
 
   try {
@@ -759,7 +764,7 @@ export async function uninstallCalendarManagedWorldbookEntries(): Promise<{
 }> {
   const worldbookName = readManagedWorldbookTargetName().worldbookName;
   if (!worldbookName) {
-    throw new Error('当前没有可用 worldbook 后端目标，无法卸载脚本条目');
+    throw new Error('当前没有可用世界书目标，无法卸载脚本条目');
   }
 
   const beforeEntries = await getWorldbook(worldbookName);

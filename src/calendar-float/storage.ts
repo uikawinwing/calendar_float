@@ -11,7 +11,6 @@ import {
   LEGACY_TICKET_ALPHA_LATEST_KEY,
   LEGACY_TICKET_ALPHA_STORE_KEY,
   MESSAGE_TICKET_ALPHA_LATEST_PATH,
-  MVU_MESSAGE_TARGET,
   MVU_REPEAT_PATH,
   MVU_ROOT_PATH,
   MVU_TEMP_PATH,
@@ -74,6 +73,7 @@ function createEmptyArchivePolicy(): CalendarArchiveStore['policy'] {
 
 const MVU_READY_TIMEOUT_MS = 1200;
 let hasWarnedMvuFallback = false;
+let hasWarnedMessageVariableUnavailable = false;
 
 function hasMvuReadApi(): boolean {
   return typeof Mvu !== 'undefined' && typeof Mvu.getMvuData === 'function';
@@ -95,23 +95,65 @@ function warnMvuFallback(reason: string, error?: unknown): void {
   console.warn(`[${SCRIPT_NAME}] ${reason}`, error);
 }
 
-function readMessageVariableData(): Record<string, any> {
-  if (hasMvuReadApi()) {
-    return Mvu.getMvuData(MVU_MESSAGE_TARGET) || {};
+function warnMessageVariableUnavailable(reason: string, error?: unknown): void {
+  if (hasWarnedMessageVariableUnavailable) {
+    return;
   }
-  return getVariables({ type: 'message' });
+  hasWarnedMessageVariableUnavailable = true;
+  if (typeof error === 'undefined') {
+    console.warn(`[${SCRIPT_NAME}] ${reason}`);
+    return;
+  }
+  console.warn(`[${SCRIPT_NAME}] ${reason}`, error);
 }
 
-function ensureActiveBucketShape(data: Record<string, any>): void {
+export function getLatestMessageVariableTarget(): VariableOption | null {
+  try {
+    const messageId = getLastMessageId();
+    if (Number.isInteger(messageId) && messageId >= 0) {
+      return { type: 'message', message_id: messageId };
+    }
+  } catch (error) {
+    warnMessageVariableUnavailable('读取最新消息楼层号失败，暂时跳过消息变量读取', error);
+  }
+  return null;
+}
+
+function readMessageVariableData(): Record<string, any> {
+  const target = getLatestMessageVariableTarget();
+  if (!target) {
+    return {};
+  }
+  if (hasMvuReadApi()) {
+    try {
+      return Mvu.getMvuData(target) || {};
+    } catch (error) {
+      warnMvuFallback('读取最新消息 MVU 变量失败，改为直接读取 message 变量', error);
+    }
+  }
+  try {
+    return getVariables(target);
+  } catch (error) {
+    warnMessageVariableUnavailable('读取最新消息变量失败，暂时使用空变量表', error);
+    return {};
+  }
+}
+
+function ensureActiveBucketShape(data: Record<string, any>): boolean {
+  let changed = false;
   if (!_.isPlainObject(_.get(data, MVU_ROOT_PATH))) {
     _.set(data, MVU_ROOT_PATH, createEmptyBuckets());
+    changed = true;
   }
   if (!_.isPlainObject(_.get(data, MVU_TEMP_PATH))) {
     _.set(data, MVU_TEMP_PATH, {});
+    changed = true;
   }
   if (!_.isPlainObject(_.get(data, MVU_REPEAT_PATH))) {
     _.set(data, MVU_REPEAT_PATH, {});
+    changed = true;
   }
+  return changed;
 }
 
 function sanitizeWorldbookNameList(value: unknown): string[] {
@@ -208,15 +250,18 @@ function hasUsableValue(value: unknown): boolean {
 export function migrateCalendarChatVariableStore(): boolean {
   const variables = getVariables({ type: 'chat' });
   let changed = false;
+  const migratedLegacyKeys = new Set<string>();
 
   if (!hasUsableValue(_.get(variables, CHAT_ARCHIVE_PATH)) && hasUsableValue(variables[LEGACY_CHAT_ARCHIVE_KEY])) {
     _.set(variables, CHAT_ARCHIVE_PATH, variables[LEGACY_CHAT_ARCHIVE_KEY]);
+    migratedLegacyKeys.add(LEGACY_CHAT_ARCHIVE_KEY);
     changed = true;
   }
 
   if (!hasUsableValue(_.get(variables, CHAT_RUNTIME_PATH))) {
     if (hasUsableValue(variables[LEGACY_CHAT_RUNTIME_KEY])) {
       _.set(variables, CHAT_RUNTIME_PATH, variables[LEGACY_CHAT_RUNTIME_KEY]);
+      migratedLegacyKeys.add(LEGACY_CHAT_RUNTIME_KEY);
       changed = true;
     } else if (
       hasUsableValue(variables[LEGACY_CHAT_REMINDER_COMINGSOON_KEY]) ||
@@ -231,6 +276,9 @@ export function migrateCalendarChatVariableStore(): boolean {
         warnings: [],
         updated_at: '',
       });
+      migratedLegacyKeys.add(LEGACY_CHAT_REMINDER_COMINGSOON_KEY);
+      migratedLegacyKeys.add(LEGACY_CHAT_REMINDER_ACTIVE_KEY);
+      migratedLegacyKeys.add(LEGACY_CHAT_BOOK_ABSTRACTS_KEY);
       changed = true;
     }
   }
@@ -240,17 +288,11 @@ export function migrateCalendarChatVariableStore(): boolean {
     hasUsableValue(variables[LEGACY_TICKET_ALPHA_STORE_KEY])
   ) {
     _.set(variables, CHAT_TICKET_ALPHA_STORE_PATH, variables[LEGACY_TICKET_ALPHA_STORE_KEY]);
+    migratedLegacyKeys.add(LEGACY_TICKET_ALPHA_STORE_KEY);
     changed = true;
   }
 
-  [
-    LEGACY_CHAT_ARCHIVE_KEY,
-    LEGACY_CHAT_RUNTIME_KEY,
-    LEGACY_CHAT_REMINDER_COMINGSOON_KEY,
-    LEGACY_CHAT_REMINDER_ACTIVE_KEY,
-    LEGACY_CHAT_BOOK_ABSTRACTS_KEY,
-    LEGACY_TICKET_ALPHA_STORE_KEY,
-  ].forEach(key => {
+  migratedLegacyKeys.forEach(key => {
     if (_.has(variables, key)) {
       _.unset(variables, key);
       changed = true;
@@ -264,16 +306,50 @@ export function migrateCalendarChatVariableStore(): boolean {
 }
 
 export function migrateCalendarLatestMessageVariableStore(): boolean {
-  const variables = getVariables({ type: 'message', message_id: -1 });
+  const target = getLatestMessageVariableTarget();
+  if (!target) {
+    return false;
+  }
+
+  let variables: Record<string, any>;
+  try {
+    variables = getVariables(target);
+  } catch (error) {
+    warnMessageVariableUnavailable('迁移最新消息变量失败，当前聊天暂时没有可用消息楼层', error);
+    return false;
+  }
+
   if (!hasUsableValue(variables[LEGACY_TICKET_ALPHA_LATEST_KEY])) {
     return false;
   }
 
   if (!hasUsableValue(_.get(variables, MESSAGE_TICKET_ALPHA_LATEST_PATH))) {
     _.set(variables, MESSAGE_TICKET_ALPHA_LATEST_PATH, variables[LEGACY_TICKET_ALPHA_LATEST_KEY]);
+    _.unset(variables, LEGACY_TICKET_ALPHA_LATEST_KEY);
+    replaceVariables(variables, target);
+    return true;
   }
-  _.unset(variables, LEGACY_TICKET_ALPHA_LATEST_KEY);
-  replaceVariables(variables, { type: 'message', message_id: -1 });
+
+  return false;
+}
+
+export async function ensureCalendarLatestMessageVariableStore(): Promise<boolean> {
+  const isMvuReady = await ensureMvuReady();
+  const target = getLatestMessageVariableTarget();
+  if (!target) {
+    return false;
+  }
+
+  const data = readMessageVariableData();
+  if (!ensureActiveBucketShape(data)) {
+    return false;
+  }
+
+  if (isMvuReady && hasMvuWriteApi()) {
+    await Mvu.replaceMvuData(data as Mvu.MvuData, target);
+  } else {
+    replaceVariables(data, target);
+  }
   return true;
 }
 
@@ -379,17 +455,22 @@ export async function readActiveBuckets(): Promise<ActiveCalendarBuckets> {
 
 export async function replaceActiveBuckets(nextBuckets: ActiveCalendarBuckets): Promise<void> {
   const isMvuReady = await ensureMvuReady();
+  const target = getLatestMessageVariableTarget();
+  if (!target) {
+    warnMessageVariableUnavailable('当前聊天没有可写入的消息楼层，暂时跳过月历事件写入');
+    return;
+  }
   const data = readMessageVariableData();
   ensureActiveBucketShape(data);
   _.set(data, MVU_TEMP_PATH, nextBuckets.临时);
   _.set(data, MVU_REPEAT_PATH, nextBuckets.重复);
 
   if (isMvuReady && hasMvuWriteApi()) {
-    await Mvu.replaceMvuData(data as Mvu.MvuData, MVU_MESSAGE_TARGET);
+    await Mvu.replaceMvuData(data as Mvu.MvuData, target);
     return;
   }
 
-  replaceVariables(data, { type: 'message' });
+  replaceVariables(data, target);
 }
 
 export function readArchiveStore(): CalendarArchiveStore {
@@ -400,7 +481,6 @@ export function readArchiveStore(): CalendarArchiveStore {
 export function replaceArchiveStore(nextStore: CalendarArchiveStore): void {
   const variables = getVariables({ type: 'chat' });
   _.set(variables, CHAT_ARCHIVE_PATH, sanitizeArchiveStore(nextStore));
-  _.unset(variables, LEGACY_CHAT_ARCHIVE_KEY);
   replaceVariables(variables, { type: 'chat' });
 }
 
@@ -602,6 +682,10 @@ export async function syncArchiveOnActiveRemoval(completedAt?: string): Promise<
   deleted: number;
   restored: number;
 }> {
+  if (!getLatestMessageVariableTarget()) {
+    return { archived: 0, skipped: 0, deleted: 0, restored: 0 };
+  }
+
   const buckets = await readActiveBuckets();
   const archive = readArchiveStore();
   const previous = archive.lastActiveSnapshot;
