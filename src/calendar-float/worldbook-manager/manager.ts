@@ -586,8 +586,15 @@ export async function ensureCalendarCharacterPrimaryWorldbook(): Promise<{
   const binding = readCurrentCharacterWorldbookBinding();
   const primary = normalizeEntryName(binding.primary);
   if (primary) {
-    const entries = await getWorldbook(primary);
-    return { worldbookName: primary, entries, created: false };
+    try {
+      const entries = await getWorldbook(primary);
+      return { worldbookName: primary, entries, created: false };
+    } catch (error) {
+      emitManagedWorldbookWarnLog('当前角色主世界书绑定无效，已改为自动创建新的角色主世界书', {
+        worldbookName: primary,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   const worldbookName = buildManagedCharacterWorldbookName();
