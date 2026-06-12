@@ -1,5 +1,4 @@
-import type { CalendarAnchor, DatePoint, DateRange } from './types';
-import { getActiveCalendarProfile } from './profile';
+import type { CalendarAnchor, CalendarMonthAliasRecord, DatePoint, DateRange } from './types';
 
 const WEEKDAY_ALIAS_MAP: Record<string, number> = {
   星期日: 0,
@@ -16,8 +15,71 @@ function pad2(value: number): string {
   return String(value).padStart(2, '0');
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function getWeekdayValue(text: string): number | null {
+  return Object.prototype.hasOwnProperty.call(WEEKDAY_ALIAS_MAP, text) ? WEEKDAY_ALIAS_MAP[text] : null;
+}
+
+function buildMonthAliasEntries(monthAliases?: CalendarMonthAliasRecord[]): Array<{ token: string; month: number }> {
+  const entries: Array<{ token: string; month: number }> = [];
+  for (const alias of monthAliases ?? []) {
+    const month = Number(alias.month);
+    const label = String(alias.label || '').trim();
+    if (!Number.isFinite(month) || month < 1 || month > 12 || !label) {
+      continue;
+    }
+    entries.push({ token: label, month });
+    if (!label.endsWith('月')) {
+      entries.push({ token: `${label}月`, month });
+    }
+  }
+  return entries.sort((left, right) => right.token.length - left.token.length);
+}
+
+function parseWorldDateTextWithMonthAliases(
+  input: string,
+  options?: ParseWorldDateAnchorOptions,
+): { point: DatePoint; weekday: number | null } | null {
+  const yearMatch = input.match(/(\d+)\s*年/);
+  if (!yearMatch || typeof yearMatch.index !== 'number') {
+    return null;
+  }
+
+  const year = Number(yearMatch[1]);
+  const rest = input.slice(yearMatch.index + yearMatch[0].length);
+  const weekdayText = input.match(/星期[日天一二三四五六]/)?.[0] || '';
+  const weekday = getWeekdayValue(weekdayText);
+
+  const numericMonth = rest.match(/(?:^|[-/\s])(\d{1,2})\s*月/);
+  if (numericMonth && typeof numericMonth.index === 'number') {
+    const month = Number(numericMonth[1]);
+    const afterMonth = rest.slice(numericMonth.index + numericMonth[0].length);
+    const dayMatch = afterMonth.match(/(\d{1,2})\s*日/);
+    if (!dayMatch) {
+      return null;
+    }
+    return {
+      point: { year, month, day: Number(dayMatch[1]) },
+      weekday,
+    };
+  }
+
+  for (const alias of buildMonthAliasEntries(options?.monthAliases)) {
+    const aliasIndex = rest.indexOf(alias.token);
+    if (aliasIndex < 0) {
+      continue;
+    }
+    const afterAlias = rest.slice(aliasIndex + alias.token.length);
+    const dayMatch = afterAlias.match(/(\d{1,2})\s*日/);
+    if (!dayMatch) {
+      continue;
+    }
+    return {
+      point: { year, month: alias.month, day: Number(dayMatch[1]) },
+      weekday,
+    };
+  }
+
+  return null;
 }
 
 function parseDateKey(input: string): DatePoint | null {
@@ -227,33 +289,22 @@ export function formatDateLabel(point: DatePoint, anchor?: CalendarAnchor | null
   return `${point.month}月${point.day}日 ${weekday}`;
 }
 
-export function parseWorldDateAnchor(input: string): { point: DatePoint; weekday: number | null } | null {
+export interface ParseWorldDateAnchorOptions {
+  monthAliases?: CalendarMonthAliasRecord[];
+}
+
+export function parseWorldDateAnchor(
+  input: string,
+  options?: ParseWorldDateAnchorOptions,
+): { point: DatePoint; weekday: number | null } | null {
   const text = String(input || '').trim();
   if (!text) {
     return null;
   }
 
-  const eraPattern = getActiveCalendarProfile().date.eraNames.map(escapeRegExp).join('|');
-  const profileDatePattern = eraPattern
-    ? new RegExp(
-        `(?:${eraPattern})?\\s*(\\d+)\\s*年[-/ ]?(\\d{1,2})\\s*月[-/ ]?(\\d{1,2})\\s*日(?:[-/ ]?(星期[日天一二三四五六]))?`,
-      )
-    : /(\d+)\s*年[-/ ]?(\d{1,2})\s*月[-/ ]?(\d{1,2})\s*日(?:[-/ ]?(星期[日天一二三四五六]))?/;
-  const fantasy = text.match(
-    profileDatePattern,
-  );
+  const fantasy = parseWorldDateTextWithMonthAliases(text, options);
   if (fantasy) {
-    const weekdayText = fantasy[4] || '';
-    return {
-      point: {
-        year: Number(fantasy[1]),
-        month: Number(fantasy[2]),
-        day: Number(fantasy[3]),
-      },
-      weekday: Object.prototype.hasOwnProperty.call(WEEKDAY_ALIAS_MAP, weekdayText)
-        ? WEEKDAY_ALIAS_MAP[weekdayText]
-        : null,
-    };
+    return fantasy;
   }
 
   const full = text.match(/(\d+)[/-](\d{1,2})[/-](\d{1,2})(?:[-/ ]?(星期[日天一二三四五六]))?/);
@@ -265,17 +316,15 @@ export function parseWorldDateAnchor(input: string): { point: DatePoint; weekday
         month: Number(full[2]),
         day: Number(full[3]),
       },
-      weekday: Object.prototype.hasOwnProperty.call(WEEKDAY_ALIAS_MAP, weekdayText)
-        ? WEEKDAY_ALIAS_MAP[weekdayText]
-        : null,
+      weekday: getWeekdayValue(weekdayText),
     };
   }
 
   return null;
 }
 
-export function parseWorldDateText(input: string): DatePoint | null {
-  return parseWorldDateAnchor(input)?.point ?? null;
+export function parseWorldDateText(input: string, options?: ParseWorldDateAnchorOptions): DatePoint | null {
+  return parseWorldDateAnchor(input, options)?.point ?? null;
 }
 
 export function inferAnchorYear(now: DatePoint, month: number): number {

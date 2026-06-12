@@ -17,6 +17,7 @@ import {
   resolveCalendarContentNode,
   type CalendarRuntimeTriggerContext,
 } from './runtime-trigger-evaluator';
+import { normalizeCalendarMonthAliasList } from './runtime-month-alias';
 import { readCalendarRuntimeIndex, resolveCalendarRuntimeWorldbookSources } from './runtime-worldbook';
 import type { CalendarRuntimeBookEntry, CalendarRuntimeFestivalStageEntry, CalendarRuntimeFestivalEntry } from './runtime-worldbook/types';
 import {
@@ -33,6 +34,7 @@ import type {
   CalendarBookRecord,
   CalendarDataset,
   CalendarEventRecord,
+  CalendarMonthAliasRecord,
   DatePoint,
   FestivalRecord,
   RawCalendarEvent,
@@ -67,13 +69,13 @@ function readFestivalLocationKeywords(festival: CalendarRuntimeFestivalEntry): s
     .filter((item, index, array) => array.indexOf(item) === index);
 }
 
-function parseEventTextToPoint(text: string, now: DatePoint): DatePoint | null {
+function parseEventTextToPoint(text: string, now: DatePoint, monthAliases: CalendarMonthAliasRecord[] = []): DatePoint | null {
   const normalized = String(text || '').trim();
   if (!normalized) {
     return null;
   }
 
-  const worldDate = parseWorldDateText(normalized);
+  const worldDate = parseWorldDateText(normalized, { monthAliases });
   if (worldDate) {
     return worldDate;
   }
@@ -94,9 +96,15 @@ function parseEventTextToPoint(text: string, now: DatePoint): DatePoint | null {
   return parseMonthDayWithYear(`${monthDay[1]}-${monthDay[2]}`, now.year);
 }
 
-function mapActiveEvent(type: '临时' | '重复', id: string, raw: RawCalendarEvent, now: DatePoint): CalendarEventRecord {
-  const start = parseEventTextToPoint(raw.时间 || '', now);
-  const end = parseEventTextToPoint(raw.结束时间 || raw.时间 || '', now);
+function mapActiveEvent(
+  type: '临时' | '重复',
+  id: string,
+  raw: RawCalendarEvent,
+  now: DatePoint,
+  monthAliases: CalendarMonthAliasRecord[] = [],
+): CalendarEventRecord {
+  const start = parseEventTextToPoint(raw.时间 || '', now, monthAliases);
+  const end = parseEventTextToPoint(raw.结束时间 || raw.时间 || '', now, monthAliases);
   const tags = collectEventTags(id, { 标题: String(raw.标题 || ''), 内容: String(raw.内容 || ''), 标签: raw.标签 });
   return {
     source: 'active',
@@ -121,9 +129,14 @@ function mapActiveEvent(type: '临时' | '重复', id: string, raw: RawCalendarE
   };
 }
 
-function mapArchivedEvent(id: string, raw: ArchivedCalendarEvent, now: DatePoint): CalendarEventRecord {
-  const start = parseEventTextToPoint(raw.时间 || '', now);
-  const end = parseEventTextToPoint(raw.结束时间 || raw.时间 || '', now);
+function mapArchivedEvent(
+  id: string,
+  raw: ArchivedCalendarEvent,
+  now: DatePoint,
+  monthAliases: CalendarMonthAliasRecord[] = [],
+): CalendarEventRecord {
+  const start = parseEventTextToPoint(raw.时间 || '', now, monthAliases);
+  const end = parseEventTextToPoint(raw.结束时间 || raw.时间 || '', now, monthAliases);
   return {
     source: 'archive',
     id,
@@ -299,7 +312,8 @@ export async function loadCalendarDatasetFromRuntimeWorldbook(): Promise<Calenda
   const activeBuckets = await readActiveBuckets();
   const archive = readArchiveStore();
   const runtimeIndex = await readCalendarRuntimeIndex();
-  const worldTime = readCurrentWorldTime();
+  const monthAliases = normalizeCalendarMonthAliasList(runtimeIndex.索引?.月份别名);
+  const worldTime = readCurrentWorldTime(undefined, monthAliases);
   const currentLocationText = readCurrentWorldLocation();
   const now = worldTime.point ?? {
     year: new Date().getFullYear(),
@@ -316,10 +330,10 @@ export async function loadCalendarDatasetFromRuntimeWorldbook(): Promise<Calenda
   );
 
   const activeEvents = [
-    ...Object.entries(activeBuckets.临时).map(([id, raw]) => mapActiveEvent('临时', id, raw, now)),
-    ...Object.entries(activeBuckets.重复).map(([id, raw]) => mapActiveEvent('重复', id, raw, now)),
+    ...Object.entries(activeBuckets.临时).map(([id, raw]) => mapActiveEvent('临时', id, raw, now, monthAliases)),
+    ...Object.entries(activeBuckets.重复).map(([id, raw]) => mapActiveEvent('重复', id, raw, now, monthAliases)),
   ];
-  const archivedEvents = Object.entries(archive.completed).map(([id, raw]) => mapArchivedEvent(id, raw, now));
+  const archivedEvents = Object.entries(archive.completed).map(([id, raw]) => mapArchivedEvent(id, raw, now, monthAliases));
 
   return {
     nowText: worldTime.text,
@@ -331,12 +345,7 @@ export async function loadCalendarDatasetFromRuntimeWorldbook(): Promise<Calenda
     festivals: runtimeFestivals.filter((value): value is FestivalRecord => Boolean(value)),
     books: Object.fromEntries(runtimeBooks.map(book => [book.id, book])),
     suggestions: buildSuggestionSet({ activeBuckets, archive }),
-    monthAliases:
-      runtimeIndex.索引?.月份别名?.map(item => ({
-        month: Number(item.月份),
-        label: String(item.名称 || '').trim(),
-        season: String(item.季节 || '').trim() || undefined,
-      })) ?? [],
+    monthAliases,
     sourceConfig: archive.sources,
     worldbookSources: runtimeSources,
     sourceWarnings: runtimeIndex.警告,

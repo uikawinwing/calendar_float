@@ -15,6 +15,7 @@ import {
   resolveCalendarFestivalStageReminder,
   type CalendarRuntimeTriggerContext,
 } from '../runtime-trigger-evaluator';
+import { normalizeCalendarMonthAliasList } from '../runtime-month-alias';
 import { readCalendarRuntimeIndex } from './loader';
 import type { CalendarRuntimeContentNode, CalendarRuntimeIndex } from './types';
 import { readCurrentWorldTime } from '../storage';
@@ -59,8 +60,8 @@ function 取唯一文本(values: string[]): string[] {
   return output;
 }
 
-function 读取触发上下文(): CalendarRuntimeTriggerContext {
-  const worldTime = readCurrentWorldTime();
+function 读取触发上下文(index: CalendarRuntimeIndex): CalendarRuntimeTriggerContext {
+  const worldTime = readCurrentWorldTime(undefined, normalizeCalendarMonthAliasList(index.月份别名));
   const messages = readLatestCalendarTriggerMessages(2);
   return {
     当前日期: worldTime.point,
@@ -299,7 +300,7 @@ export async function scanCalendarRuntimeWorldbook(): Promise<CalendarRuntimeSca
     return result;
   }
 
-  const context = 读取触发上下文();
+  const context = 读取触发上下文(index);
   await 扫描节庆介绍与全文(index, context, result);
   await 扫描节庆提醒(index, context, result);
   result.命中关键字 = 取唯一文本(result.命中关键字);

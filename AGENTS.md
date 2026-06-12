@@ -163,6 +163,24 @@ http://127.0.0.1:9222
 
 如果酒馆助手实时监听已启用，改动后优先看页面热重载效果；需要验证打包或类型问题时再运行构建。
 
+## 发布与 tag
+
+本仓库的 `.github/workflows/bundle.yaml` 会在 `main` / `master` 收到非 `dist/**` 的 push 后自动运行：
+
+1. 删除并重新生成 `dist`
+2. 提交一个 `[bot] bundle` commit
+3. 用 `phish108/autotag-action` 自动创建下一个 `vX.Y.Z` tag
+
+因此发布时不要手动创建或推送 tag。否则手动 tag 会先占用一个版本号，bundle bot 又会在自己的 `[bot] bundle` commit 上创建下一个版本，导致人工 commit message 和最终 tag 不一致。
+
+推荐发布流程：
+
+- 先确认远端最新 tag 与 `origin/main`，必要时 fetch/rebase 到最新 bot commit
+- 计算下一个版本号，例如远端最新是 `v1.0.16`，本次人工 commit message 写 `v1.0.17: ...`
+- 只 push `main`，不要执行 `git tag` / `git push origin v...`
+- 等 GitHub Actions 的 bundle workflow 完成后，再 fetch tags 验证 bot 创建的 tag 是否为同一个版本号
+- 若用户明确要求手动 tag，先提醒：当前 workflow 会继续自动 bump，下一个 bot tag 可能再次盖过人工 tag
+
 ## Windows 与搜索
 
 - 默认使用 PowerShell 7：`pwsh.exe`

@@ -2,17 +2,17 @@ import _ from 'lodash';
 
 import { formatDateKey, parseWorldDateAnchor } from '../date';
 import { getCalendarWorldLocationPath, getCalendarWorldTimePath } from '../runtime-config';
-import type { DatePoint } from '../types';
+import type { CalendarMonthAliasRecord, DatePoint } from '../types';
 import { readMessageVariableData } from './message-variable';
 
-export function readCurrentWorldTime(path = getCalendarWorldTimePath()): {
+export function readCurrentWorldTime(path = getCalendarWorldTimePath(), monthAliases?: CalendarMonthAliasRecord[]): {
   text: string;
   point: DatePoint | null;
   anchor: { dateKey: string; weekday: number } | null;
 } {
   const messageData = readMessageVariableData();
   const text = String(_.get(messageData, path, '') || '');
-  const parsed = parseWorldDateAnchor(text);
+  const parsed = parseWorldDateAnchor(text, { monthAliases });
   return {
     text,
     point: parsed?.point ?? null,

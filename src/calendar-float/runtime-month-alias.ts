@@ -5,15 +5,25 @@ function normalizeMonth(month: number): number {
   return Number(month);
 }
 
+export function normalizeCalendarMonthAliasList(value: unknown): CalendarMonthAliasRecord[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map(item => {
+      const source = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      return {
+        month: Number(source.month ?? source.月份),
+        label: String(source.label ?? source.名称 ?? '').trim(),
+        season: String(source.season ?? source.季节 ?? '').trim() || undefined,
+      };
+    })
+    .filter(item => Number.isFinite(item.month) && item.month >= 1 && item.month <= 12 && item.label);
+}
+
 export async function getCalendarMonthAliasListFromRuntime(): Promise<CalendarMonthAliasRecord[]> {
   const indexResult = await readCalendarRuntimeIndex();
-  return (indexResult.索引?.月份别名 ?? [])
-    .map(item => ({
-      month: Number(item.月份),
-      label: String(item.名称 || '').trim(),
-      season: String(item.季节 || '').trim() || undefined,
-    }))
-    .filter(item => Number.isFinite(item.month) && item.month >= 1 && item.month <= 12 && item.label);
+  return normalizeCalendarMonthAliasList(indexResult.索引?.月份别名);
 }
 
 export async function getCalendarMonthAliasLabelFromRuntime(month: number): Promise<string> {
