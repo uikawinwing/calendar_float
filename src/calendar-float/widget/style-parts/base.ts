@@ -2647,8 +2647,29 @@ export const CALENDAR_WIDGET_BASE_STYLE = `
       font-size: 12px;
       font-weight: 700;
     }
+    #${ROOT_ID} .th-mvu-path-dialog {
+      width: min(720px, calc(100vw - 32px));
+    }
+    #${ROOT_ID} .th-mvu-path-form {
+      display: grid;
+      gap: 12px;
+    }
+    #${ROOT_ID} .th-mvu-path-form label {
+      display: grid;
+      gap: 6px;
+      color: #6e604f;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    #${ROOT_ID} .th-mvu-path-form small {
+      color: #8a7862;
+      font-size: 11px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
     #${ROOT_ID} .th-tag-color-toolbar input,
-    #${ROOT_ID} .th-color-hex-grid input {
+    #${ROOT_ID} .th-color-hex-grid input,
+    #${ROOT_ID} .th-mvu-path-form input {
       width: 100%;
       padding: 10px 12px;
       border: 1px solid rgba(155, 128, 84, 0.26);

@@ -24,9 +24,15 @@ function notifyManagedWorldbookEnsure(result: Awaited<ReturnType<typeof ensureCa
   if (!result.created && !result.updated) {
     return;
   }
-  const target = getCalendarManagedWorldbookTargetName() || result.name;
+  const target = result.name || getCalendarManagedWorldbookTargetName();
   const targetModeText =
-    result.targetMode === 'stored_external' ? '已使用你上次选择的外部世界书' : '首次自动写入当前角色主世界书';
+    result.targetMode === 'stored_external'
+      ? '已使用你选择的外部世界书'
+      : result.targetMode === 'chat_bound'
+        ? '已使用当前聊天世界书'
+        : result.targetMode === 'global'
+          ? '已使用已启用的全局世界书'
+          : '已写入当前角色主世界书';
   toastr.info(`月历球已写入后端基础条目：${target}\n${targetModeText}\n可在后端面板查看/搬运来源。`);
 }
 

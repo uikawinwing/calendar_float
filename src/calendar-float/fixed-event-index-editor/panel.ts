@@ -1373,6 +1373,21 @@ function renderStructuredEditor(
   `;
 }
 
+function renderMissingIndexTemplateActions(model: FixedEventIndexEditorPreviewModel): string {
+  if (model.loading || model.source || model.errorMessage) {
+    return '';
+  }
+  return `
+    <section class="th-index-editor-section" data-role="fixed-event-index-missing-actions">
+      <div class="th-index-editor-empty-state">
+        <strong>没有找到固定事件索引</strong>
+        <span>可以先创建一个空模板，再慢慢添加分组、事件和资料。</span>
+        <button type="button" class="th-btn th-primary-btn" data-action="create-empty-fixed-event-index-template" ${model.saving ? 'disabled' : ''}>${model.saving ? '创建中…' : '创建空固定事件索引'}</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderYamlPreview(yamlPreview: string): string {
   const content = yamlPreview.trim() ? escapeHtml(yamlPreview) : '（没有可预览的 YAML）';
   return `
@@ -1433,6 +1448,7 @@ export function renderFixedEventIndexEditorPreview(
         <div class="th-managed-worldbook-dialog-title">固定事件索引</div>
       </div>
       ${renderEditorSummary(model)}
+      ${renderMissingIndexTemplateActions(model)}
       ${renderStructuredEditor(model.draft, model.validation, selection, model.yamlPreview)}
       <div class="th-managed-worldbook-dialog-actions th-index-editor-footer-actions" data-role="fixed-event-editor-footer-actions">
         <button type="button" class="th-btn" data-action="reload-fixed-event-index-editor">重新读取</button>

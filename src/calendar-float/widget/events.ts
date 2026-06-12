@@ -19,6 +19,7 @@ export interface BindCalendarWidgetEventsOptions {
   onToggleFestivalScope: () => void;
   onOpenTagColorPanel: () => void;
   onCloseTagColorPanel: () => void;
+  onOpenMvuPathSettings: () => void;
   onOpenFixedEventIndexEditor: () => void | Promise<void>;
   onManagedWorldbookClick: () => void | Promise<void>;
   onSwitchTab: (tab: SidebarTab) => void;
@@ -238,6 +239,11 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
 
   $(refs.root).on('click.calendar-float', '[data-action="close-tag-color-panel"]', () => {
     options.onCloseTagColorPanel();
+  });
+
+  $(refs.root).on('click.calendar-float', '[data-action="open-mvu-path-settings"]', event => {
+    (event.currentTarget as HTMLElement).closest<HTMLDetailsElement>('.th-tools-menu')?.removeAttribute('open');
+    options.onOpenMvuPathSettings();
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="open-fixed-event-index-editor"]', event => {

@@ -12,6 +12,7 @@ import { addDays, compareDatePoint, extractClockTimeText, formatDateKey, getWeek
 import {
   applyFixedEventIndexRowOperationsToYaml,
   applyFixedEventIndexStructuredEditsToYaml,
+  createEmptyFixedEventIndexTemplateInCharacterWorldbook,
   getDefaultFixedEventIndexEditorSelection,
   loadFixedEventIndexEditorPreview,
   parseFixedEventIndexDraft,
@@ -36,6 +37,7 @@ import { saveCalendarForm } from '../form-service';
 import { isCalendarAddonEnabled } from '../profile';
 import { buildSelectedDayDetail, fallbackDateLabel, renderFormHtml } from '../render';
 import { loadCalendarDatasetFromRuntimeWorldbook } from '../runtime-ui-dataset';
+import { getCalendarWorldLocationPath, getCalendarWorldTimePath } from '../runtime-config';
 import { getContrastRatio, isValidHexColor, TAG_COLOR_PALETTE } from './helpers/color';
 import { createRenderMarkdownContent, escapeHtml } from './helpers/markdown';
 import {
@@ -48,8 +50,11 @@ import {
   purgeAutoDeleteArchivedEvents,
   readArchiveStore,
   readCurrentWorldTime,
+  clearCalendarRuntimePathSettings,
   removeActiveEventWithPolicy,
+  readCalendarRuntimePathSettings,
   replaceCalendarArchivePolicy,
+  replaceCalendarRuntimePathSettings,
   migrateLegacyCalendarVariableTargets,
   restoreArchivedEvent,
   scanLegacyCalendarVariableTargets,
@@ -189,6 +194,8 @@ const uiState = {
   tagColorDialogOpen: false,
   selectedTagColorTag: '主线',
   tagColorFeedback: '',
+  mvuPathSettingsOpen: false,
+  mvuPathSettingsFeedback: '',
   fixedEventIndexEditorOpen: false,
   fixedEventIndexEditorModel: null as FixedEventIndexEditorPreviewModel | null,
   fixedEventIndexEditorSelection: null as FixedEventIndexEditorSelection | null,
@@ -401,6 +408,7 @@ function ensureRoot(): void {
             <button type="button" class="th-tool-menu-item" data-action="toggle-theme" role="menuitem">主题颜色</button>
             <button type="button" class="th-tool-menu-item" data-action="open-tag-color-panel" role="menuitem">标签颜色</button>
             <button type="button" class="th-tool-menu-item" data-action="open-fixed-event-index-editor" role="menuitem">固定事件索引</button>
+            <button type="button" class="th-tool-menu-item" data-action="open-mvu-path-settings" role="menuitem">MVU 路径设置</button>
             <button type="button" class="th-tool-menu-item th-connectivity-button" data-action="managed-worldbook-connectivity" data-state="unknown" role="menuitem" aria-label="规则检查">
               <span class="th-connectivity-text">规则检查</span>
             </button>
@@ -440,6 +448,7 @@ function ensureRoot(): void {
     </section>
     <dialog class="th-managed-worldbook-dialog-layer" data-role="managed-worldbook-dialog-layer" aria-hidden="true"></dialog>
     <dialog class="th-managed-worldbook-dialog-layer" data-role="tag-color-dialog-layer" aria-hidden="true"></dialog>
+    <dialog class="th-managed-worldbook-dialog-layer" data-role="mvu-path-settings-layer" aria-hidden="true"></dialog>
     <dialog class="th-managed-worldbook-dialog-layer" data-role="fixed-event-index-editor-layer" aria-hidden="true"></dialog>
   `;
 
@@ -1009,6 +1018,97 @@ function renderTagColorDialog(): void {
   syncDialogLayerOpen(layer, true);
 }
 
+function closeMvuPathSettingsDialog(): void {
+  uiState.mvuPathSettingsOpen = false;
+  uiState.mvuPathSettingsFeedback = '';
+  renderShell();
+}
+
+function openMvuPathSettingsDialog(): void {
+  uiState.mvuPathSettingsOpen = true;
+  uiState.mvuPathSettingsFeedback = '';
+  renderShell();
+}
+
+function readMvuPathSettingsInputs(layer: HTMLElement): { mvuTimePath: string; mvuLocationPath: string } {
+  return {
+    mvuTimePath: String(layer.querySelector<HTMLInputElement>('[data-role="mvu-path-time"]')?.value || '').trim(),
+    mvuLocationPath: String(layer.querySelector<HTMLInputElement>('[data-role="mvu-path-location"]')?.value || '').trim(),
+  };
+}
+
+function saveMvuPathSettingsDialog(layer: HTMLElement): void {
+  replaceCalendarRuntimePathSettings(readMvuPathSettingsInputs(layer));
+  uiState.mvuPathSettingsFeedback = '已保存到当前聊天';
+  renderShell();
+  void refreshDataset();
+}
+
+function resetMvuPathSettingsDialog(): void {
+  clearCalendarRuntimePathSettings();
+  uiState.mvuPathSettingsFeedback = '已清除自定义路径';
+  renderShell();
+  void refreshDataset();
+}
+
+function renderMvuPathSettingsDialog(): void {
+  if (!refs.root) {
+    return;
+  }
+  const layer = refs.root.querySelector<HTMLElement>('[data-role="mvu-path-settings-layer"]');
+  if (!layer) {
+    return;
+  }
+  if (!uiState.mvuPathSettingsOpen) {
+    syncDialogLayerOpen(layer, false);
+    layer.innerHTML = '';
+    return;
+  }
+
+  const saved = readCalendarRuntimePathSettings();
+  const effectiveTimePath = getCalendarWorldTimePath();
+  const effectiveLocationPath = getCalendarWorldLocationPath();
+  const feedbackHtml = uiState.mvuPathSettingsFeedback
+    ? `<div class="th-tag-color-feedback">${escapeHtml(uiState.mvuPathSettingsFeedback)}</div>`
+    : '';
+
+  layer.innerHTML = `
+    <div class="th-managed-worldbook-dialog-backdrop" data-action="close-mvu-path-settings"></div>
+    <section class="th-managed-worldbook-dialog th-mvu-path-dialog" role="dialog" aria-modal="true" aria-label="MVU 路径设置">
+      <div class="th-managed-worldbook-dialog-head">
+        <div class="th-managed-worldbook-dialog-title">MVU 路径设置</div>
+        <div class="th-managed-worldbook-dialog-desc">只影响当前聊天；留空时使用固定事件索引或默认值。</div>
+      </div>
+      ${feedbackHtml}
+      <div class="th-mvu-path-form">
+        <label>
+          <span>时间路径</span>
+          <input type="text" data-role="mvu-path-time" value="${escapeHtml(saved.mvuTimePath ?? '')}" placeholder="${escapeHtml(effectiveTimePath)}" autocomplete="off" />
+          <small>当前生效：${escapeHtml(effectiveTimePath)}</small>
+        </label>
+        <label>
+          <span>地点路径</span>
+          <input type="text" data-role="mvu-path-location" value="${escapeHtml(saved.mvuLocationPath ?? '')}" placeholder="${escapeHtml(effectiveLocationPath)}" autocomplete="off" />
+          <small>当前生效：${escapeHtml(effectiveLocationPath)}</small>
+        </label>
+      </div>
+      <div class="th-managed-worldbook-dialog-actions">
+        <button type="button" class="th-btn" data-action="reset-mvu-path-settings">清除自定义</button>
+        <button type="button" class="th-btn th-primary-btn" data-action="save-mvu-path-settings">保存</button>
+        <button type="button" class="th-btn" data-action="close-mvu-path-settings">关闭</button>
+      </div>
+    </section>
+  `;
+  syncDialogLayerOpen(layer, true);
+  layer.querySelectorAll<HTMLElement>('[data-action="close-mvu-path-settings"]').forEach(button => {
+    button.addEventListener('click', closeMvuPathSettingsDialog);
+  });
+  layer.querySelector<HTMLElement>('[data-action="reset-mvu-path-settings"]')?.addEventListener('click', resetMvuPathSettingsDialog);
+  layer
+    .querySelector<HTMLElement>('[data-action="save-mvu-path-settings"]')
+    ?.addEventListener('click', () => saveMvuPathSettingsDialog(layer));
+}
+
 function createFixedEventIndexEditorLoadingModel(): FixedEventIndexEditorPreviewModel {
   return {
     loading: true,
@@ -1110,6 +1210,50 @@ async function saveFixedEventIndexEditorDialog(): Promise<void> {
       ...currentModel,
       saving: false,
       saveMessage: `保存固定事件索引失败：${error instanceof Error ? error.message : String(error)}`,
+      saveState: 'danger',
+    };
+  }
+  renderShell();
+}
+
+async function createEmptyFixedEventIndexTemplateDialog(): Promise<void> {
+  const model = uiState.fixedEventIndexEditorModel;
+  if (!uiState.fixedEventIndexEditorOpen || model?.saving) {
+    return;
+  }
+
+  uiState.fixedEventIndexEditorModel = {
+    ...(model ?? createFixedEventIndexEditorLoadingModel()),
+    saving: true,
+    saveMessage: '正在创建空固定事件索引…',
+    saveState: 'warning',
+  };
+  renderShell();
+
+  try {
+    const result = await createEmptyFixedEventIndexTemplateInCharacterWorldbook();
+    if (!uiState.fixedEventIndexEditorOpen) {
+      return;
+    }
+    const nextModel = await loadFixedEventIndexEditorPreview();
+    if (!uiState.fixedEventIndexEditorOpen) {
+      return;
+    }
+    uiState.fixedEventIndexEditorModel = {
+      ...nextModel,
+      saveMessage: result.message,
+      saveState: result.ok ? 'success' : 'danger',
+    };
+    uiState.fixedEventIndexEditorSelection = getDefaultFixedEventIndexEditorSelection(nextModel.draft);
+    uiState.fixedEventIndexEditorDirty = false;
+  } catch (error) {
+    if (!uiState.fixedEventIndexEditorOpen) {
+      return;
+    }
+    uiState.fixedEventIndexEditorModel = {
+      ...(uiState.fixedEventIndexEditorModel ?? createFixedEventIndexEditorLoadingModel()),
+      saving: false,
+      saveMessage: `创建固定事件索引失败：${error instanceof Error ? error.message : String(error)}`,
       saveState: 'danger',
     };
   }
@@ -1661,6 +1805,12 @@ function renderFixedEventIndexEditorDialog(): void {
   if (save) {
     save.onclick = () => {
       void saveFixedEventIndexEditorDialog();
+    };
+  }
+  const createTemplate = layer.querySelector<HTMLElement>('[data-action="create-empty-fixed-event-index-template"]');
+  if (createTemplate) {
+    createTemplate.onclick = () => {
+      void createEmptyFixedEventIndexTemplateDialog();
     };
   }
   const applyStructuredEdit = layer.querySelector<HTMLElement>(
@@ -2632,6 +2782,7 @@ function renderShell(): void {
   updateManagedWorldbookButton();
   renderManagedWorldbookDialog();
   renderTagColorDialog();
+  renderMvuPathSettingsDialog();
   renderFixedEventIndexEditorDialog();
   refs.root.querySelectorAll<HTMLElement>('[data-action="switch-tab"]').forEach(button => {
     const tab = button.getAttribute('data-tab') || '';
@@ -2754,6 +2905,7 @@ function setOpen(open: boolean): void {
     uiState.managedWorldbookDialogMode = null;
     uiState.managedWorldbookDialogDiagnostics = null;
     uiState.tagColorDialogOpen = false;
+    uiState.mvuPathSettingsOpen = false;
   }
   renderShell();
   if (open) {
@@ -3361,6 +3513,7 @@ function bindEvents(): void {
     },
     onOpenTagColorPanel: openTagColorDialog,
     onCloseTagColorPanel: closeTagColorDialog,
+    onOpenMvuPathSettings: openMvuPathSettingsDialog,
     onOpenFixedEventIndexEditor: openFixedEventIndexEditorDialog,
     onManagedWorldbookClick: handleManagedWorldbookClick,
     onSwitchTab: switchSidebarTab,

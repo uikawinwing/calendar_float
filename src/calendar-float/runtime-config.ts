@@ -1,5 +1,6 @@
 import { GENERIC_CALENDAR_PROFILE, getProfileWorldLocationPath, getProfileWorldTimePath } from './profile';
 import type { CalendarRuntimeDefaults } from './runtime-worldbook/types';
+import { readCalendarRuntimePathSettings } from './storage/runtime-path-settings';
 
 export const DEFAULT_MVU_TIME_PATH = GENERIC_CALENDAR_PROFILE.paths.worldTime;
 export const DEFAULT_MVU_LOCATION_PATH = GENERIC_CALENDAR_PROFILE.paths.worldLocation;
@@ -11,9 +12,10 @@ let currentRuntimeDefaults: Required<Pick<CalendarRuntimeDefaults, 'mvu时间路
 };
 
 export function applyCalendarRuntimeDefaults(defaults?: CalendarRuntimeDefaults | null): void {
+  const pathSettings = readCalendarRuntimePathSettings();
   currentRuntimeDefaults = {
-    mvu时间路径: defaults?.mvu时间路径 || getProfileWorldTimePath(),
-    mvu地点路径: defaults?.mvu地点路径 || getProfileWorldLocationPath(),
+    mvu时间路径: pathSettings.mvuTimePath || defaults?.mvu时间路径 || getProfileWorldTimePath(),
+    mvu地点路径: pathSettings.mvuLocationPath || defaults?.mvu地点路径 || getProfileWorldLocationPath(),
     ...(defaults?.书籍全文默认关键词模板 ? { 书籍全文默认关键词模板: defaults.书籍全文默认关键词模板 } : {}),
   };
 }
@@ -23,9 +25,9 @@ export function getCalendarRuntimeDefaults(): CalendarRuntimeDefaults {
 }
 
 export function getCalendarWorldTimePath(): string {
-  return currentRuntimeDefaults.mvu时间路径;
+  return readCalendarRuntimePathSettings().mvuTimePath || currentRuntimeDefaults.mvu时间路径;
 }
 
 export function getCalendarWorldLocationPath(): string {
-  return currentRuntimeDefaults.mvu地点路径;
+  return readCalendarRuntimePathSettings().mvuLocationPath || currentRuntimeDefaults.mvu地点路径;
 }

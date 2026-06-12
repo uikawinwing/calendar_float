@@ -26,6 +26,12 @@ export {
   scanLegacyCalendarVariableTargets,
 } from './legacy-calendar-path';
 export { migrateCalendarChatVariableStore, migrateCalendarLatestMessageVariableStore } from './migration';
+export {
+  clearCalendarRuntimePathSettings,
+  readCalendarRuntimePathSettings,
+  replaceCalendarRuntimePathSettings,
+  type CalendarRuntimePathSettings,
+} from './runtime-path-settings';
 export { getAvailableCalendarWorldbooks, getChatBoundCalendarWorldbookName } from './source-config';
 export { buildSuggestionSet } from './suggestions';
 export { collectEventTags } from './tags';

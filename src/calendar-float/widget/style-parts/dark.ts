@@ -37,6 +37,7 @@ export const CALENDAR_WIDGET_DARK_STYLE = `
     #${ROOT_ID}[data-theme='dark'] .th-form-shell textarea,
     #${ROOT_ID}[data-theme='dark'] .th-tag-color-toolbar input,
     #${ROOT_ID}[data-theme='dark'] .th-color-hex-grid input,
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-path-form input,
     #${ROOT_ID}[data-theme='dark'] .th-archive-policy-panel input,
     #${ROOT_ID}[data-theme='dark'] .th-archive-policy-panel textarea,
     #${ROOT_ID}[data-theme='dark'] .th-btn,
@@ -827,9 +828,11 @@ export const CALENDAR_WIDGET_DARK_STYLE = `
     }
 
     #${ROOT_ID} .th-month-nav-icon-btn {
-      background: transparent;
-      border-color: transparent;
-      box-shadow: none;
+      background: color-mix(in srgb, var(--th-paper) 92%, white 8%);
+      border-color: color-mix(in srgb, var(--th-accent) 28%, transparent);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.72),
+        0 8px 18px color-mix(in srgb, var(--th-accent) 10%, transparent);
     }
 
     #${ROOT_ID} .th-month-nav-icon {

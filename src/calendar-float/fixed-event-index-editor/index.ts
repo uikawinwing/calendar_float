@@ -56,8 +56,10 @@ export {
   type FixedEventIndexEditorSelection,
 } from './panel';
 export {
+  createEmptyFixedEventIndexTemplateInCharacterWorldbook,
   saveFixedEventIndexDraftToWorldbook,
   saveFixedEventIndexYamlToWorldbook,
+  type FixedEventIndexTemplateCreateResult,
   type FixedEventIndexSaveArgs,
   type FixedEventIndexSaveResult,
   type FixedEventIndexSaveSource,

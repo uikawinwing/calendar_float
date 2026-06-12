@@ -12,6 +12,7 @@ export const MVU_REPEAT_PATH = 'stat_data.事件.月历.重复';
 export const CALENDAR_VARIABLE_STORE_KEY = 'calendar_float_store';
 export const CHAT_ARCHIVE_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.archive`;
 export const CHAT_RUNTIME_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.runtime`;
+export const CHAT_RUNTIME_PATH_SETTINGS_PATH = `${CHAT_RUNTIME_PATH}.path_settings`;
 export const CHAT_TICKET_ALPHA_STORE_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.ticket_alpha_store`;
 export const MESSAGE_TICKET_ALPHA_LATEST_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.ticket_alpha_latest`;
 export const MESSAGE_KNOWN_TAGS_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.runtime.known_tags`;
