@@ -1,11 +1,11 @@
 import _ from 'lodash';
 
 import { compareDatePoint, parseMonthDayWithYear, parseWorldDateText } from '../date';
-import type { 日历运行时日期窗口条件, 日历运行时节庆条目 } from '../runtime-worldbook/types';
+import type { CalendarRuntimeDateWindowCondition, CalendarRuntimeFestivalEntry } from '../runtime-worldbook/types';
 import { readCurrentWorldTime } from '../storage';
 import type { DatePoint } from '../types';
 import { 规范化文本 } from './text';
-import type { 日历运行时触发上下文 } from './types';
+import type { CalendarRuntimeTriggerContext } from './types';
 
 function 推断年份(now: DatePoint, month: number): number {
   if (month + 6 < now.month) {
@@ -30,7 +30,7 @@ function 解析周期举办年份(year: number, intervalYears?: number, lastYear
 }
 
 export function 解析节庆日期范围(
-  festival: 日历运行时节庆条目,
+  festival: CalendarRuntimeFestivalEntry,
   now: DatePoint,
 ): { 开始: DatePoint; 结束: DatePoint } | null {
   const 开始文本 = 规范化文本(festival.开始);
@@ -97,7 +97,7 @@ function 尝试解析日期点(value: unknown, fallbackYear?: number): DatePoint
   return null;
 }
 
-export function 解析当前日期(context: 日历运行时触发上下文, path?: string): DatePoint | null {
+export function 解析当前日期(context: CalendarRuntimeTriggerContext, path?: string): DatePoint | null {
   const variables = _.isPlainObject(context.变量表) ? (context.变量表 as Record<string, unknown>) : {};
   if (path) {
     const fromVariable = 尝试解析日期点(_.get(variables, path), context.当前日期?.year);
@@ -112,8 +112,8 @@ export function 解析当前日期(context: 日历运行时触发上下文, path
 }
 
 export function 构建日期窗口(
-  condition: 日历运行时日期窗口条件,
-  context: 日历运行时触发上下文,
+  condition: CalendarRuntimeDateWindowCondition,
+  context: CalendarRuntimeTriggerContext,
 ): {
   当前日期: DatePoint;
   开始: DatePoint;

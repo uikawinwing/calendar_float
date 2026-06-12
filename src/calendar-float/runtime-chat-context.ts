@@ -1,7 +1,7 @@
 import _ from 'lodash';
 import { getLatestMessageVariableTarget } from './storage';
 
-export interface 日历运行时消息文本 {
+export interface CalendarRuntimeMessageText {
   messageId: number;
   role: ChatMessage['role'];
   来源: 'gametxt' | 'fallback';
@@ -43,7 +43,7 @@ export function resolveCalendarSearchableMessageText(input: string): { 来源: '
   };
 }
 
-export function readLatestCalendarTriggerMessages(depth = 2): 日历运行时消息文本[] {
+export function readLatestCalendarTriggerMessages(depth = 2): CalendarRuntimeMessageText[] {
   const normalizedDepth = Number.isFinite(depth) && depth > 0 ? Math.floor(depth) : 2;
   const messages = getChatMessages(`-${normalizedDepth}-{{lastMessageId}}`, {
     role: 'all',

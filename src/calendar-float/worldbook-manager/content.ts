@@ -53,7 +53,7 @@ export function buildCalendarVariableListEntryContent(): string {
     '',
     '  var displayOutput = {',
     '    事件: {',
-    '      日历: {',
+    '      月历: {',
     "        临时: normalizeBucket(_.get(calendar, '临时'), '临时'),",
     "        重复: normalizeBucket(_.get(calendar, '重复'), '重复'),",
     '      },',

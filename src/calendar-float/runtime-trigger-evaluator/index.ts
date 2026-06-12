@@ -6,11 +6,11 @@
  * 不负责：worldbook 原始读取，也不负责最终注入执行。
  */
 export type {
-  日历运行时书籍摘要解析结果,
-  日历运行时提醒解析结果,
-  日历运行时节庆窗口结果,
-  日历运行时触发上下文,
-  日历运行时触发结果,
+  CalendarRuntimeBookSummaryResolveResult,
+  CalendarRuntimeReminderResolveResult,
+  CalendarRuntimeFestivalWindowResult,
+  CalendarRuntimeTriggerContext,
+  CalendarRuntimeTriggerResult,
 } from './types';
 
 export { evaluateCalendarRuntimeTrigger } from './conditions';

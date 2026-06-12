@@ -18,6 +18,13 @@ export {
 } from './archive-settings';
 export { readArchiveStore, replaceArchiveStore } from './archive-store';
 export { ensureMvuReady, getLatestMessageVariableTarget } from './message-variable';
+export {
+  getLegacyCalendarEventRootPath,
+  inspectLegacyCalendarBucketsInData,
+  mergeLegacyCalendarBucketsInData,
+  migrateLegacyCalendarVariableTargets,
+  scanLegacyCalendarVariableTargets,
+} from './legacy-calendar-path';
 export { migrateCalendarChatVariableStore, migrateCalendarLatestMessageVariableStore } from './migration';
 export { getAvailableCalendarWorldbooks, getChatBoundCalendarWorldbookName } from './source-config';
 export { buildSuggestionSet } from './suggestions';

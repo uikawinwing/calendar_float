@@ -7,15 +7,15 @@ import {
   readCalendarRuntimeTextLibrary,
   readCalendarRuntimeWorldbookEntries,
 } from './loader';
-import type { 日历世界书引用, 日历世界书来源条目, 日历文本库引用, 日历运行时内容节点 } from './types';
+import type { CalendarWorldbookReference, CalendarWorldbookSourceEntry, CalendarTextLibraryReference, CalendarRuntimeContentNode } from './types';
 
-export interface 日历运行时正文解析结果 {
+export interface CalendarRuntimeContentResolveResult {
   正文: string;
   来源条目名: string | null;
   警告: string[];
 }
 
-export interface 日历运行时节点文本解析结果 extends 日历运行时正文解析结果 {
+export interface CalendarRuntimeNodeTextResolveResult extends CalendarRuntimeContentResolveResult {
   文本库键: string | null;
 }
 
@@ -26,14 +26,14 @@ function 规范化名称(value: unknown): string {
   return String(value ?? '').trim();
 }
 
-function 提取正文(entrySource: 日历世界书来源条目 | null): string {
+function 提取正文(entrySource: CalendarWorldbookSourceEntry | null): string {
   return String(entrySource?.条目.content ?? '').trim();
 }
 
 export function resolveCalendarRuntimeEntryContentByReference(
-  entries: 日历世界书来源条目[],
-  reference: 日历世界书引用 | null | undefined,
-): 日历运行时正文解析结果 {
+  entries: CalendarWorldbookSourceEntry[],
+  reference: CalendarWorldbookReference | null | undefined,
+): CalendarRuntimeContentResolveResult {
   if (!reference) {
     return {
       正文: '',
@@ -59,8 +59,8 @@ export function resolveCalendarRuntimeEntryContentByReference(
 }
 
 export async function resolveCalendarRuntimeTextByLibraryReference(
-  reference: 日历文本库引用 | null | undefined,
-): Promise<日历运行时节点文本解析结果> {
+  reference: CalendarTextLibraryReference | null | undefined,
+): Promise<CalendarRuntimeNodeTextResolveResult> {
   if (!reference) {
     return {
       正文: '',
@@ -91,9 +91,9 @@ export async function resolveCalendarRuntimeTextByLibraryReference(
 }
 
 export async function resolveCalendarRuntimeNodeText(args: {
-  node: 日历运行时内容节点 | null | undefined;
+  node: CalendarRuntimeContentNode | null | undefined;
   preloaded?: 世界书条目读取结果;
-}): Promise<日历运行时节点文本解析结果> {
+}): Promise<CalendarRuntimeNodeTextResolveResult> {
   const node = args.node;
   if (!node || node.启用 === false) {
     return {

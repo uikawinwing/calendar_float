@@ -50,7 +50,9 @@ import {
   readCurrentWorldTime,
   removeActiveEventWithPolicy,
   replaceCalendarArchivePolicy,
+  migrateLegacyCalendarVariableTargets,
   restoreArchivedEvent,
+  scanLegacyCalendarVariableTargets,
   syncArchiveOnActiveRemoval,
 } from '../storage';
 import type {
@@ -597,7 +599,7 @@ function buildManagedWorldbookSummaryLines(diagnostics: CalendarManagedWorldbook
   const canUseDiagnosticWorldbook = Boolean(diagnostics.worldbookName && diagnostics.existsInRegistry);
   const formatLocation = (entryLabel: string, found: boolean): string =>
     found && canUseDiagnosticWorldbook ? `${diagnostics.worldbookName}；条目：${entryLabel}` : '未找到';
-  const reinstallTarget = canUseDiagnosticWorldbook ? diagnostics.worldbookName : '当前角色主世界书';
+  const reinstallTarget = canUseDiagnosticWorldbook ? diagnostics.worldbookName : '当前角色绑定世界书';
   return [
     `基础规则：${diagnostics.hasUpdateRulesEntry ? '已找到' : '未找到'}｜位置：${formatLocation('月历变量更新规则', diagnostics.hasUpdateRulesEntry)}`,
     `变量展示：${diagnostics.hasVariableListEntry ? '已找到' : '未找到'}｜位置：${formatLocation(CALENDAR_VARIABLE_LIST_ENTRY_DISPLAY_NAME, diagnostics.hasVariableListEntry)}`,
@@ -704,11 +706,12 @@ function renderManagedWorldbookDialog(): void {
 
   let title = '规则检查';
   let description =
-    '这里只检查月历需要的两条基础规则。重装会写回上面显示的位置；如果没有找到旧位置，就写入当前角色主世界书。';
+    '这里只检查月历需要的两条基础规则。重装会写回上面显示的位置；如果没有找到旧位置，就写入当前角色绑定世界书。';
   let bodyHtml = '';
   let actionHtml = [
     '<div class="th-managed-worldbook-action-row is-primary">',
     '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-menu-export-external">搬运到其他世界书</button>',
+    `<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-menu-migrate-legacy" ${uiState.managedWorldbookBusy ? 'disabled' : ''}>旧变量迁移</button>`,
     '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-dialog-return">关闭</button>',
     '</div>',
     '<div class="th-managed-worldbook-action-row is-secondary th-managed-worldbook-dev-actions">',
@@ -834,6 +837,9 @@ function renderManagedWorldbookDialog(): void {
   });
   bindClick('[data-action="managed-worldbook-menu-export-external"]', () => {
     void openExternalWorldbookMoveDialog(diagnostics);
+  });
+  bindClick('[data-action="managed-worldbook-menu-migrate-legacy"]', () => {
+    void confirmLegacyCalendarVariableMigration();
   });
   bindClick('[data-action="managed-worldbook-confirm-uninstall"]', () => {
     void confirmManagedWorldbookUninstall();
@@ -3089,6 +3095,70 @@ async function confirmExternalManagedWorldbookInstall(layer: HTMLElement): Promi
   } catch (error) {
     console.warn(`[${SCRIPT_NAME}] 搬运世界书条目失败`, error);
     hostWindow.alert(`搬运世界书条目失败：${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    uiState.managedWorldbookBusy = false;
+    renderShell();
+  }
+}
+
+function formatLegacyCalendarMigrationScanMessage(): string {
+  const scan = scanLegacyCalendarVariableTargets();
+  if (scan.legacyTargetCount <= 0) {
+    return '没有发现需要转换的旧月历变量。';
+  }
+  const details = scan.targets
+    .filter(target => target.hasLegacyBuckets)
+    .map(target => `${target.label}：临时 ${target.legacyCounts.临时}，重复 ${target.legacyCounts.重复}`)
+    .join('\n');
+  return [
+    `发现 ${scan.legacyTargetCount} 处旧月历变量。`,
+    details,
+    '',
+    '会合并到 stat_data.事件.月历；同 ID 冲突时保留新数据，并给旧数据改名。',
+    '转换成功后才会删除旧路径。是否继续？',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+async function confirmLegacyCalendarVariableMigration(): Promise<void> {
+  if (uiState.managedWorldbookBusy) {
+    return;
+  }
+
+  const scan = scanLegacyCalendarVariableTargets();
+  if (scan.legacyTargetCount <= 0) {
+    hostWindow.alert('没有发现需要转换的旧月历变量。');
+    return;
+  }
+  if (!hostWindow.confirm(formatLegacyCalendarMigrationScanMessage())) {
+    return;
+  }
+
+  uiState.managedWorldbookDialogOpen = false;
+  uiState.managedWorldbookDialogMode = null;
+  uiState.managedWorldbookDialogDiagnostics = null;
+  uiState.managedWorldbookBusy = true;
+  renderShell();
+  try {
+    const result = await migrateLegacyCalendarVariableTargets();
+    const migrated = result.targets.filter(target => target.migrated);
+    const mergedCount = migrated.reduce((sum, target) => sum + target.mergedIds.length, 0);
+    const renamedCount = migrated.reduce((sum, target) => sum + target.renamedIds.length, 0);
+    const skippedCount = migrated.reduce((sum, target) => sum + target.skippedIds.length, 0);
+    const failedText = result.failedTargetCount > 0 ? `\n失败目标：${result.failedTargetCount}` : '';
+    hostWindow.alert(
+      [
+        `旧月历变量转换完成：${result.migratedTargetCount} 处`,
+        `合并事件：${mergedCount}`,
+        `冲突改名：${renamedCount}`,
+        `重复跳过：${skippedCount}${failedText}`,
+      ].join('\n'),
+    );
+    console.info(`[${SCRIPT_NAME}] 旧月历变量转换结果`, result);
+  } catch (error) {
+    console.warn(`[${SCRIPT_NAME}] 旧月历变量转换失败`, error);
+    hostWindow.alert(`旧月历变量转换失败：${error instanceof Error ? error.message : String(error)}`);
   } finally {
     uiState.managedWorldbookBusy = false;
     renderShell();

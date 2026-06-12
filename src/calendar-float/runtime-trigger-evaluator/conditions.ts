@@ -5,15 +5,15 @@ import {
   isPointInsideRange,
 } from '../date';
 import type {
-  日历运行时原子条件,
-  日历运行时变量条件,
-  日历运行时日期窗口条件,
-  日历运行时触发映射,
-  日历运行时逻辑条件,
+  CalendarRuntimeAtomicCondition,
+  CalendarRuntimeVariableCondition,
+  CalendarRuntimeDateWindowCondition,
+  CalendarRuntimeTriggerMap,
+  CalendarRuntimeLogicCondition,
 } from '../runtime-worldbook/types';
 import type {
-  日历运行时触发上下文,
-  日历运行时触发结果,
+  CalendarRuntimeTriggerContext,
+  CalendarRuntimeTriggerResult,
 } from './types';
 import { 构建日期窗口 } from './date-window';
 import {
@@ -25,7 +25,7 @@ import {
   评估文本列表包含全部,
 } from './text';
 
-function 评估变量条件(condition: 日历运行时变量条件, variables: Record<string, unknown>): boolean {
+function 评估变量条件(condition: CalendarRuntimeVariableCondition, variables: Record<string, unknown>): boolean {
   const path = 规范化文本(condition.路径);
   if (!path) {
     return true;
@@ -67,7 +67,7 @@ function 评估变量条件(condition: 日历运行时变量条件, variables: R
   return true;
 }
 
-function 评估日期条件(condition: 日历运行时日期窗口条件, context: 日历运行时触发上下文): boolean {
+function 评估日期条件(condition: CalendarRuntimeDateWindowCondition, context: CalendarRuntimeTriggerContext): boolean {
   const window = 构建日期窗口(condition, context);
   if (!window) {
     return false;
@@ -89,8 +89,8 @@ function 评估日期条件(condition: 日历运行时日期窗口条件, contex
 }
 
 function 校验日期条件(
-  condition: 日历运行时日期窗口条件 | null | undefined,
-  context: 日历运行时触发上下文,
+  condition: CalendarRuntimeDateWindowCondition | null | undefined,
+  context: CalendarRuntimeTriggerContext,
   label: string,
 ): string[] {
   if (!condition) {
@@ -115,7 +115,7 @@ function 校验日期条件(
 }
 
 function 校验变量条件(
-  condition: 日历运行时变量条件,
+  condition: CalendarRuntimeVariableCondition,
   variables: Record<string, unknown>,
   label: string,
 ): string[] {
@@ -131,8 +131,8 @@ function 校验变量条件(
 }
 
 function 校验原子条件(
-  condition: 日历运行时原子条件 | null | undefined,
-  context: 日历运行时触发上下文,
+  condition: CalendarRuntimeAtomicCondition | null | undefined,
+  context: CalendarRuntimeTriggerContext,
   label: string,
 ): string[] {
   if (!condition) {
@@ -145,7 +145,7 @@ function 校验原子条件(
     warnings.push(...校验日期条件(condition.日期窗口, context, `${label}.日期窗口`));
   }
   if ((condition.来源 === 'mvu变量' || condition.来源 === '变量' || condition.路径) && !condition.日期窗口) {
-    warnings.push(...校验变量条件(condition as 日历运行时变量条件, variables, label));
+    warnings.push(...校验变量条件(condition as CalendarRuntimeVariableCondition, variables, label));
   }
   if (condition.正则) {
     try {
@@ -158,8 +158,8 @@ function 校验原子条件(
 }
 
 function 校验逻辑条件(
-  condition: 日历运行时逻辑条件 | null | undefined,
-  context: 日历运行时触发上下文,
+  condition: CalendarRuntimeLogicCondition | null | undefined,
+  context: CalendarRuntimeTriggerContext,
   label: string,
 ): string[] {
   if (!condition) {
@@ -187,8 +187,8 @@ function 校验逻辑条件(
 }
 
 function validateCalendarRuntimeTrigger(
-  trigger: 日历运行时触发映射,
-  context: 日历运行时触发上下文,
+  trigger: CalendarRuntimeTriggerMap,
+  context: CalendarRuntimeTriggerContext,
 ): string[] {
   const warnings: string[] = [];
   const variables = _.isPlainObject(context.变量表) ? (context.变量表 as Record<string, unknown>) : {};
@@ -203,7 +203,7 @@ function validateCalendarRuntimeTrigger(
   return warnings;
 }
 
-function 评估原子条件(condition: 日历运行时原子条件, context: 日历运行时触发上下文): boolean {
+function 评估原子条件(condition: CalendarRuntimeAtomicCondition, context: CalendarRuntimeTriggerContext): boolean {
   const messages = 规范化文本数组(context.最近消息文本);
   const userMessages = 规范化文本数组(context.最近用户消息文本);
   const variables = _.isPlainObject(context.变量表) ? (context.变量表 as Record<string, unknown>) : {};
@@ -272,7 +272,7 @@ function 评估原子条件(condition: 日历运行时原子条件, context: 日
   return checks.every(Boolean);
 }
 
-function 评估逻辑条件(condition: 日历运行时逻辑条件, context: 日历运行时触发上下文): boolean {
+function 评估逻辑条件(condition: CalendarRuntimeLogicCondition, context: CalendarRuntimeTriggerContext): boolean {
   const results: boolean[] = [];
 
   if (condition.条件) {
@@ -299,9 +299,9 @@ function 按逻辑合并结果(logic: '全部满足' | '任一满足', values: b
 }
 
 export function evaluateCalendarRuntimeTrigger(
-  trigger: 日历运行时触发映射 | null | undefined,
-  context: 日历运行时触发上下文,
-): 日历运行时触发结果 {
+  trigger: CalendarRuntimeTriggerMap | null | undefined,
+  context: CalendarRuntimeTriggerContext,
+): CalendarRuntimeTriggerResult {
   if (!trigger || trigger.启用 === false) {
     return { 命中: true, 原因: ['未配置触发或触发已禁用，按默认命中处理'] };
   }

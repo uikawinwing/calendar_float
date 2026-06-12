@@ -5,10 +5,10 @@ import {
 } from '../date';
 import { resolveCalendarRuntimeNodeText } from '../runtime-worldbook/resolver';
 import type {
-  日历运行时内容节点,
-  日历运行时提醒状态,
-  日历运行时节庆阶段条目,
-  日历运行时节庆条目,
+  CalendarRuntimeContentNode,
+  CalendarRuntimeReminderState,
+  CalendarRuntimeFestivalStageEntry,
+  CalendarRuntimeFestivalEntry,
 } from '../runtime-worldbook/types';
 import { readCurrentWorldTime } from '../storage';
 import type { DatePoint } from '../types';
@@ -16,20 +16,20 @@ import { evaluateCalendarRuntimeTrigger } from './conditions';
 import { 解析节庆日期范围 } from './date-window';
 import { 规范化文本 } from './text';
 import type {
-  日历运行时提醒解析结果,
-  日历运行时节庆窗口结果,
-  日历运行时触发上下文,
+  CalendarRuntimeReminderResolveResult,
+  CalendarRuntimeFestivalWindowResult,
+  CalendarRuntimeTriggerContext,
 } from './types';
 
 export function buildCalendarFestivalWindow(
-  festival: 日历运行时节庆条目,
+  festival: CalendarRuntimeFestivalEntry,
   now: DatePoint = readCurrentWorldTime().point ?? {
     year: new Date().getFullYear(),
     month: new Date().getMonth() + 1,
     day: new Date().getDate(),
   },
   reminderDays = 0,
-): 日历运行时节庆窗口结果 | null {
+): CalendarRuntimeFestivalWindowResult | null {
   const range = 解析节庆日期范围(festival, now);
   if (!range) {
     return null;
@@ -49,7 +49,7 @@ export function buildCalendarFestivalWindow(
   };
 }
 
-function 渲染提醒模板(template: string, festival: 日历运行时节庆条目, window: 日历运行时节庆窗口结果): string {
+function 渲染提醒模板(template: string, festival: CalendarRuntimeFestivalEntry, window: CalendarRuntimeFestivalWindowResult): string {
   return template
     .replaceAll('${节庆名}', festival.名称)
     .replaceAll('${剩余天数}', String(Math.max(0, window.距离开始天数)))
@@ -58,15 +58,15 @@ function 渲染提醒模板(template: string, festival: 日历运行时节庆条
 }
 
 function buildDefaultReminderText(
-  festival: 日历运行时节庆条目,
-  window: 日历运行时节庆窗口结果,
-  node: 日历运行时内容节点 | null | undefined,
-): { 状态: 日历运行时提醒状态; 正文: string } {
+  festival: CalendarRuntimeFestivalEntry,
+  window: CalendarRuntimeFestivalWindowResult,
+  node: CalendarRuntimeContentNode | null | undefined,
+): { 状态: CalendarRuntimeReminderState; 正文: string } {
   const defaults = _.isPlainObject(node?.元数据?.提醒默认值)
-    ? (node?.元数据?.提醒默认值 as { 缺省模板?: Partial<Record<日历运行时提醒状态, string>> })
+    ? (node?.元数据?.提醒默认值 as { 缺省模板?: Partial<Record<CalendarRuntimeReminderState, string>> })
     : {};
 
-  const 状态: 日历运行时提醒状态 = window.是否进行中 ? '进行中' : '未开始';
+  const 状态: CalendarRuntimeReminderState = window.是否进行中 ? '进行中' : '未开始';
   const custom = 规范化文本(node?.状态正文?.[状态]);
   if (custom) {
     return {
@@ -93,9 +93,9 @@ function buildDefaultReminderText(
 }
 
 export async function resolveCalendarFestivalReminder(
-  festival: 日历运行时节庆条目,
-  context: 日历运行时触发上下文,
-): Promise<日历运行时提醒解析结果> {
+  festival: CalendarRuntimeFestivalEntry,
+  context: CalendarRuntimeTriggerContext,
+): Promise<CalendarRuntimeReminderResolveResult> {
   const now = context.当前日期 ?? readCurrentWorldTime().point ?? null;
   if (!now) {
     return {
@@ -153,10 +153,10 @@ export async function resolveCalendarFestivalReminder(
 }
 
 export async function resolveCalendarFestivalStageReminder(
-  festival: 日历运行时节庆条目,
-  stage: 日历运行时节庆阶段条目,
-  context: 日历运行时触发上下文,
-): Promise<日历运行时提醒解析结果> {
+  festival: CalendarRuntimeFestivalEntry,
+  stage: CalendarRuntimeFestivalStageEntry,
+  context: CalendarRuntimeTriggerContext,
+): Promise<CalendarRuntimeReminderResolveResult> {
   if (stage.启用 === false || !stage.提醒) {
     return {
       正文: '',

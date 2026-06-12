@@ -13,12 +13,13 @@ import {
   listCalendarRuntimeWorldbookMoveCandidates,
   type CalendarRuntimeWorldbookMoveCandidate,
 } from '../runtime-worldbook';
+import { getLegacyCalendarVariableListEntryName } from '../storage/legacy-calendar-path';
 
 const MANAGED_WORLDBOOK_MARKER = 'calendar_float_character_worldbook';
 const MANAGED_ENTRY_PREFIX = '[DLC][扩展][月历球]';
 const LEGACY_META_ENTRY_NAME = `${MANAGED_ENTRY_PREFIX}[meta]manifest`;
 const UPDATE_RULES_ENTRY_NAME = `[mvu_update]${MANAGED_ENTRY_PREFIX}[月历变量更新规则]`;
-const LEGACY_VARIABLE_LIST_ENTRY_NAME = `${MANAGED_ENTRY_PREFIX}[当前日历内容展示]`;
+const LEGACY_VARIABLE_LIST_ENTRY_NAME = getLegacyCalendarVariableListEntryName(MANAGED_ENTRY_PREFIX);
 const VARIABLE_LIST_ENTRY_NAME = `${MANAGED_ENTRY_PREFIX}[当前月历内容展示]`;
 const VARIABLE_LIST_ENTRY_DISPLAY_NAME = '当前月历内容展示';
 const MANAGED_WORLDBOOK_STORAGE_KEY = `${SCRIPT_NAME}:managed-worldbook-enabled`;
@@ -202,6 +203,11 @@ function readCurrentCharacterWorldbookBinding(): CharWorldbooks {
 
 function readCurrentCharacterPrimaryWorldbookName(): string {
   return String(readCurrentCharacterWorldbookBinding().primary || '').trim();
+}
+
+function readCurrentCharacterBoundWorldbookNames(): string[] {
+  const binding = readCurrentCharacterWorldbookBinding();
+  return normalizeWorldbookNameList([binding.primary ?? '', ...binding.additional]);
 }
 
 function isManagedWorldbookEntry(entry: Pick<WorldbookEntry, 'name' | 'extra'>): boolean {
@@ -494,13 +500,19 @@ function readManagedWorldbookTargetName(): {
   targetMode: 'character_primary' | 'stored_external';
 } {
   const storedTarget = readStoredManagedWorldbookTargetName();
+  const characterBoundWorldbooks = readCurrentCharacterBoundWorldbookNames();
+  const currentCharacterTarget = characterBoundWorldbooks[0] ?? '';
   if (storedTarget) {
+    if (currentCharacterTarget && !characterBoundWorldbooks.includes(storedTarget)) {
+      writeStoredManagedWorldbookTargetName('');
+      return { worldbookName: currentCharacterTarget, targetMode: 'character_primary' };
+    }
     if (readAvailableWorldbookNames().includes(storedTarget)) {
       return { worldbookName: storedTarget, targetMode: 'stored_external' };
     }
     writeStoredManagedWorldbookTargetName('');
   }
-  return { worldbookName: readCurrentCharacterPrimaryWorldbookName(), targetMode: 'character_primary' };
+  return { worldbookName: currentCharacterTarget, targetMode: 'character_primary' };
 }
 
 async function readManagedTargetWorldbookEntries(): Promise<{

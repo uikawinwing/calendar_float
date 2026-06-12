@@ -1,18 +1,18 @@
 import { resolveCalendarRuntimeNodeText } from '../runtime-worldbook/resolver';
 import type {
-  日历运行时书籍条目,
-  日历运行时内容节点,
+  CalendarRuntimeBookEntry,
+  CalendarRuntimeContentNode,
 } from '../runtime-worldbook/types';
 import { evaluateCalendarRuntimeTrigger } from './conditions';
 import type {
-  日历运行时书籍摘要解析结果,
-  日历运行时触发上下文,
+  CalendarRuntimeBookSummaryResolveResult,
+  CalendarRuntimeTriggerContext,
 } from './types';
 
 export async function resolveCalendarBookAbstract(
-  book: 日历运行时书籍条目,
-  context: 日历运行时触发上下文,
-): Promise<日历运行时书籍摘要解析结果> {
+  book: CalendarRuntimeBookEntry,
+  context: CalendarRuntimeTriggerContext,
+): Promise<CalendarRuntimeBookSummaryResolveResult> {
   if (!book.摘要) {
     return {
       正文: '',
@@ -45,8 +45,8 @@ export async function resolveCalendarBookAbstract(
 }
 
 export async function resolveCalendarContentNode(
-  node: 日历运行时内容节点 | null | undefined,
-  context: 日历运行时触发上下文,
+  node: CalendarRuntimeContentNode | null | undefined,
+  context: CalendarRuntimeTriggerContext,
   options: { ignoreTrigger?: boolean } = {},
 ): Promise<{ 命中: boolean; 正文: string; 警告: string[] }> {
   if (!node || node.启用 === false) {

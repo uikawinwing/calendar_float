@@ -15,10 +15,10 @@ import {
 import {
   resolveCalendarBookAbstract,
   resolveCalendarContentNode,
-  type 日历运行时触发上下文,
+  type CalendarRuntimeTriggerContext,
 } from './runtime-trigger-evaluator';
 import { readCalendarRuntimeIndex, resolveCalendarRuntimeWorldbookSources } from './runtime-worldbook';
-import type { 日历运行时书籍条目, 日历运行时节庆阶段条目, 日历运行时节庆条目 } from './runtime-worldbook/types';
+import type { CalendarRuntimeBookEntry, CalendarRuntimeFestivalStageEntry, CalendarRuntimeFestivalEntry } from './runtime-worldbook/types';
 import {
   buildSuggestionSet,
   collectEventTags,
@@ -39,7 +39,7 @@ import type {
   WorldbookStageRecord,
 } from './types';
 
-function buildRuntimeContext(now: DatePoint): 日历运行时触发上下文 {
+function buildRuntimeContext(now: DatePoint): CalendarRuntimeTriggerContext {
   return {
     当前日期: now,
     最近消息文本: [],
@@ -56,7 +56,7 @@ function buildBookTriggerText(bookTitle: string): string {
   return `[[打开《${title}》]]`;
 }
 
-function readFestivalLocationKeywords(festival: 日历运行时节庆条目): string[] {
+function readFestivalLocationKeywords(festival: CalendarRuntimeFestivalEntry): string[] {
   const values = [
     ...(festival.地点关键词 ?? []),
     ...(Array.isArray(festival.元数据?.地点关键词) ? festival.元数据.地点关键词 : []),
@@ -146,7 +146,7 @@ function mapArchivedEvent(id: string, raw: ArchivedCalendarEvent, now: DatePoint
   };
 }
 
-function isFestivalOccurrenceYear(year: number, recurrence?: 日历运行时节庆条目['周期']): boolean {
+function isFestivalOccurrenceYear(year: number, recurrence?: CalendarRuntimeFestivalEntry['周期']): boolean {
   if (!recurrence) {
     return true;
   }
@@ -158,7 +158,7 @@ function isFestivalOccurrenceYear(year: number, recurrence?: 日历运行时节�
   return (year - lastYear) % intervalYears === 0;
 }
 
-function getNearestFestivalOccurrenceYear(year: number, recurrence?: 日历运行时节庆条目['周期']): number {
+function getNearestFestivalOccurrenceYear(year: number, recurrence?: CalendarRuntimeFestivalEntry['周期']): number {
   if (!recurrence || isFestivalOccurrenceYear(year, recurrence)) {
     return year;
   }
@@ -173,7 +173,7 @@ function getNearestFestivalOccurrenceYear(year: number, recurrence?: 日历运�
   return Math.abs(year - previous) <= Math.abs(next - year) ? previous : next;
 }
 
-function buildFestivalRange(festival: 日历运行时节庆条目, now: DatePoint) {
+function buildFestivalRange(festival: CalendarRuntimeFestivalEntry, now: DatePoint) {
   const startText = normalizeMonthDayText(String(festival.开始 || ''));
   const endText = normalizeMonthDayText(String(festival.结束 || festival.开始 || ''));
   if (!startText || !endText) {
@@ -202,8 +202,8 @@ function buildFestivalRange(festival: 日历运行时节庆条目, now: DatePoin
 }
 
 function buildRuntimeStageRecord(
-  festival: 日历运行时节庆条目,
-  stage: 日历运行时节庆阶段条目,
+  festival: CalendarRuntimeFestivalEntry,
+  stage: CalendarRuntimeFestivalStageEntry,
   now: DatePoint,
   index: number,
 ): WorldbookStageRecord | null {
@@ -232,7 +232,7 @@ function buildRuntimeStageRecord(
 }
 
 async function buildRuntimeFestivalRecord(
-  festival: 日历运行时节庆条目,
+  festival: CalendarRuntimeFestivalEntry,
   now: DatePoint,
 ): Promise<FestivalRecord | null> {
   const dateRange = buildFestivalRange(festival, now);
@@ -281,7 +281,7 @@ async function buildRuntimeFestivalRecord(
   };
 }
 
-async function buildRuntimeBookRecord(book: 日历运行时书籍条目, now: DatePoint): Promise<CalendarBookRecord> {
+async function buildRuntimeBookRecord(book: CalendarRuntimeBookEntry, now: DatePoint): Promise<CalendarBookRecord> {
   const context = buildRuntimeContext(now);
   const abstract = await resolveCalendarBookAbstract(book, context);
   const fulltext = await resolveCalendarContentNode(book.全文, context, { ignoreTrigger: true });
