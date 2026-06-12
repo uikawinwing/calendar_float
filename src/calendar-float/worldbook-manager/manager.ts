@@ -33,7 +33,12 @@ export const CALENDAR_VARIABLE_LIST_ENTRY_DISPLAY_NAME = VARIABLE_LIST_ENTRY_DIS
 
 const EXPECTED_MANAGED_ENTRY_NAMES = new Set([UPDATE_RULES_ENTRY_NAME, VARIABLE_LIST_ENTRY_NAME]);
 const EXPECTED_MANAGED_ENTRY_COUNT = EXPECTED_MANAGED_ENTRY_NAMES.size;
-type ManagedWorldbookTargetMode = 'character_primary' | 'chat_bound' | 'global' | 'stored_external';
+type ManagedWorldbookTargetMode =
+  | 'character_primary'
+  | 'character_additional'
+  | 'chat_bound'
+  | 'global'
+  | 'stored_external';
 
 export type CalendarManagedWorldbookConnectivityState =
   | 'unknown'
@@ -234,12 +239,15 @@ function readEnabledGlobalWorldbookNames(): string[] {
 }
 
 function readManagedWorldbookSearchChain(): Array<{ worldbookName: string; targetMode: ManagedWorldbookTargetMode }> {
-  const primary = readCurrentCharacterPrimaryWorldbookName();
+  const binding = readCurrentCharacterWorldbookBinding();
+  const primary = normalizeEntryName(binding.primary);
+  const additional = binding.additional.map(normalizeEntryName).filter(Boolean);
   const chat = readCurrentChatWorldbookName();
   const globals = readEnabledGlobalWorldbookNames();
   const seen = new Set<string>();
   return [
     { worldbookName: primary, targetMode: 'character_primary' as const },
+    ...additional.map(worldbookName => ({ worldbookName, targetMode: 'character_additional' as const })),
     { worldbookName: chat, targetMode: 'chat_bound' as const },
     ...globals.map(worldbookName => ({ worldbookName, targetMode: 'global' as const })),
   ].filter(item => {
@@ -555,57 +563,63 @@ function readManagedWorldbookTargetName(): {
   return { worldbookName: currentCharacterTarget, targetMode: 'character_primary' };
 }
 
-function buildManagedCharacterWorldbookName(): string {
-  let baseName = '';
-  if (typeof (globalThis as { getCurrentCharacterName?: unknown }).getCurrentCharacterName === 'function') {
+function isManagedCharacterWorldbookName(worldbookName: string): boolean {
+  const normalized = normalizeEntryName(worldbookName);
+  return normalized.includes('月历球世界书') || normalized === '月历球_角色世界书' || normalized.startsWith('月历球_角色世界书_');
+}
+
+async function findReadableManagedAdditionalWorldbook(binding: CharWorldbooks): Promise<{
+  worldbookName: string;
+  entries: WorldbookEntry[];
+} | null> {
+  for (const worldbookName of binding.additional.map(normalizeEntryName).filter(isManagedCharacterWorldbookName)) {
     try {
-      baseName = normalizeEntryName(getCurrentCharacterName());
+      return { worldbookName, entries: await getWorldbook(worldbookName) };
     } catch (error) {
-      emitManagedWorldbookWarnLog('读取当前角色名失败，使用默认世界书名称', {
+      emitManagedWorldbookWarnLog('读取附加月历球世界书失败，已跳过该 worldbook', {
+        worldbookName,
         error: error instanceof Error ? error.message : String(error),
       });
     }
   }
-  const prefix = baseName ? `${baseName}_月历球世界书` : '月历球_角色世界书';
-  const available = new Set(readAvailableWorldbookNames());
-  if (!available.has(prefix)) {
-    return prefix;
-  }
-  let index = 2;
-  while (available.has(`${prefix}_${index}`)) {
-    index += 1;
-  }
-  return `${prefix}_${index}`;
+  return null;
+}
+
+function createMissingCharacterWorldbookTargetError(): Error {
+  return new Error('未能找到可写入的角色世界书。请先在角色卡绑定或导入世界书，再重装月历基础规则。');
 }
 
 export async function ensureCalendarCharacterPrimaryWorldbook(): Promise<{
   worldbookName: string;
   entries: WorldbookEntry[];
   created: boolean;
+  targetMode: Extract<ManagedWorldbookTargetMode, 'character_primary' | 'character_additional'>;
 }> {
   const binding = readCurrentCharacterWorldbookBinding();
   const primary = normalizeEntryName(binding.primary);
   if (primary) {
     try {
       const entries = await getWorldbook(primary);
-      return { worldbookName: primary, entries, created: false };
+      return { worldbookName: primary, entries, created: false, targetMode: 'character_primary' };
     } catch (error) {
-      emitManagedWorldbookWarnLog('当前角色主世界书绑定无效，已改为自动创建新的角色主世界书', {
+      emitManagedWorldbookWarnLog('当前角色主世界书绑定无效，将检查已有附加月历球世界书', {
         worldbookName: primary,
         error: error instanceof Error ? error.message : String(error),
       });
     }
+
+    const existingAdditional = await findReadableManagedAdditionalWorldbook(binding);
+    if (existingAdditional) {
+      return { ...existingAdditional, created: false, targetMode: 'character_additional' };
+    }
+    throw createMissingCharacterWorldbookTargetError();
   }
 
-  const worldbookName = buildManagedCharacterWorldbookName();
-  await createOrReplaceWorldbook(worldbookName, []);
-  await rebindCharWorldbooks('current', {
-    primary: worldbookName,
-    additional: binding.additional,
-  });
-  const entries = await getWorldbook(worldbookName);
-  writeStoredManagedWorldbookTargetName('');
-  return { worldbookName, entries, created: true };
+  const existingAdditional = await findReadableManagedAdditionalWorldbook(binding);
+  if (existingAdditional) {
+    return { ...existingAdditional, created: false, targetMode: 'character_additional' };
+  }
+  throw createMissingCharacterWorldbookTargetError();
 }
 
 async function readManagedTargetWorldbookEntries(): Promise<{
@@ -614,7 +628,7 @@ async function readManagedTargetWorldbookEntries(): Promise<{
   targetMode: ManagedWorldbookTargetMode;
 }> {
   const target = await ensureCalendarCharacterPrimaryWorldbook();
-  return { worldbookName: target.worldbookName, entries: target.entries, targetMode: 'character_primary' };
+  return { worldbookName: target.worldbookName, entries: target.entries, targetMode: target.targetMode };
 }
 
 async function readWorldbookEntriesByName(
