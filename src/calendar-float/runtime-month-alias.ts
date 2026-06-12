@@ -1,4 +1,4 @@
-import { readCalendarRuntimeIndex } from './runtime-worldbook-loader';
+import { readCalendarRuntimeIndex } from './runtime-worldbook';
 import { CalendarMonthAliasRecord } from './types';
 
 function normalizeMonth(month: number): number {

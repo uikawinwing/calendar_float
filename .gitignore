@@ -11,9 +11,3 @@ pnpm-debug.log*
 
 auto-imports.d.ts
 components.d.ts
-
-初始模板/
-示例/
-EJS/
-scripts/
-public/

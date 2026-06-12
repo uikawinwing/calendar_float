@@ -1,4 +1,5 @@
 import type { CalendarAnchor, DatePoint, DateRange } from './types';
+import { getActiveCalendarProfile } from './profile';
 
 const WEEKDAY_ALIAS_MAP: Record<string, number> = {
   星期日: 0,
@@ -13,6 +14,10 @@ const WEEKDAY_ALIAS_MAP: Record<string, number> = {
 
 function pad2(value: number): string {
   return String(value).padStart(2, '0');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function parseDateKey(input: string): DatePoint | null {
@@ -228,8 +233,14 @@ export function parseWorldDateAnchor(input: string): { point: DatePoint; weekday
     return null;
   }
 
+  const eraPattern = getActiveCalendarProfile().date.eraNames.map(escapeRegExp).join('|');
+  const profileDatePattern = eraPattern
+    ? new RegExp(
+        `(?:${eraPattern})?\\s*(\\d+)\\s*年[-/ ]?(\\d{1,2})\\s*月[-/ ]?(\\d{1,2})\\s*日(?:[-/ ]?(星期[日天一二三四五六]))?`,
+      )
+    : /(\d+)\s*年[-/ ]?(\d{1,2})\s*月[-/ ]?(\d{1,2})\s*日(?:[-/ ]?(星期[日天一二三四五六]))?/;
   const fantasy = text.match(
-    /(?:复兴纪元)?\s*(\d+)\s*年[-/ ]?(\d{1,2})\s*月[-/ ]?(\d{1,2})\s*日(?:[-/ ]?(星期[日天一二三四五六]))?/,
+    profileDatePattern,
   );
   if (fantasy) {
     const weekdayText = fantasy[4] || '';

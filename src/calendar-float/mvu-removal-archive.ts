@@ -27,7 +27,7 @@ async function bindMvuRemovalArchive(token: number): Promise<void> {
       completedAt: readCompletedAt(newVariables),
     });
     if (hasArchiveEffect(result)) {
-      console.info(`[${SCRIPT_NAME}] 已同步 LLM 移除的日历事件`, result);
+      console.info(`[${SCRIPT_NAME}] 已同步 LLM 移除的月历事件`, result);
     }
   }).stop;
 }
@@ -40,7 +40,7 @@ export function bootstrapCalendarMvuRemovalArchive(): void {
     destroy: teardownCalendarMvuRemovalArchive,
   };
   void bindMvuRemovalArchive(token).catch(error => {
-    console.warn(`[${SCRIPT_NAME}] 绑定 MVU 日历归档监听失败`, error);
+    console.warn(`[${SCRIPT_NAME}] 绑定 MVU 月历归档监听失败`, error);
   });
 }
 

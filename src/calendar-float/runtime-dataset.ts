@@ -1,7 +1,7 @@
 /**
  * 负责：把 runtime worldbook 索引与正文解析结果，组装成 UI 直接使用的 CalendarDataset。
  * 不负责：实际触发 scan，也不负责 worldbook backend 基础设施安装。
- * 上游依赖：[`./runtime-worldbook-loader.ts`](src/calendar-float/runtime-worldbook-loader.ts) 与 [`./runtime-trigger-evaluator.ts`](src/calendar-float/runtime-trigger-evaluator.ts)。
+ * 上游依赖：[`./runtime-worldbook`](src/calendar-float/runtime-worldbook/index.ts) 与 [`./runtime-trigger-evaluator`](src/calendar-float/runtime-trigger-evaluator/index.ts)。
  */
 import {
   compareDatePoint,
@@ -10,14 +10,15 @@ import {
   inferAnchorYear,
   normalizeMonthDayText,
   parseMonthDayWithYear,
+  parseWorldDateText,
 } from './date';
 import {
   resolveCalendarBookAbstract,
   resolveCalendarContentNode,
   type 日历运行时触发上下文,
 } from './runtime-trigger-evaluator';
-import { readCalendarRuntimeIndex, resolveCalendarRuntimeWorldbookSources } from './runtime-worldbook-loader';
-import type { 日历运行时书籍条目, 日历运行时节庆阶段条目, 日历运行时节庆条目 } from './runtime-worldbook-types';
+import { readCalendarRuntimeIndex, resolveCalendarRuntimeWorldbookSources } from './runtime-worldbook';
+import type { 日历运行时书籍条目, 日历运行时节庆阶段条目, 日历运行时节庆条目 } from './runtime-worldbook/types';
 import {
   buildSuggestionSet,
   collectEventTags,
@@ -72,13 +73,9 @@ function parseEventTextToPoint(text: string, now: DatePoint): DatePoint | null {
     return null;
   }
 
-  const fantasy = normalized.match(/(?:复兴纪元)?\s*(\d+)\s*年[-/ ]?(\d{1,2})\s*月[-/ ]?(\d{1,2})\s*日/);
-  if (fantasy) {
-    return {
-      year: Number(fantasy[1]),
-      month: Number(fantasy[2]),
-      day: Number(fantasy[3]),
-    };
+  const worldDate = parseWorldDateText(normalized);
+  if (worldDate) {
+    return worldDate;
   }
 
   const full = normalized.match(/(\d+)[/-](\d{1,2})[/-](\d{1,2})/);
@@ -249,6 +246,9 @@ async function buildRuntimeFestivalRecord(
   const uiSummary = readUiSummary(festival.介绍?.元数据);
   const introText = uiSummary || intro.正文 || festival.名称;
   const locationKeywords = readFestivalLocationKeywords(festival);
+  const groupId = String(festival.元数据?.分组 ?? '').trim();
+  const groupName = String(festival.元数据?.分组名称 ?? '').trim();
+  const groupIconSvgFilename = String(festival.元数据?.分组图标 ?? '').trim();
   const stages = (festival.阶段 ?? [])
     .filter(stage => stage.启用 !== false)
     .map((stage, index) => buildRuntimeStageRecord(festival, stage, now, index))
@@ -272,6 +272,9 @@ async function buildRuntimeFestivalRecord(
       monthDayRange: `${formatMonthDay(dateRange.range.start)}~${formatMonthDay(dateRange.range.end)}`,
       ...(festival.周期 ? { recurrence: festival.周期 } : {}),
       ...(locationKeywords.length > 0 ? { locationKeywords, 地点关键词: locationKeywords } : {}),
+      ...(groupId ? { 分组: groupId, groupId } : {}),
+      ...(groupName ? { 分组名称: groupName, groupName } : {}),
+      ...(groupIconSvgFilename ? { 分组图标: groupIconSvgFilename, groupIconSvgFilename } : {}),
       introWarnings: intro.警告,
       original: festival,
     },
