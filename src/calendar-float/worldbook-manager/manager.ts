@@ -622,13 +622,24 @@ export async function ensureCalendarCharacterPrimaryWorldbook(): Promise<{
   throw createMissingCharacterWorldbookTargetError();
 }
 
-async function readManagedTargetWorldbookEntries(): Promise<{
+async function readCharacterPrimaryWorldbookEntries(): Promise<{
   worldbookName: string;
   entries: WorldbookEntry[];
-  targetMode: ManagedWorldbookTargetMode;
+  targetMode: Extract<ManagedWorldbookTargetMode, 'character_primary'>;
 }> {
-  const target = await ensureCalendarCharacterPrimaryWorldbook();
-  return { worldbookName: target.worldbookName, entries: target.entries, targetMode: target.targetMode };
+  const binding = readCurrentCharacterWorldbookBinding();
+  const primary = normalizeEntryName(binding.primary);
+  if (!primary) {
+    throw new Error('当前角色主世界书未绑定。请先在角色卡绑定或导入世界书，再安装月历 MVU 规则。');
+  }
+
+  try {
+    return { worldbookName: primary, entries: await getWorldbook(primary), targetMode: 'character_primary' };
+  } catch (error) {
+    throw new Error(
+      `当前角色主世界书无法读取：${primary}。请先在角色卡绑定或导入世界书，再安装月历 MVU 规则。`,
+    );
+  }
 }
 
 async function readWorldbookEntriesByName(
@@ -805,7 +816,7 @@ async function upsertManagedEntries(): Promise<EnsureCalendarManagedWorldbookEnt
   }
 
   setManagementEnabled(true);
-  const { worldbookName, entries, targetMode } = await readManagedTargetWorldbookEntries();
+  const { worldbookName, entries, targetMode } = await readCharacterPrimaryWorldbookEntries();
   const result = await upsertManagedEntriesToTargetWorldbook({
     worldbookName,
     entries,
@@ -842,6 +853,30 @@ async function refreshDiagnosticsFromCharacterWorldbook(): Promise<void> {
 
 export function getCalendarManagedWorldbookDiagnostics(): CalendarManagedWorldbookDiagnostics {
   return { ...diagnostics };
+}
+
+export async function refreshCalendarManagedWorldbookDiagnostics(): Promise<void> {
+  diagnostics.connectivity = 'checking';
+  diagnostics.lastEnsureAt = nowIso();
+  diagnostics.createdDuringEnsure = false;
+  diagnostics.updatedDuringEnsure = false;
+  diagnostics.lastEnsureSucceeded = false;
+  resetDiagnosticsError();
+
+  try {
+    await refreshDiagnosticsFromCharacterWorldbook();
+    await refreshCalendarManagedWorldbookSourceDiagnostics();
+    diagnostics.lastEnsureSucceeded = true;
+  } catch (error) {
+    diagnostics.connectivity = 'error';
+    diagnostics.lastEnsureSucceeded = false;
+    setDiagnosticsError(error);
+    emitManagedWorldbookWarnLog('刷新 worldbook runtime 基础设施诊断失败', {
+      worldbookName: diagnostics.worldbookName,
+      lastError: diagnostics.lastError,
+    });
+    throw error;
+  }
 }
 
 export async function syncCalendarManagedCharacterEntries(): Promise<EnsureCalendarManagedWorldbookEntriesResult> {

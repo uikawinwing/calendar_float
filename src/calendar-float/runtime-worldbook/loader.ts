@@ -889,6 +889,23 @@ function 合并书籍(target: Map<string, CalendarRuntimeBookEntry>, book: Calen
   });
 }
 
+function 建立书籍关联事件映射(books: CalendarRuntimeBookEntry[]): Map<string, string[]> {
+  const output = new Map<string, string[]>();
+  for (const book of books) {
+    const eventIds = 规范化单值或字符串数组(book.元数据?.关联事件);
+    for (const eventId of eventIds) {
+      const normalizedEventId = 规范化名称(eventId);
+      if (!normalizedEventId) {
+        continue;
+      }
+      const current = output.get(normalizedEventId) ?? [];
+      current.push(book.id);
+      output.set(normalizedEventId, current);
+    }
+  }
+  return output;
+}
+
 function 规范化节庆与内嵌书籍(
   value: unknown,
   reminderDefaults: CalendarRuntimeReminderDefaults,
@@ -1060,7 +1077,7 @@ function 规范化顶层书籍列表(
   return output;
 }
 
-function 规范化运行时索引(data: unknown, warnings: string[]): CalendarRuntimeIndex | null {
+export function normalizeCalendarRuntimeIndexDocument(data: unknown, warnings: string[] = []): CalendarRuntimeIndex | null {
   if (!是否对象(data)) {
     warnings.push('索引解析结果不是对象');
     return null;
@@ -1094,6 +1111,15 @@ function 规范化运行时索引(data: unknown, warnings: string[]): CalendarRu
     节庆文本映射,
     默认设置,
   );
+  const 关联书籍映射 = 建立书籍关联事件映射(顶层书籍);
+
+  节庆与书籍.节庆.forEach(festival => {
+    const linkedBookIds = 关联书籍映射.get(festival.id);
+    if (!linkedBookIds?.length) {
+      return;
+    }
+    festival.相关书籍 = 取唯一文本([...(festival.相关书籍 ?? []), ...linkedBookIds]);
+  });
 
   const 合并后书籍 = new Map<string, CalendarRuntimeBookEntry>();
   节庆与书籍.内嵌书籍.forEach(book => 合并书籍(合并后书籍, book));
@@ -1338,7 +1364,7 @@ export async function readCalendarRuntimeIndex(): Promise<CalendarWorldbookIndex
   追加多索引候选警告(indexEntryMatches, 警告);
 
   const parsed = 解析Yaml文本<unknown>(indexEntry.条目.content, `索引条目「${indexEntry.条目.name}」`, 警告);
-  const normalized = parsed ? 规范化运行时索引(parsed, 警告) : null;
+  const normalized = parsed ? normalizeCalendarRuntimeIndexDocument(parsed, 警告) : null;
   applyCalendarRuntimeDefaults(normalized?.默认设置);
   if (!normalized) {
     return {
@@ -1451,7 +1477,7 @@ export async function listCalendarRuntimeWorldbookMoveCandidates(): Promise<{
   });
 
   const parsed = 解析Yaml文本<unknown>(indexEntry.条目.content, `索引条目「${indexEntry.条目.name}」`, 警告);
-  const normalized = parsed ? 规范化运行时索引(parsed, 警告) : null;
+  const normalized = parsed ? normalizeCalendarRuntimeIndexDocument(parsed, 警告) : null;
   if (!normalized) {
     return { candidates: [...candidates.values()], warnings: 警告 };
   }
@@ -1490,7 +1516,7 @@ export async function inspectCalendarRuntimeWorldbookSummary(): Promise<Calendar
   }
 
   const parsed = 解析Yaml文本<unknown>(indexEntry.条目.content, `索引条目「${indexEntry.条目.name}」`, 警告);
-  const normalized = parsed ? 规范化运行时索引(parsed, 警告) : null;
+  const normalized = parsed ? normalizeCalendarRuntimeIndexDocument(parsed, 警告) : null;
   return {
     来源世界书: 来源.map(item => item.name),
     索引世界书: indexEntry.世界书名,

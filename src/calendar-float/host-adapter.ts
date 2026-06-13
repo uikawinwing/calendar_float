@@ -71,6 +71,18 @@ async function waitForHost(hostWindow: HostWindow, retries = 12, interval = 80):
   return host && typeof host.registerModule === 'function' ? host : null;
 }
 
+async function waitForWidgetApi(hostWindow: HostWindow, retries = 25, interval = 80): Promise<CalendarFloatWidgetApi | null> {
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    const widget = hostWindow[INSTANCE_KEY];
+    if (widget && typeof widget.setExternalHostMode === 'function') {
+      return widget;
+    }
+    await new Promise(resolve => hostWindow.setTimeout(resolve, interval));
+  }
+  const widget = hostWindow[INSTANCE_KEY];
+  return widget && typeof widget.setExternalHostMode === 'function' ? widget : null;
+}
+
 export async function bootstrapCalendarFloatHostAdapter(): Promise<void> {
   const hostWindow = getHostWindow();
   hostWindow[ADAPTER_INSTANCE_KEY]?.destroy({ unregister: true, silent: true });
@@ -129,6 +141,10 @@ export async function bootstrapCalendarFloatHostAdapter(): Promise<void> {
 
   registeredToHost = true;
   hostWindow[ADAPTER_INSTANCE_KEY] = { destroy };
+  await waitForWidgetApi(hostWindow);
+  if (destroyed) {
+    return;
+  }
   setExternalHostMode(true);
   showAdapterLog('info', '已注册到悬浮球 host，原生月历按钮进入隐藏备用模式');
 }

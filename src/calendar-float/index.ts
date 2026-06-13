@@ -13,14 +13,17 @@ import {
 } from './storage';
 import { bootstrapCalendarWidget } from './widget';
 import {
-  ensureCalendarManagedWorldbookEntries,
+  getCalendarManagedWorldbookDiagnostics,
   getCalendarManagedWorldbookTargetName,
   installCalendarManagedEntriesToExternalWorldbook,
   installCalendarManagedWorldbookEntries,
+  refreshCalendarManagedWorldbookDiagnostics,
   uninstallCalendarManagedWorldbookEntries,
+  type EnsureCalendarManagedWorldbookEntriesResult,
 } from './worldbook-manager';
 
 let contextWatcherStop: (() => void) | null = null;
+let managedWorldbookInstallPromptShown = false;
 
 function readCalendarRuntimeContextKey(): string {
   let characterName = '';
@@ -62,7 +65,7 @@ function bootstrapCalendarRuntimeContextWatcher(): void {
   };
 }
 
-function notifyManagedWorldbookEnsure(result: Awaited<ReturnType<typeof ensureCalendarManagedWorldbookEntries>>): void {
+function notifyManagedWorldbookEnsure(result: EnsureCalendarManagedWorldbookEntriesResult): void {
   if (!result.created && !result.updated) {
     return;
   }
@@ -80,6 +83,30 @@ function notifyManagedWorldbookEnsure(result: Awaited<ReturnType<typeof ensureCa
   toastr.info(`月历球已写入后端基础条目：${target}\n${targetModeText}\n可在后端面板查看/搬运来源。`);
 }
 
+async function refreshManagedWorldbookDiagnosticsAndPromptInstall(): Promise<void> {
+  await refreshCalendarManagedWorldbookDiagnostics();
+  const diagnostics = getCalendarManagedWorldbookDiagnostics();
+  if (diagnostics.allManagedEntriesPresent || managedWorldbookInstallPromptShown) {
+    return;
+  }
+
+  managedWorldbookInstallPromptShown = true;
+  const shouldInstall = window.confirm(
+    '找不到月历 MVU 规则。要帮你安装到当前角色主世界书吗？\n\n选择“确定”安装；选择“取消”则保持未安装状态。',
+  );
+  if (!shouldInstall) {
+    return;
+  }
+
+  try {
+    const result = await installCalendarManagedWorldbookEntries();
+    notifyManagedWorldbookEnsure(result);
+  } catch (error) {
+    console.warn(`[${SCRIPT_NAME}] 安装月历 MVU 规则失败`, error);
+    window.alert(`安装月历 MVU 规则失败：${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 async function init(): Promise<void> {
   console.info(`[${SCRIPT_NAME}] 开始初始化`);
   await initializeCalendarProfile();
@@ -88,10 +115,9 @@ async function init(): Promise<void> {
   void ensureCalendarLatestMessageVariableStore().catch(error => {
     console.warn(`[${SCRIPT_NAME}] 初始化最新消息变量失败`, error);
   });
-  void ensureCalendarManagedWorldbookEntries()
-    .then(notifyManagedWorldbookEnsure)
+  void refreshManagedWorldbookDiagnosticsAndPromptInstall()
     .catch(error => {
-      console.warn(`[${SCRIPT_NAME}] 初始化托管世界书条目失败`, error);
+      console.warn(`[${SCRIPT_NAME}] 初始化托管世界书诊断失败`, error);
     });
   bootstrapCalendarMvuRemovalArchive();
   bootstrapCalendarRuntimeWorldbookScanner();
