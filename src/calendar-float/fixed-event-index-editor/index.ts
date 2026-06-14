@@ -45,6 +45,7 @@ export {
   type FixedEventStructuredEdit,
   type FixedEventDefaultsStructuredEdit,
 } from './edit';
+export { collectMonthAliasStructuredEdits } from './collect';
 export { parseFixedEventIndexDraft } from './parse';
 export {
   getDefaultFixedEventIndexEditorSelection,

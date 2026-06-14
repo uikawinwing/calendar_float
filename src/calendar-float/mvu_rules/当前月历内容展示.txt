@@ -1,0 +1,60 @@
+---
+现有月历事件
+
+<calendar_variables_display>
+<%_ { _%>
+<%_
+  const rootPath = 'stat_data.事件.月历';
+  const calendar = getvar(rootPath, { defaults: { 临时: {}, 重复: {} } });
+
+  // 仅隐藏玩家手动标记为私有的事件；缺省或脏值按默认公开处理，避免旧变量被误过滤。
+  const isVisibleToLLM = function (event) { return String(_.get(event, '可见性', '')).trim() !== '仅玩家'; };
+  const normalizeDisplayImportance = function (value) {
+    const text = String(value || '').trim();
+    if (['重要且紧急', '重要不紧急', '不重要但紧急', '不重要不紧急'].includes(text)) return text;
+    if (text === '重要') return '重要且紧急';
+    if (text === '纪念') return '重要不紧急';
+    if (text === '普通') return '不重要不紧急';
+    return '';
+  };
+  const normalizeRepeatRuleClass = function (value) {
+    const text = String(value || '').trim();
+    return ['每天', '每周', '每月', '每年'].includes(text) ? text : '';
+  };
+  const removeEmptyValues = function (output) { return _.pickBy(_.mapValues(output, function (value) { return typeof value === 'string' ? value.trim() : value; }), function (value) { return value !== undefined && value !== null && value !== '' && !(_.isArray(value) && value.length === 0); }); };
+  const cleanEvent = function (event, bucketType) {
+    const keys = bucketType === '重复'
+      ? ['标题', '内容', '时间', '结束时间', '重要度', '标签']
+      : ['标题', '内容', '时间', '结束时间', '重要度', '标签'];
+    const output = _.pick(event, keys);
+    const normalizedImportance = normalizeDisplayImportance(output.重要度);
+    if (normalizedImportance) {
+      output.重要度 = normalizedImportance;
+    } else {
+      delete output.重要度;
+    }
+    if (bucketType === '重复') {
+      output.重复规则分类 = normalizeRepeatRuleClass(_.get(event, '重复规则分类', _.get(event, '重复规则', '')));
+    }
+    return removeEmptyValues(output);
+  };
+  const normalizeBucket = function (bucket, bucketType) {
+    return _.chain(_.isObject(bucket) ? bucket : {})
+      .pickBy(isVisibleToLLM)
+      .mapValues(function (event) { return cleanEvent(event, bucketType); })
+      .pickBy(function (event) { return !_.isEmpty(event); })
+      .value();
+  };
+
+  const displayOutput = {
+    事件: {
+      月历: {
+        临时: normalizeBucket(_.get(calendar, '临时'), '临时'),
+        重复: normalizeBucket(_.get(calendar, '重复'), '重复'),
+      },
+    },
+  };
+  print(YAML.stringify(displayOutput, { blockQuote: 'literal' }));
+_%>
+<%_ } _%>
+</calendar_variables_display>

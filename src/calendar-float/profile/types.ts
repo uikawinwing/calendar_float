@@ -37,6 +37,6 @@ export interface CalendarProfile {
 
 export interface CalendarProfileDetectionResult {
   candidate: CalendarProfile;
-  reason: 'character_name' | 'worldbook_name' | 'default';
+  reason: 'runtime_index_profile' | 'default';
   matchedText: string;
 }

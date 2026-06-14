@@ -3,6 +3,7 @@
  * 不负责：触发逻辑判定，也不负责 UI dataset 组装。
  * 下游：[`resolveCalendarRuntimeNodeText()`](src/calendar-float/runtime-worldbook/resolver.ts:1)、[`readCalendarRuntimeIndex()`](src/calendar-float/runtime-worldbook/loader.ts:1)、[`scanCalendarRuntimeWorldbook()`](src/calendar-float/runtime-worldbook/scanner.ts:1)。
  */
+import { applyCalendarProfileHint } from '../profile';
 import { applyCalendarRuntimeDefaults, DEFAULT_MVU_LOCATION_PATH, DEFAULT_MVU_TIME_PATH } from '../runtime-config';
 import {
   构建可见注入输出,
@@ -1126,6 +1127,7 @@ export function normalizeCalendarRuntimeIndexDocument(data: unknown, warnings: s
   顶层书籍.forEach(book => 合并书籍(合并后书籍, book));
 
   return {
+    Profile: 规范化名称(读取对象字段(data, ['Profile', 'profile', 'profileName', 'profile_name'])) || undefined,
     版本: 规范化数字(读取对象字段(data, ['版本', 'version'])),
     说明: 规范化名称(读取对象字段(data, ['说明', 'description'])) || undefined,
     索引条目名: 规范化名称(读取对象字段(data, ['索引条目名', 'index_entry'])) || undefined,
@@ -1365,6 +1367,7 @@ export async function readCalendarRuntimeIndex(): Promise<CalendarWorldbookIndex
 
   const parsed = 解析Yaml文本<unknown>(indexEntry.条目.content, `索引条目「${indexEntry.条目.name}」`, 警告);
   const normalized = parsed ? normalizeCalendarRuntimeIndexDocument(parsed, 警告) : null;
+  applyCalendarProfileHint(normalized?.Profile);
   applyCalendarRuntimeDefaults(normalized?.默认设置);
   if (!normalized) {
     return {

@@ -1,5 +1,6 @@
 import { extractClockTimeText } from '../date';
 import { formatCalendarMonthTitle } from '../runtime-month-alias';
+import { renderUtilityIcon } from './icons';
 import type {
   ArchivedCalendarEvent,
   CalendarArchivePolicy,
@@ -317,9 +318,9 @@ export function renderCalendarMonthView(options: {
           <button type="button" class="th-btn th-festival-scope-btn is-${festivalScope.mode}" data-action="toggle-festival-scope" aria-label="${escapeWidgetHtml(scopeButton.title)}" title="${escapeWidgetHtml(scopeButton.title)}">
             <span class="th-scope-label">${escapeWidgetHtml(scopeButton.label)}</span>
           </button>
-          <button type="button" class="th-btn th-month-nav-btn th-month-nav-icon-btn" data-action="month-prev" title="上个月" aria-label="上个月"><svg class="th-month-nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 6L5 12M5 12L11 18M5 12H19"></path></svg></button>
+          <button type="button" class="th-btn th-month-nav-btn th-month-nav-icon-btn" data-action="month-prev" title="上个月" aria-label="上个月">${renderUtilityIcon('monthPrev', 'th-month-nav-icon th-utility-icon')}</button>
           <button type="button" class="th-btn th-month-nav-btn th-month-today-btn" data-action="month-today" title="回到本月" aria-label="回到本月"><span class="th-nav-label">本月</span></button>
-          <button type="button" class="th-btn th-month-nav-btn th-month-nav-icon-btn" data-action="month-next" title="下个月" aria-label="下个月"><svg class="th-month-nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 6L19 12M19 12L13 18M19 12H5"></path></svg></button>
+          <button type="button" class="th-btn th-month-nav-btn th-month-nav-icon-btn" data-action="month-next" title="下个月" aria-label="下个月">${renderUtilityIcon('monthNext', 'th-month-nav-icon th-utility-icon')}</button>
         </div>
       </section>
       <section class="th-month-board">

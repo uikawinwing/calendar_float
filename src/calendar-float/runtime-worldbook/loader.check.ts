@@ -38,8 +38,22 @@ function testTopLevelMaterialLinksBackToFestival(): void {
   assert(book, '顶层补充资料应该被保留在书籍列表');
 }
 
+function testProfileIsReadFromRuntimeIndex(): void {
+  const yamlText = `
+Profile: 命定之诗
+固定事件: []
+补充资料: []
+`;
+  const warnings: string[] = [];
+  const parsed = parseDocument(yamlText).toJS();
+  const normalized = normalizeCalendarRuntimeIndexDocument(parsed, warnings) as any;
+  assert(normalized, '索引应该能被成功归一化');
+  assert(normalized.Profile === '命定之诗', '索引顶层 Profile 应该被保留用于 profile 识别');
+}
+
 function main(): void {
   testTopLevelMaterialLinksBackToFestival();
+  testProfileIsReadFromRuntimeIndex();
   console.log('loader.check.ts OK');
 }
 

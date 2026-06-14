@@ -328,7 +328,7 @@ function normalizeFixedEventIndexEditorSelection(
     current.scope === 'bookDefaults' ||
     current.scope === 'monthAliases'
   ) {
-    return { ...current, section: 'settings' };
+    return { section: 'settings', scope: 'defaults' };
   }
   if (current.scope === 'yaml') {
     return { section: 'yaml', scope: 'yaml' };
@@ -464,8 +464,11 @@ function renderGroupEditCard(group: FixedEventGroupDraft, validation: FixedEvent
 
 function renderDefaultsEditor(draft: FixedEventIndexDraft): string {
   return `
-    <details open>
-      <summary>默认设置</summary>
+    <section class="th-index-editor-settings-block">
+      <div class="th-index-editor-settings-block-head">
+        <h3>MVU 与书籍全文</h3>
+        <p>决定固定事件索引读取当前世界时间、地点，以及全文资料触发词的默认写法。</p>
+      </div>
       <div class="th-index-editor-edit-card" data-role="fixed-event-defaults-row" data-scope="defaults" data-id="main">
         <div class="th-index-editor-edit-grid">
           ${renderInput({
@@ -491,14 +494,17 @@ function renderDefaultsEditor(draft: FixedEventIndexDraft): string {
           })}
         </div>
       </div>
-    </details>
+    </section>
   `;
 }
 
 function renderReminderDefaultsEditor(defaults: FixedEventReminderDefaultsDraft): string {
   return `
-    <details>
-      <summary>提醒默认值</summary>
+    <section class="th-index-editor-settings-block">
+      <div class="th-index-editor-settings-block-head">
+        <h3>提醒默认值</h3>
+        <p>作为节庆和阶段提醒的默认注入规则；单个事件仍可以覆盖这些值。</p>
+      </div>
       <div class="th-index-editor-edit-card" data-role="fixed-event-reminder-defaults-row" data-scope="reminderDefaults" data-id="main">
         <div class="th-index-editor-edit-grid">
           ${renderSelect({
@@ -566,14 +572,17 @@ function renderReminderDefaultsEditor(defaults: FixedEventReminderDefaultsDraft)
           })}
         </div>
       </div>
-    </details>
+    </section>
   `;
 }
 
 function renderBookDefaultsEditor(defaults: FixedEventBookDefaultsDraft): string {
   return `
-    <details>
-      <summary>书籍默认值</summary>
+    <section class="th-index-editor-settings-block">
+      <div class="th-index-editor-settings-block-head">
+        <h3>书籍摘要默认值</h3>
+        <p>控制补充资料摘要写入提示词时的默认注入方式和深度。</p>
+      </div>
       <div class="th-index-editor-edit-card" data-role="fixed-event-book-defaults-row" data-scope="bookDefaults" data-id="main">
         <div class="th-index-editor-edit-grid">
           ${renderInput({
@@ -592,7 +601,7 @@ function renderBookDefaultsEditor(defaults: FixedEventBookDefaultsDraft): string
           })}
         </div>
       </div>
-    </details>
+    </section>
   `;
 }
 
@@ -613,14 +622,37 @@ function renderMonthAliasEditCard(alias: FixedEventMonthAliasDraft): string {
 }
 
 function renderMonthAliasesEditor(draft: FixedEventIndexDraft): string {
-  const aliases = draft.monthAliases ?? [];
+  const aliasByMonth = new Map((draft.monthAliases ?? []).map(alias => [alias.month, alias]));
+  const aliases = Array.from({ length: 12 }, (_, index) => {
+    const month = index + 1;
+    return aliasByMonth.get(month) ?? { month, name: '', season: '', unknownFields: {} };
+  });
+  const savedAliasCount = draft.monthAliases.length;
   return `
-    <details>
-      <summary>月份别名 · ${aliases.length}</summary>
-      <div class="th-index-editor-edit-list">
-        ${aliases.length ? aliases.map(renderMonthAliasEditCard).join('') : '<div class="th-index-editor-muted">没有月份别名</div>'}
+    <section class="th-index-editor-settings-block">
+      <div class="th-index-editor-settings-block-head">
+        <h3>月份别名</h3>
+        <p>${savedAliasCount ? `已读取 ${savedAliasCount} 个别名；` : '当前索引还没有月份别名；'}这里会一直显示 1-12 月，方便连续编辑。</p>
       </div>
-    </details>
+      <div class="th-index-editor-edit-list th-index-editor-month-alias-list">
+        ${aliases.map(renderMonthAliasEditCard).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderAllSettingsEditor(draft: FixedEventIndexDraft): string {
+  return `
+    <section class="th-index-editor-settings-page">
+      <div class="th-index-editor-settings-page-head">
+        <h2>基础设置</h2>
+        <p>这些是固定事件索引的全局默认值。这里可以连续编辑，最后统一保存到世界书。</p>
+      </div>
+      ${renderDefaultsEditor(draft)}
+      ${renderReminderDefaultsEditor(draft.reminderDefaults)}
+      ${renderBookDefaultsEditor(draft.bookDefaults)}
+      ${renderMonthAliasesEditor(draft)}
+    </section>
   `;
 }
 
@@ -1123,17 +1155,7 @@ function renderEditorNav(draft: FixedEventIndexDraft, selection: FixedEventIndex
       </div>
       <div class="th-index-editor-nav-section">
         <div class="th-index-editor-nav-title">设置</div>
-        ${renderSelectionButton({ selection, section: 'settings', scope: 'defaults', label: '默认设置', className: 'is-file' })}
-        ${renderSelectionButton({ selection, section: 'settings', scope: 'reminderDefaults', label: '提醒默认值', className: 'is-file' })}
-        ${renderSelectionButton({ selection, section: 'settings', scope: 'bookDefaults', label: '书籍默认值', className: 'is-file' })}
-        ${renderSelectionButton({
-          selection,
-          section: 'settings',
-          scope: 'monthAliases',
-          label: '月份别名',
-          meta: `${draft.monthAliases.length}`,
-          className: 'is-file',
-        })}
+        ${renderSelectionButton({ selection, section: 'settings', scope: 'defaults', label: '基础设置', meta: `别名 ${draft.monthAliases.length}/12`, className: 'is-file' })}
       </div>
       <div class="th-index-editor-nav-section">
         ${renderSelectionButton({ selection, section: 'yaml', scope: 'yaml', label: 'YAML 预览', className: 'is-file' })}
@@ -1208,16 +1230,7 @@ function renderStageDetail(draft: FixedEventIndexDraft, selection: FixedEventInd
 }
 
 function renderSettingsDetail(draft: FixedEventIndexDraft, selection: FixedEventIndexEditorSelection): string {
-  if (selection.scope === 'reminderDefaults') {
-    return renderReminderDefaultsEditor(draft.reminderDefaults);
-  }
-  if (selection.scope === 'bookDefaults') {
-    return renderBookDefaultsEditor(draft.bookDefaults);
-  }
-  if (selection.scope === 'monthAliases') {
-    return renderMonthAliasesEditor(draft);
-  }
-  return renderDefaultsEditor(draft);
+  return renderAllSettingsEditor(draft);
 }
 
 function getMobileEditorView(selection: FixedEventIndexEditorSelection): 'nav' | 'detail' {
@@ -1240,7 +1253,7 @@ function getSelectionTitle(draft: FixedEventIndexDraft, selection: FixedEventInd
     return material?.title || selection.id;
   }
   if (selection.scope === 'defaults') {
-    return '默认设置';
+    return '基础设置';
   }
   if (selection.scope === 'reminderDefaults') {
     return '提醒默认值';

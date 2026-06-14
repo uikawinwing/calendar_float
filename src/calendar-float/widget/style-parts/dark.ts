@@ -145,6 +145,16 @@ export const CALENDAR_WIDGET_DARK_STYLE = `
       box-shadow: 0 28px 72px rgba(0, 0, 0, 0.56);
     }
 
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-settings-dialog {
+      background:
+        radial-gradient(circle at 10% 0%, rgba(125, 211, 252, 0.12), transparent 34%),
+        linear-gradient(180deg, rgba(18, 25, 36, 0.98), rgba(10, 16, 28, 0.98));
+      border-color: rgba(184, 215, 255, 0.18);
+      box-shadow:
+        0 30px 76px rgba(0, 0, 0, 0.58),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
     #${ROOT_ID}[data-theme='dark'] .th-managed-worldbook-dialog-title {
       color: #f5f8fc;
     }
@@ -160,6 +170,97 @@ export const CALENDAR_WIDGET_DARK_STYLE = `
     #${ROOT_ID}[data-theme='dark'] .th-worldbook-picker-list {
       background: rgba(15, 20, 27, 0.82);
       border-color: #394555;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-settings-dialog .th-managed-worldbook-dialog-summary {
+      background: transparent;
+      border-color: transparent;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-settings-dialog .th-managed-worldbook-dialog-summary-item,
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-path-dialog {
+      color: #dce7f7;
+      background:
+        linear-gradient(180deg, rgba(27, 37, 54, 0.9), rgba(13, 20, 34, 0.76));
+      border-color: rgba(184, 215, 255, 0.15);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-path-form small {
+      color: #9fb0c6;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-path-form input:focus {
+      border-color: rgba(184, 215, 255, 0.62);
+      background: rgba(11, 18, 31, 0.96);
+      box-shadow:
+        0 0 0 3px rgba(125, 211, 252, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-action-group {
+      color: #c4cfdb;
+      background:
+        linear-gradient(180deg, rgba(27, 37, 54, 0.76), rgba(13, 20, 34, 0.58));
+      border-color: rgba(184, 215, 255, 0.14);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-action-group--danger {
+      background:
+        linear-gradient(180deg, rgba(58, 34, 34, 0.62), rgba(28, 18, 24, 0.58));
+      border-color: rgba(248, 113, 113, 0.2);
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-action-copy {
+      color: #aebccc;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-action-copy strong {
+      color: #f5f8fc;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-action-group--danger .th-mvu-action-copy strong {
+      color: #fecaca;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-close-btn {
+      background: rgba(15, 22, 34, 0.82);
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-maintenance-details {
+      background: rgba(12, 18, 29, 0.68);
+      border-color: rgba(184, 215, 255, 0.14);
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-maintenance-details > summary {
+      color: #f5f8fc;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-maintenance-details > summary small {
+      color: #aebccc;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-mvu-maintenance-details > summary::after {
+      background: rgba(125, 211, 252, 0.14);
+      color: #dcecff;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-index-editor-settings-page-head h2,
+    #${ROOT_ID}[data-theme='dark'] .th-index-editor-settings-block-head h3 {
+      color: #f5f8fc;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-index-editor-settings-page-head p,
+    #${ROOT_ID}[data-theme='dark'] .th-index-editor-settings-block-head p {
+      color: #aebccc;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-index-editor-settings-block {
+      background:
+        linear-gradient(180deg, rgba(27, 37, 54, 0.78), rgba(13, 20, 34, 0.66));
+      border-color: rgba(184, 215, 255, 0.14);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
     }
 
     #${ROOT_ID}[data-theme='dark'] .th-worldbook-export-field input,
@@ -244,6 +345,10 @@ export const CALENDAR_WIDGET_DARK_STYLE = `
       background: rgba(104, 76, 31, 0.44);
       border-color: rgba(255, 214, 120, 0.22);
       color: #ffe6aa;
+    }
+
+    #${ROOT_ID}[data-theme='dark'] .th-tag-color-preview-note {
+      color: #a7b4c4;
     }
 
     #${ROOT_ID}[data-theme='dark'] .th-tab-button.is-active {
@@ -1207,8 +1312,19 @@ export const CALENDAR_WIDGET_DARK_STYLE = `
     }
 
     #${ROOT_ID} .th-festival-title-svg path,
-    #${ROOT_ID} .th-corner-marker-svg path {
+    #${ROOT_ID} .th-festival-title-svg circle,
+    #${ROOT_ID} .th-festival-title-svg rect,
+    #${ROOT_ID} .th-festival-title-svg polygon,
+    #${ROOT_ID} .th-festival-title-svg polyline,
+    #${ROOT_ID} .th-festival-title-svg line,
+    #${ROOT_ID} .th-corner-marker-svg path,
+    #${ROOT_ID} .th-corner-marker-svg circle,
+    #${ROOT_ID} .th-corner-marker-svg rect,
+    #${ROOT_ID} .th-corner-marker-svg polygon,
+    #${ROOT_ID} .th-corner-marker-svg polyline,
+    #${ROOT_ID} .th-corner-marker-svg line {
       fill: currentColor !important;
+      stroke: currentColor !important;
     }
 
     #${ROOT_ID} .th-festival-title-dot {

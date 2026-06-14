@@ -9,9 +9,11 @@ import {
 } from '../calendar-view-model';
 import { INSTANCE_KEY, MESSAGE_KNOWN_TAGS_PATH, ROOT_ID, SCRIPT_NAME, STYLE_ID } from '../constants';
 import { addDays, compareDatePoint, extractClockTimeText, formatDateKey, getWeekdayFromAnchor } from '../date';
+import { buildFestivalTagPreviewMarker } from '../festival-visual';
 import {
   applyFixedEventIndexRowOperationsToYaml,
   applyFixedEventIndexStructuredEditsToYaml,
+  collectMonthAliasStructuredEdits,
   createEmptyFixedEventIndexTemplateInCharacterWorldbook,
   getDefaultFixedEventIndexEditorSelection,
   loadFixedEventIndexEditorPreview,
@@ -19,6 +21,7 @@ import {
   renameFixedEventIndexRowIdInYaml,
   renderFixedEventIndexEditorPreview,
   saveFixedEventIndexYamlToWorldbook,
+  serializeFixedEventIndexDraft,
   validateFixedEventIndexDraft,
   type FixedEventIndexEditableRowScope,
   type FixedEventBookDefaultsStructuredEdit,
@@ -28,6 +31,7 @@ import {
   type FixedEventGroupStructuredEdit,
   type FixedEventIndexEditorPreviewModel,
   type FixedEventMaterialStructuredEdit,
+  type FixedEventMonthAliasDraft,
   type FixedEventMonthAliasStructuredEdit,
   type FixedEventReminderDefaultsStructuredEdit,
   type FixedEventStageStructuredEdit,
@@ -40,6 +44,7 @@ import { loadCalendarDatasetFromRuntimeWorldbook } from '../runtime-ui-dataset';
 import { getCalendarWorldLocationPath, getCalendarWorldTimePath } from '../runtime-config';
 import { getContrastRatio, isValidHexColor, TAG_COLOR_PALETTE } from './helpers/color';
 import { createRenderMarkdownContent, escapeHtml } from './helpers/markdown';
+import { renderUtilityIcon } from './icons';
 import {
   archiveCompletedEvent,
   ensureCalendarLatestMessageVariableStore,
@@ -154,6 +159,21 @@ const state: WidgetState = {
 
 let monthAliases: CalendarMonthAliasRecord[] = [];
 
+const FALLBACK_FIXED_EVENT_MONTH_ALIASES: FixedEventMonthAliasDraft[] = [
+  { month: 1, name: '苏醒', season: '初春', unknownFields: {} },
+  { month: 2, name: '新芽', season: '初春', unknownFields: {} },
+  { month: 3, name: '风信', season: '初春', unknownFields: {} },
+  { month: 4, name: '辉光', season: '盛夏', unknownFields: {} },
+  { month: 5, name: '繁盛', season: '盛夏', unknownFields: {} },
+  { month: 6, name: '旅人', season: '盛夏', unknownFields: {} },
+  { month: 7, name: '丰收', season: '金秋', unknownFields: {} },
+  { month: 8, name: '赤叶', season: '金秋', unknownFields: {} },
+  { month: 9, name: '静谧', season: '金秋', unknownFields: {} },
+  { month: 10, name: '霜降', season: '寒冬', unknownFields: {} },
+  { month: 11, name: '长夜', season: '寒冬', unknownFields: {} },
+  { month: 12, name: '星见', season: '寒冬', unknownFields: {} },
+];
+
 const BALL_POSITION_VAR_KEY = 'calendar_float_ball_position';
 const BALL_DEFAULT_SIZE = 60;
 const BALL_VIEWPORT_MARGIN = 8;
@@ -194,7 +214,6 @@ const uiState = {
   tagColorDialogOpen: false,
   selectedTagColorTag: '主线',
   tagColorFeedback: '',
-  mvuPathSettingsOpen: false,
   mvuPathSettingsFeedback: '',
   fixedEventIndexEditorOpen: false,
   fixedEventIndexEditorModel: null as FixedEventIndexEditorPreviewModel | null,
@@ -408,15 +427,14 @@ function ensureRoot(): void {
             <button type="button" class="th-tool-menu-item" data-action="toggle-theme" role="menuitem">主题颜色</button>
             <button type="button" class="th-tool-menu-item" data-action="open-tag-color-panel" role="menuitem">标签颜色</button>
             <button type="button" class="th-tool-menu-item" data-action="open-fixed-event-index-editor" role="menuitem">固定事件索引</button>
-            <button type="button" class="th-tool-menu-item" data-action="open-mvu-path-settings" role="menuitem">MVU 路径设置</button>
-            <button type="button" class="th-tool-menu-item th-connectivity-button" data-action="managed-worldbook-connectivity" data-state="unknown" role="menuitem" aria-label="规则检查">
-              <span class="th-connectivity-text">规则检查</span>
+            <button type="button" class="th-tool-menu-item th-connectivity-button" data-action="open-mvu-settings" data-state="unknown" role="menuitem" aria-label="MVU设定">
+              <span class="th-connectivity-text">MVU设定</span>
             </button>
           </div>
         </details>
-        <button type="button" class="th-btn" data-action="toggle-panel-fullscreen" title="全屏" aria-label="全屏" aria-pressed="false">□</button>
-        <button type="button" class="th-btn" data-action="reload" title="刷新" aria-label="刷新">↻</button>
-        <button type="button" class="th-btn" data-action="close" title="关闭" aria-label="关闭">×</button>
+        <button type="button" class="th-btn" data-action="toggle-panel-fullscreen" title="全屏" aria-label="全屏" aria-pressed="false">${renderUtilityIcon('maximize')}</button>
+        <button type="button" class="th-btn" data-action="reload" title="刷新" aria-label="刷新">${renderUtilityIcon('reload')}</button>
+        <button type="button" class="th-btn" data-action="close" title="关闭" aria-label="关闭">${renderUtilityIcon('close')}</button>
       </div>
       <div class="th-calendar-shell">
         <section class="th-calendar-main">
@@ -448,7 +466,6 @@ function ensureRoot(): void {
     </section>
     <dialog class="th-managed-worldbook-dialog-layer" data-role="managed-worldbook-dialog-layer" aria-hidden="true"></dialog>
     <dialog class="th-managed-worldbook-dialog-layer" data-role="tag-color-dialog-layer" aria-hidden="true"></dialog>
-    <dialog class="th-managed-worldbook-dialog-layer" data-role="mvu-path-settings-layer" aria-hidden="true"></dialog>
     <dialog class="th-managed-worldbook-dialog-layer" data-role="fixed-event-index-editor-layer" aria-hidden="true"></dialog>
   `;
 
@@ -585,7 +602,7 @@ function updatePanelFullscreenButton(): void {
     return;
   }
   const fullscreen = uiState.panelFullscreen;
-  button.textContent = fullscreen ? '↙' : '□';
+  button.innerHTML = renderUtilityIcon(fullscreen ? 'minimize' : 'maximize');
   button.title = fullscreen ? '还原窗口' : '全屏';
   button.setAttribute('aria-label', fullscreen ? '还原窗口' : '全屏');
   button.setAttribute('aria-pressed', fullscreen ? 'true' : 'false');
@@ -617,7 +634,7 @@ function buildManagedWorldbookSummaryLines(diagnostics: CalendarManagedWorldbook
 }
 
 /**
- * UI 入口只展示基础规则检查；完整来源诊断保留在控制台，避免弹窗把整本世界书摊出来。
+ * UI 入口展示 MVU 设定摘要；完整来源诊断保留在控制台，避免弹窗把整本世界书摊出来。
  */
 function getConnectivityButtonCopy(diagnostics: CalendarManagedWorldbookDiagnostics): {
   text: string;
@@ -626,12 +643,12 @@ function getConnectivityButtonCopy(diagnostics: CalendarManagedWorldbookDiagnost
   const installedText = `${diagnostics.managedEntryCount}/${diagnostics.expectedManagedEntryCount}`;
   const stateText =
     diagnostics.connectivity === 'checking'
-      ? '正在检查世界书基础规则'
+      ? '正在检查 MVU 设定'
       : diagnostics.connectivity === 'error'
-        ? `世界书基础规则检查失败；当前 ${installedText}`
-        : `检查月历基础规则；当前 ${installedText}`;
+        ? `MVU 设定检查失败；当前 ${installedText}`
+        : `检查 MVU 设定；当前 ${installedText}`;
   return {
-    text: uiState.managedWorldbookBusy ? '检查中…' : '规则检查',
+    text: uiState.managedWorldbookBusy ? '检查中…' : 'MVU设定',
     title: stateText,
   };
 }
@@ -641,7 +658,7 @@ function updateManagedWorldbookButton(): void {
     return;
   }
   const diagnostics = getCalendarManagedWorldbookDiagnostics();
-  const button = refs.root.querySelector<HTMLButtonElement>('[data-action="managed-worldbook-connectivity"]');
+  const button = refs.root.querySelector<HTMLButtonElement>('[data-action="open-mvu-settings"]');
   refs.root.dataset.managedWorldbookConnectivity = diagnostics.connectivity;
   if (!button) {
     return;
@@ -688,7 +705,40 @@ function closeManagedWorldbookDialog(): void {
   uiState.managedWorldbookDialogOpen = false;
   uiState.managedWorldbookDialogMode = null;
   uiState.managedWorldbookDialogDiagnostics = null;
+  uiState.mvuPathSettingsFeedback = '';
   renderShell();
+}
+
+function buildMvuPathSettingsPanelHtml(): string {
+  const saved = readCalendarRuntimePathSettings();
+  const effectiveTimePath = getCalendarWorldTimePath();
+  const effectiveLocationPath = getCalendarWorldLocationPath();
+  const feedbackHtml = uiState.mvuPathSettingsFeedback
+    ? `<div class="th-tag-color-feedback">${escapeHtml(uiState.mvuPathSettingsFeedback)}</div>`
+    : '';
+  return `
+    <div class="th-mvu-path-dialog">
+      <div class="th-managed-worldbook-dialog-title">MVU 路径</div>
+      <div class="th-managed-worldbook-dialog-desc">只影响当前聊天；留空时使用固定事件索引或 Profile 默认值。</div>
+      ${feedbackHtml}
+      <div class="th-mvu-path-form">
+        <label>
+          <span>时间路径</span>
+          <input type="text" data-role="mvu-path-time" value="${escapeHtml(saved.mvuTimePath ?? '')}" placeholder="${escapeHtml(effectiveTimePath)}" autocomplete="off" />
+          <small>当前生效：${escapeHtml(effectiveTimePath)}</small>
+        </label>
+        <label>
+          <span>地点路径</span>
+          <input type="text" data-role="mvu-path-location" value="${escapeHtml(saved.mvuLocationPath ?? '')}" placeholder="${escapeHtml(effectiveLocationPath)}" autocomplete="off" />
+          <small>当前生效：${escapeHtml(effectiveLocationPath)}</small>
+        </label>
+      </div>
+      <div class="th-managed-worldbook-action-row is-primary">
+        <button type="button" class="th-btn" data-action="reset-mvu-path-settings">清除自定义</button>
+        <button type="button" class="th-btn th-primary-btn" data-action="save-mvu-path-settings">保存路径</button>
+      </div>
+    </div>
+  `;
 }
 
 function renderManagedWorldbookDialog(): void {
@@ -713,25 +763,37 @@ function renderManagedWorldbookDialog(): void {
     .join('');
   const uninstallDisabled = diagnostics.managedEntryCount <= 0;
 
-  let title = '规则检查';
+  let title = 'MVU设定';
   let description =
-    '这里只检查月历需要的两条基础规则。重装会写回上面显示的位置；如果没有找到旧位置，就写入当前角色绑定世界书。';
-  let bodyHtml = '';
+    '这里检查月历需要的两条基础规则，也可以调整当前聊天读取 MVU 时间和地点的路径。';
+  let bodyHtml = buildMvuPathSettingsPanelHtml();
   let actionHtml = [
-    '<div class="th-managed-worldbook-action-row is-primary">',
+    '<details class="th-mvu-maintenance-details">',
+    '<summary><span>高级维护</span><small>搬运、迁移、重装或卸载托管规则</small></summary>',
+    '<div class="th-mvu-maintenance-body">',
+    '<div class="th-mvu-action-group th-mvu-action-group--tools">',
+    '<div class="th-mvu-action-copy"><strong>世界书工具</strong><span>把托管规则搬走，或把旧变量迁移到现在的结构。</span></div>',
+    '<div class="th-managed-worldbook-action-row th-mvu-action-buttons">',
     '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-menu-export-external">搬运到其他世界书</button>',
     `<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-menu-migrate-legacy" ${uiState.managedWorldbookBusy ? 'disabled' : ''}>旧变量迁移</button>`,
-    '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-dialog-return">关闭</button>',
     '</div>',
-    '<div class="th-managed-worldbook-action-row is-secondary th-managed-worldbook-dev-actions">',
+    '</div>',
+    '<div class="th-mvu-action-group th-mvu-action-group--danger">',
+    '<div class="th-mvu-action-copy"><strong>规则维护</strong><span>重装会覆盖托管规则；卸载会移除月历脚本写入的两条规则。</span></div>',
+    '<div class="th-managed-worldbook-action-row th-mvu-action-buttons">',
     '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-menu-reinstall">重装这两条规则</button>',
     `<button type="button" class="th-btn th-managed-worldbook-dialog-btn is-danger" data-action="managed-worldbook-menu-uninstall" ${uninstallDisabled ? 'disabled' : ''}>卸载这两条规则</button>`,
     '</div>',
+    '</div>',
+    '</div>',
+    '</details>',
+    '<button type="button" class="th-btn th-managed-worldbook-dialog-btn th-mvu-close-btn" data-action="managed-worldbook-dialog-return">关闭</button>',
   ].join('');
 
   if (uiState.managedWorldbookDialogMode === 'confirm-uninstall') {
     title = '确认卸载';
     description = '确定要卸载吗？只会删除月历脚本托管的两条基础规则，不会删除节庆、读物或正文来源。';
+    bodyHtml = '';
     actionHtml = [
       '<div class="th-managed-worldbook-action-row is-secondary">',
       '<button type="button" class="th-btn th-managed-worldbook-dialog-btn is-danger" data-action="managed-worldbook-confirm-uninstall">确认卸载</button>',
@@ -741,6 +803,7 @@ function renderManagedWorldbookDialog(): void {
   } else if (uiState.managedWorldbookDialogMode === 'confirm-reinstall') {
     title = '确认重装';
     description = `会重置两条基础规则：月历变量更新规则、${CALENDAR_VARIABLE_LIST_ENTRY_DISPLAY_NAME}。确定要继续吗？`;
+    bodyHtml = '';
     actionHtml = [
       '<div class="th-managed-worldbook-action-row is-primary">',
       '<button type="button" class="th-btn th-primary-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-confirm-reinstall">确认重装</button>',
@@ -815,7 +878,7 @@ function renderManagedWorldbookDialog(): void {
 
   layer.innerHTML = `
     <div class="th-managed-worldbook-dialog-backdrop"></div>
-    <section class="th-managed-worldbook-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+    <section class="th-managed-worldbook-dialog th-mvu-settings-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
       <div class="th-managed-worldbook-dialog-head">
         <div class="th-managed-worldbook-dialog-title">${escapeHtml(title)}</div>
         <div class="th-managed-worldbook-dialog-desc">${escapeHtml(description)}</div>
@@ -858,6 +921,10 @@ function renderManagedWorldbookDialog(): void {
   });
   bindClick('[data-action="managed-worldbook-confirm-export-external"]', () => {
     void confirmExternalManagedWorldbookInstall(layer);
+  });
+  bindClick('[data-action="reset-mvu-path-settings"]', resetMvuPathSettingsDialog);
+  bindClick('[data-action="save-mvu-path-settings"]', () => {
+    saveMvuPathSettingsDialog(layer);
   });
   bindClick('[data-action="managed-worldbook-select-all-move-candidates"]', () => {
     setExternalWorldbookMoveCandidateChecks(layer, true);
@@ -941,6 +1008,17 @@ function openTagColorDialog(): void {
   renderShell();
 }
 
+function renderTagColorPreviewIcon(svg: string, color: CalendarEventColorStyle): string {
+  const rawSvg = String(svg || '').trim();
+  const iconHtml =
+    rawSvg.startsWith('<svg') && rawSvg.endsWith('</svg>')
+      ? rawSvg
+          .replace(/<!--[\s\S]*?-->/g, '')
+          .replace('<svg ', '<svg class="th-tag-color-preview-svg" aria-hidden="true" focusable="false" ')
+      : '<span class="th-tag-color-preview-dot" aria-hidden="true"></span>';
+  return `<span class="th-tag-color-preview-icon" style="--th-chip-text: ${escapeHtml(color.text)};">${iconHtml}</span>`;
+}
+
 function renderTagColorDialog(): void {
   if (!refs.root) {
     return;
@@ -962,6 +1040,7 @@ function renderTagColorDialog(): void {
     : knownTags[0] || '主线';
   uiState.selectedTagColorTag = selectedTag;
   const selectedColor = policy.tagColors[selectedTag] ?? TAG_COLOR_PALETTE[0];
+  const previewMarker = buildFestivalTagPreviewMarker(selectedTag, selectedColor);
   const contrastRatio = getContrastRatio(selectedColor.background, selectedColor.text);
   const contrastWarning =
     contrastRatio !== null && contrastRatio < 4.5
@@ -997,7 +1076,11 @@ function renderTagColorDialog(): void {
         <div class="th-tag-color-tag-list" data-role="tag-color-tag-list">${tagButtons}</div>
         <div class="th-tag-color-editor">
           <div class="th-tag-color-current">
-            <span class="th-tag-color-preview" style="--th-chip-bg: ${escapeHtml(selectedColor.background)}; --th-chip-text: ${escapeHtml(selectedColor.text)}; --th-chip-border: ${escapeHtml(selectedColor.border || selectedColor.background)};">${escapeHtml(selectedTag)}</span>
+            <span class="th-tag-color-preview" style="--th-chip-bg: ${escapeHtml(selectedColor.background)}; --th-chip-text: ${escapeHtml(selectedColor.text)}; --th-chip-border: ${escapeHtml(selectedColor.border || selectedColor.background)};">
+              ${renderTagColorPreviewIcon(previewMarker.iconSvg, selectedColor)}
+              <span>${escapeHtml(selectedTag)}</span>
+            </span>
+            <span class="th-tag-color-preview-note">日历图标会跟随这个标签主题色</span>
           </div>
           ${contrastWarning}
           <div class="th-color-palette">${paletteButtons}</div>
@@ -1016,18 +1099,6 @@ function renderTagColorDialog(): void {
     </section>
   `;
   syncDialogLayerOpen(layer, true);
-}
-
-function closeMvuPathSettingsDialog(): void {
-  uiState.mvuPathSettingsOpen = false;
-  uiState.mvuPathSettingsFeedback = '';
-  renderShell();
-}
-
-function openMvuPathSettingsDialog(): void {
-  uiState.mvuPathSettingsOpen = true;
-  uiState.mvuPathSettingsFeedback = '';
-  renderShell();
 }
 
 function readMvuPathSettingsInputs(layer: HTMLElement): { mvuTimePath: string; mvuLocationPath: string } {
@@ -1051,64 +1122,6 @@ function resetMvuPathSettingsDialog(): void {
   void refreshDataset();
 }
 
-function renderMvuPathSettingsDialog(): void {
-  if (!refs.root) {
-    return;
-  }
-  const layer = refs.root.querySelector<HTMLElement>('[data-role="mvu-path-settings-layer"]');
-  if (!layer) {
-    return;
-  }
-  if (!uiState.mvuPathSettingsOpen) {
-    syncDialogLayerOpen(layer, false);
-    layer.innerHTML = '';
-    return;
-  }
-
-  const saved = readCalendarRuntimePathSettings();
-  const effectiveTimePath = getCalendarWorldTimePath();
-  const effectiveLocationPath = getCalendarWorldLocationPath();
-  const feedbackHtml = uiState.mvuPathSettingsFeedback
-    ? `<div class="th-tag-color-feedback">${escapeHtml(uiState.mvuPathSettingsFeedback)}</div>`
-    : '';
-
-  layer.innerHTML = `
-    <div class="th-managed-worldbook-dialog-backdrop" data-action="close-mvu-path-settings"></div>
-    <section class="th-managed-worldbook-dialog th-mvu-path-dialog" role="dialog" aria-modal="true" aria-label="MVU 路径设置">
-      <div class="th-managed-worldbook-dialog-head">
-        <div class="th-managed-worldbook-dialog-title">MVU 路径设置</div>
-        <div class="th-managed-worldbook-dialog-desc">只影响当前聊天；留空时使用固定事件索引或默认值。</div>
-      </div>
-      ${feedbackHtml}
-      <div class="th-mvu-path-form">
-        <label>
-          <span>时间路径</span>
-          <input type="text" data-role="mvu-path-time" value="${escapeHtml(saved.mvuTimePath ?? '')}" placeholder="${escapeHtml(effectiveTimePath)}" autocomplete="off" />
-          <small>当前生效：${escapeHtml(effectiveTimePath)}</small>
-        </label>
-        <label>
-          <span>地点路径</span>
-          <input type="text" data-role="mvu-path-location" value="${escapeHtml(saved.mvuLocationPath ?? '')}" placeholder="${escapeHtml(effectiveLocationPath)}" autocomplete="off" />
-          <small>当前生效：${escapeHtml(effectiveLocationPath)}</small>
-        </label>
-      </div>
-      <div class="th-managed-worldbook-dialog-actions">
-        <button type="button" class="th-btn" data-action="reset-mvu-path-settings">清除自定义</button>
-        <button type="button" class="th-btn th-primary-btn" data-action="save-mvu-path-settings">保存</button>
-        <button type="button" class="th-btn" data-action="close-mvu-path-settings">关闭</button>
-      </div>
-    </section>
-  `;
-  syncDialogLayerOpen(layer, true);
-  layer.querySelectorAll<HTMLElement>('[data-action="close-mvu-path-settings"]').forEach(button => {
-    button.addEventListener('click', closeMvuPathSettingsDialog);
-  });
-  layer.querySelector<HTMLElement>('[data-action="reset-mvu-path-settings"]')?.addEventListener('click', resetMvuPathSettingsDialog);
-  layer
-    .querySelector<HTMLElement>('[data-action="save-mvu-path-settings"]')
-    ?.addEventListener('click', () => saveMvuPathSettingsDialog(layer));
-}
-
 function createFixedEventIndexEditorLoadingModel(): FixedEventIndexEditorPreviewModel {
   return {
     loading: true,
@@ -1118,6 +1131,40 @@ function createFixedEventIndexEditorLoadingModel(): FixedEventIndexEditorPreview
     validation: null,
     errorMessage: '',
     saving: false,
+  };
+}
+
+function buildFixedEventMonthAliasesFromRuntime(): FixedEventMonthAliasDraft[] {
+  const runtimeAliases = monthAliases
+    .map(alias => ({
+      month: alias.month,
+      name: String(alias.label || '').trim(),
+      season: String(alias.season || '').trim() || undefined,
+      unknownFields: {},
+    }))
+    .filter(alias => alias.month >= 1 && alias.month <= 12 && alias.name);
+  return runtimeAliases.length > 0 ? runtimeAliases : FALLBACK_FIXED_EVENT_MONTH_ALIASES;
+}
+
+function hydrateFixedEventIndexMonthAliasesFromRuntime(
+  model: FixedEventIndexEditorPreviewModel,
+): FixedEventIndexEditorPreviewModel {
+  const runtimeAliases = buildFixedEventMonthAliasesFromRuntime();
+  if (!model.draft || model.draft.monthAliases.length > 0 || runtimeAliases.length === 0) {
+    return model;
+  }
+  const draft = {
+    ...model.draft,
+    monthAliases: runtimeAliases,
+    warnings: [...model.draft.warnings, '当前索引未写入月份别名，已自动回填 1-12 月；保存后会写回世界书。'],
+  };
+  return {
+    ...model,
+    draft,
+    validation: validateFixedEventIndexDraft(draft),
+    yamlPreview: serializeFixedEventIndexDraft(draft),
+    saveMessage: model.saveMessage ?? '已自动回填月份别名，尚未保存到世界书',
+    saveState: model.saveState ?? 'warning',
   };
 }
 
@@ -1148,7 +1195,7 @@ async function openFixedEventIndexEditorDialog(): Promise<void> {
   uiState.fixedEventIndexEditorSelection = null;
   uiState.fixedEventIndexEditorModel = createFixedEventIndexEditorLoadingModel();
   renderShell();
-  const model = await loadFixedEventIndexEditorPreview();
+  const model = hydrateFixedEventIndexMonthAliasesFromRuntime(await loadFixedEventIndexEditorPreview());
   if (!uiState.fixedEventIndexEditorOpen) {
     return;
   }
@@ -1316,11 +1363,13 @@ function collectFixedEventStructuredEdits(layer: HTMLElement): {
           summaryInjectDepth: readFixedEventEditField(bookDefaultsRow, 'summaryInjectDepth'),
         }
       : undefined,
-    monthAliases: monthAliasRows.map(row => ({
-      month: readRequiredFixedEventEditField(row, 'month'),
-      name: readRequiredFixedEventEditField(row, 'name'),
-      season: readFixedEventEditField(row, 'season'),
-    })),
+    monthAliases: collectMonthAliasStructuredEdits(
+      monthAliasRows.map(row => ({
+        month: readRequiredFixedEventEditField(row, 'month'),
+        name: readRequiredFixedEventEditField(row, 'name'),
+        season: readFixedEventEditField(row, 'season'),
+      })),
+    ),
     groups: groupRows.map(row => ({
       id: String(row.dataset.id ?? '').trim(),
       name: readRequiredFixedEventEditField(row, 'name'),
@@ -1825,13 +1874,13 @@ function renderFixedEventIndexEditorDialog(): void {
       syncFixedEventIndexStructuredEditorToYamlPreview(false);
       uiState.fixedEventIndexEditorSelection = readFixedEventIndexSelectionFromElement(button);
       renderShell();
-      restoreFixedEventIndexEditorScrollSnapshot(scrollSnapshot);
+      restoreFixedEventIndexEditorScrollSnapshot({ ...scrollSnapshot, detailTop: 0 });
     };
   });
   layer
     .querySelectorAll<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >('[data-role="fixed-event-edit-row"] input, [data-role="fixed-event-edit-row"] textarea, [data-role="fixed-event-edit-row"] select, [data-role="fixed-event-stage-row"] input, [data-role="fixed-event-stage-row"] textarea, [data-role="fixed-event-stage-row"] select')
+    >('[data-role="fixed-event-edit-row"] input, [data-role="fixed-event-edit-row"] textarea, [data-role="fixed-event-edit-row"] select, [data-role="fixed-event-stage-row"] input, [data-role="fixed-event-stage-row"] textarea, [data-role="fixed-event-stage-row"] select, [data-role="fixed-event-defaults-row"] input, [data-role="fixed-event-defaults-row"] textarea, [data-role="fixed-event-defaults-row"] select, [data-role="fixed-event-reminder-defaults-row"] input, [data-role="fixed-event-reminder-defaults-row"] textarea, [data-role="fixed-event-reminder-defaults-row"] select, [data-role="fixed-event-book-defaults-row"] input, [data-role="fixed-event-book-defaults-row"] textarea, [data-role="fixed-event-book-defaults-row"] select, [data-role="fixed-event-month-alias-row"] input, [data-role="fixed-event-month-alias-row"] textarea, [data-role="fixed-event-month-alias-row"] select')
     .forEach(input => {
       input.oninput = () => {
         if (input.dataset.field === 'recurrenceIntervalYears') {
@@ -2782,7 +2831,6 @@ function renderShell(): void {
   updateManagedWorldbookButton();
   renderManagedWorldbookDialog();
   renderTagColorDialog();
-  renderMvuPathSettingsDialog();
   renderFixedEventIndexEditorDialog();
   refs.root.querySelectorAll<HTMLElement>('[data-action="switch-tab"]').forEach(button => {
     const tab = button.getAttribute('data-tab') || '';
@@ -2905,7 +2953,7 @@ function setOpen(open: boolean): void {
     uiState.managedWorldbookDialogMode = null;
     uiState.managedWorldbookDialogDiagnostics = null;
     uiState.tagColorDialogOpen = false;
-    uiState.mvuPathSettingsOpen = false;
+    uiState.mvuPathSettingsFeedback = '';
   }
   renderShell();
   if (open) {
@@ -3513,7 +3561,6 @@ function bindEvents(): void {
     },
     onOpenTagColorPanel: openTagColorDialog,
     onCloseTagColorPanel: closeTagColorDialog,
-    onOpenMvuPathSettings: openMvuPathSettingsDialog,
     onOpenFixedEventIndexEditor: openFixedEventIndexEditorDialog,
     onManagedWorldbookClick: handleManagedWorldbookClick,
     onSwitchTab: switchSidebarTab,

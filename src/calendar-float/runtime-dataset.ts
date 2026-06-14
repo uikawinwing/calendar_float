@@ -31,9 +31,11 @@ import {
 } from './storage';
 import type {
   ArchivedCalendarEvent,
+  CalendarArchivePolicy,
   CalendarBookRecord,
   CalendarDataset,
   CalendarEventRecord,
+  CalendarEventColorStyle,
   CalendarMonthAliasRecord,
   DatePoint,
   FestivalRecord,
@@ -67,6 +69,25 @@ function readFestivalLocationKeywords(festival: CalendarRuntimeFestivalEntry): s
     .map(item => String(item || '').trim())
     .filter(Boolean)
     .filter((item, index, array) => array.indexOf(item) === index);
+}
+
+function resolveFestivalHashtagColor(args: {
+  festivalName: string;
+  groupId: string;
+  groupName: string;
+  locationKeywords: string[];
+  tagColors: CalendarArchivePolicy['tagColors'];
+}): CalendarEventColorStyle | undefined {
+  const candidates = [args.festivalName, args.groupName, args.groupId, ...args.locationKeywords]
+    .map(value => String(value || '').trim())
+    .filter(Boolean);
+  for (const candidate of candidates) {
+    const color = args.tagColors[candidate];
+    if (color) {
+      return color;
+    }
+  }
+  return undefined;
 }
 
 function parseEventTextToPoint(text: string, now: DatePoint, monthAliases: CalendarMonthAliasRecord[] = []): DatePoint | null {
@@ -247,6 +268,7 @@ function buildRuntimeStageRecord(
 async function buildRuntimeFestivalRecord(
   festival: CalendarRuntimeFestivalEntry,
   now: DatePoint,
+  tagColors: CalendarArchivePolicy['tagColors'],
 ): Promise<FestivalRecord | null> {
   const dateRange = buildFestivalRange(festival, now);
   if (!dateRange) {
@@ -262,6 +284,13 @@ async function buildRuntimeFestivalRecord(
   const groupId = String(festival.元数据?.分组 ?? '').trim();
   const groupName = String(festival.元数据?.分组名称 ?? '').trim();
   const groupIconSvgFilename = String(festival.元数据?.分组图标 ?? '').trim();
+  const tagColor = resolveFestivalHashtagColor({
+    festivalName: festival.名称,
+    groupId,
+    groupName,
+    locationKeywords,
+    tagColors,
+  });
   const stages = (festival.阶段 ?? [])
     .filter(stage => stage.启用 !== false)
     .map((stage, index) => buildRuntimeStageRecord(festival, stage, now, index))
@@ -288,6 +317,7 @@ async function buildRuntimeFestivalRecord(
       ...(groupId ? { 分组: groupId, groupId } : {}),
       ...(groupName ? { 分组名称: groupName, groupName } : {}),
       ...(groupIconSvgFilename ? { 分组图标: groupIconSvgFilename, groupIconSvgFilename } : {}),
+      ...(tagColor ? { tagColor, hashtagColor: tagColor } : {}),
       introWarnings: intro.警告,
       original: festival,
     },
@@ -323,7 +353,7 @@ export async function loadCalendarDatasetFromRuntimeWorldbook(): Promise<Calenda
 
   const runtimeSources = resolveCalendarRuntimeWorldbookSources(archive.sources);
   const runtimeFestivals = await Promise.all(
-    (runtimeIndex.索引?.节庆 ?? []).map(item => buildRuntimeFestivalRecord(item, now)),
+    (runtimeIndex.索引?.节庆 ?? []).map(item => buildRuntimeFestivalRecord(item, now, archive.policy.tagColors)),
   );
   const runtimeBooks = await Promise.all(
     (runtimeIndex.索引?.书籍 ?? []).map(item => buildRuntimeBookRecord(item, now)),

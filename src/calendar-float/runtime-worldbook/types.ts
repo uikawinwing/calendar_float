@@ -152,6 +152,7 @@ export interface CalendarRuntimeDefaults {
 }
 
 export interface CalendarRuntimeIndex {
+  Profile?: string;
   版本?: number;
   说明?: string;
   索引条目名?: string;

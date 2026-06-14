@@ -19,7 +19,6 @@ export interface BindCalendarWidgetEventsOptions {
   onToggleFestivalScope: () => void;
   onOpenTagColorPanel: () => void;
   onCloseTagColorPanel: () => void;
-  onOpenMvuPathSettings: () => void;
   onOpenFixedEventIndexEditor: () => void | Promise<void>;
   onManagedWorldbookClick: () => void | Promise<void>;
   onSwitchTab: (tab: SidebarTab) => void;
@@ -241,9 +240,9 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     options.onCloseTagColorPanel();
   });
 
-  $(refs.root).on('click.calendar-float', '[data-action="open-mvu-path-settings"]', event => {
+  $(refs.root).on('click.calendar-float', '[data-action="open-mvu-settings"]', event => {
     (event.currentTarget as HTMLElement).closest<HTMLDetailsElement>('.th-tools-menu')?.removeAttribute('open');
-    options.onOpenMvuPathSettings();
+    void options.onManagedWorldbookClick();
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="open-fixed-event-index-editor"]', event => {
@@ -251,14 +250,9 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     void options.onOpenFixedEventIndexEditor();
   });
 
-  $(refs.root).on('click.calendar-float', '[data-action="managed-worldbook-connectivity"]', event => {
-    (event.currentTarget as HTMLElement).closest<HTMLDetailsElement>('.th-tools-menu')?.removeAttribute('open');
-    void options.onManagedWorldbookClick();
-  });
-
   $(refs.root).on('click.calendar-float', '.th-tool-menu-item', event => {
     const currentAction = String((event.currentTarget as HTMLElement).getAttribute('data-action') || '');
-    if (currentAction === 'managed-worldbook-connectivity') {
+    if (currentAction === 'open-mvu-settings') {
       return;
     }
     (event.currentTarget as HTMLElement).closest<HTMLDetailsElement>('.th-tools-menu')?.removeAttribute('open');

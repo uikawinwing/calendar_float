@@ -362,6 +362,19 @@ export const CALENDAR_WIDGET_RESPONSIVE_STYLE = `
       #${ROOT_ID} .th-index-editor-edit-card-actions .th-btn {
         width: 100%;
       }
+      #${ROOT_ID} .th-index-editor-settings-page {
+        gap: 12px;
+      }
+      #${ROOT_ID} .th-index-editor-settings-block {
+        padding: 10px;
+        border-radius: 14px;
+      }
+      #${ROOT_ID} .th-index-editor-month-alias-list {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      #${ROOT_ID} .th-index-editor-month-alias-list .th-index-editor-edit-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
       #${ROOT_ID} .th-worldbook-picker-list,
       #${ROOT_ID} .th-worldbook-move-list,
       #${ROOT_ID} .th-managed-source-list {
@@ -370,6 +383,47 @@ export const CALENDAR_WIDGET_RESPONSIVE_STYLE = `
       }
       #${ROOT_ID} .th-managed-worldbook-action-row {
         grid-template-columns: minmax(0, 1fr);
+      }
+      #${ROOT_ID} .th-mvu-settings-dialog {
+        gap: 12px;
+        padding: 14px;
+      }
+      #${ROOT_ID} .th-mvu-settings-dialog .th-managed-worldbook-dialog-summary {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+      }
+      #${ROOT_ID} .th-mvu-settings-dialog .th-managed-worldbook-dialog-summary-item {
+        min-height: 0;
+        padding: 10px 12px;
+      }
+      #${ROOT_ID} .th-mvu-path-dialog {
+        padding: 14px;
+        border-radius: 16px;
+      }
+      #${ROOT_ID} .th-mvu-path-dialog .th-managed-worldbook-action-row {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      #${ROOT_ID} .th-mvu-action-group {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px;
+        padding: 12px;
+      }
+      #${ROOT_ID} .th-mvu-action-copy {
+        gap: 2px;
+      }
+      #${ROOT_ID} .th-mvu-action-buttons {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      #${ROOT_ID} .th-mvu-action-buttons .th-managed-worldbook-dialog-btn,
+      #${ROOT_ID} .th-mvu-close-btn {
+        width: 100%;
+        min-height: 42px;
+      }
+      #${ROOT_ID} .th-mvu-maintenance-details > summary {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      #${ROOT_ID} .th-mvu-maintenance-details > summary::after {
+        justify-self: start;
       }
       #${ROOT_ID} .th-tag-color-dialog {
         display: flex;

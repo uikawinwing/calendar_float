@@ -518,8 +518,19 @@ export const CALENDAR_WIDGET_OVERRIDE_STYLE = `
     }
 
     #${ROOT_ID} .th-festival-title-svg path,
-    #${ROOT_ID} .th-corner-marker-svg path {
+    #${ROOT_ID} .th-festival-title-svg circle,
+    #${ROOT_ID} .th-festival-title-svg rect,
+    #${ROOT_ID} .th-festival-title-svg polygon,
+    #${ROOT_ID} .th-festival-title-svg polyline,
+    #${ROOT_ID} .th-festival-title-svg line,
+    #${ROOT_ID} .th-corner-marker-svg path,
+    #${ROOT_ID} .th-corner-marker-svg circle,
+    #${ROOT_ID} .th-corner-marker-svg rect,
+    #${ROOT_ID} .th-corner-marker-svg polygon,
+    #${ROOT_ID} .th-corner-marker-svg polyline,
+    #${ROOT_ID} .th-corner-marker-svg line {
       fill: currentColor !important;
+      stroke: currentColor !important;
     }
 
     #${ROOT_ID} .th-festival-title-dot {
@@ -1125,6 +1136,76 @@ export const CALENDAR_WIDGET_OVERRIDE_STYLE = `
     #${ROOT_ID} .th-main-head {
       min-height: 52px;
       padding: 0 18px;
+    }
+
+    #${ROOT_ID} .th-calendar-side {
+      grid-template-rows: 52px 50px minmax(0, 1fr) !important;
+    }
+
+    #${ROOT_ID} .th-side-head {
+      grid-row: 1 !important;
+      grid-column: 1 / -1 !important;
+      min-height: 52px !important;
+      height: 52px !important;
+      padding: 0 154px 0 18px !important;
+      display: flex !important;
+      align-items: center !important;
+      border-bottom: 0 !important;
+      background: transparent !important;
+      pointer-events: auto !important;
+      position: relative !important;
+      z-index: 3 !important;
+    }
+
+    #${ROOT_ID} .th-side-head-copy {
+      display: flex !important;
+      align-items: center !important;
+      min-height: 52px !important;
+      height: 52px !important;
+    }
+
+    #${ROOT_ID} .th-side-title {
+      line-height: 1 !important;
+      transform: translateY(1px);
+    }
+
+    #${ROOT_ID} .th-sidebar-tabs {
+      grid-row: 2 !important;
+      grid-column: 1 / -1 !important;
+      min-height: 50px !important;
+      height: 50px !important;
+      padding: 5px 16px !important;
+      display: grid !important;
+      grid-template-columns: minmax(118px, 1fr) minmax(92px, 0.85fr) 40px 40px !important;
+      gap: 10px !important;
+      align-items: center !important;
+      border-bottom: 1px solid rgba(155, 128, 84, 0.1) !important;
+      position: relative !important;
+      z-index: 2 !important;
+    }
+
+    #${ROOT_ID} .th-side-body {
+      grid-row: 3 !important;
+      grid-column: 1 / -1 !important;
+    }
+
+    #${ROOT_ID} .th-sidebar-tabs .th-tab-button,
+    #${ROOT_ID} .th-sidebar-tabs .th-side-search-btn,
+    #${ROOT_ID} .th-sidebar-tabs .th-tab-add-button {
+      height: 40px !important;
+      min-height: 40px !important;
+      align-self: center !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+
+    #${ROOT_ID} .th-sidebar-tabs .th-side-search-btn,
+    #${ROOT_ID} .th-sidebar-tabs .th-tab-add-button {
+      width: 40px !important;
+      min-width: 40px !important;
+      padding: 0 !important;
+      flex: 0 0 40px !important;
     }
 
     #${ROOT_ID} [data-role="month-grid"] {
