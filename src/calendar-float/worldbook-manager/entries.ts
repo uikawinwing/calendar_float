@@ -65,6 +65,12 @@ export function isManagedWorldbookEntry(entry: Pick<WorldbookEntry, 'name' | 'ex
 
 export function readManagedEntry(entries: WorldbookEntry[], entryName: string): WorldbookEntry | undefined {
   const normalizedEntryName = normalizeEntryName(entryName);
+  if (isUpdateRulesEntryName(normalizedEntryName)) {
+    return entries.find(entry => isUpdateRulesEntryName(entry.name));
+  }
+  if (isVariableListEntryName(normalizedEntryName)) {
+    return entries.find(entry => isVariableListEntryName(entry.name));
+  }
   return entries.find(entry => normalizeEntryName(entry.name) === normalizedEntryName);
 }
 

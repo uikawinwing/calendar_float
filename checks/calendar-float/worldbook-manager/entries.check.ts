@@ -3,6 +3,7 @@ import {
   hasExpectedManagedEntries,
   isManagedWorldbookEntry,
   mergeManagedEntry,
+  readManagedEntry,
   readVariableListEntry,
 } from '../../../src/calendar-float/worldbook-manager/entries';
 
@@ -68,6 +69,19 @@ function testExpectedEntriesAcceptProfileDecoratedNames(): void {
   );
 }
 
+function testReadManagedEntryResolvesUpdateRulesBySemanticName(): void {
+  const entries = [
+    createEntry('[DLC][扩展][月历球][月历变量更新规则][mvu_update]'),
+    createEntry('[月历球][当前月历内容展示]'),
+  ];
+  const updateRulesEntry = readManagedEntry(entries, '[mvu_update][月历球][月历变量更新规则]');
+
+  assert(
+    updateRulesEntry?.name === '[DLC][扩展][月历球][月历变量更新规则][mvu_update]',
+    '用通用更新规则名读取时，也应该识别 mvu_update 在后缀的命定之诗命名',
+  );
+}
+
 function testMergeManagedEntryPreservesNestedWorldbookShape(): void {
   const merged = mergeManagedEntry(
     createEntry('foo', {
@@ -97,6 +111,7 @@ function main(): void {
   testIsManagedWorldbookEntryRecognizesMarkerAndPrefix();
   testExpectedEntriesAcceptGenericShortNames();
   testExpectedEntriesAcceptProfileDecoratedNames();
+  testReadManagedEntryResolvesUpdateRulesBySemanticName();
   testMergeManagedEntryPreservesNestedWorldbookShape();
   console.log('entries.check.ts OK');
 }
