@@ -13,6 +13,7 @@ import {
   type FixedEventKeywordGroupDraft,
   type FixedEventMaterialDraft,
   type FixedEventMonthAliasDraft,
+  type FixedEventProfileDraft,
   type FixedEventReminderDefaultsDraft,
   type FixedEventReminderDraft,
   type FixedEventStageDraft,
@@ -111,6 +112,42 @@ function parseKeywordGroups(source: Record<string, unknown>): FixedEventKeywordG
     });
   });
   return groups;
+}
+
+function parseProfile(root: Record<string, unknown>): FixedEventProfileDraft {
+  const settings = readObject(root, ['Profile设置']) ?? {};
+  const paths = readObject(settings, ['paths', '路径']) ?? {};
+  const date = readObject(settings, ['date', '日期']) ?? {};
+  return {
+    id: toText(readField(root, ['Profile'])) || undefined,
+    settings: {
+      label: toText(readField(settings, ['label', '名称', '显示名称'])) || undefined,
+      paths: {
+        worldTime: toText(readField(paths, ['worldTime', 'mvu时间路径', 'mvuTimePath'])) || undefined,
+        worldLocation: toText(readField(paths, ['worldLocation', 'mvu地点路径', 'mvuLocationPath'])) || undefined,
+        unknownFields: pickUnknownFields(paths, [
+          'worldTime',
+          'mvu时间路径',
+          'mvuTimePath',
+          'worldLocation',
+          'mvu地点路径',
+          'mvuLocationPath',
+        ]),
+      },
+      date: {
+        eraName: toText(readField(date, ['eraName', '纪元名', '纪元'])) || undefined,
+        useChineseNumeralYear: toBoolean(readField(date, ['useChineseNumeralYear', '中文数字年份'])),
+        unknownFields: pickUnknownFields(date, [
+          'eraName',
+          '纪元名',
+          '纪元',
+          'useChineseNumeralYear',
+          '中文数字年份',
+        ]),
+      },
+      unknownFields: pickUnknownFields(settings, ['label', '名称', '显示名称', 'paths', '路径', 'date', '日期']),
+    },
+  };
 }
 
 function parseContentRef(source: unknown): FixedEventContentRefDraft {
@@ -653,6 +690,7 @@ export function parseFixedEventIndexDraft(content: string, source: FixedEventInd
     canSave: false,
     saveBlockedReasons: [],
     warnings,
+    profile: parseProfile(root),
     metadata: {
       version: toVersion(readField(root, ['版本', 'version'])),
       description: toText(readField(root, ['说明', 'description'])) || undefined,
@@ -685,6 +723,8 @@ export function parseFixedEventIndexDraft(content: string, source: FixedEventInd
       'version',
       '说明',
       'description',
+      'Profile',
+      'Profile设置',
       '默认设置',
       'defaults',
       '提醒默认值',

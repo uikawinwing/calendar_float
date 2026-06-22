@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import { SCRIPT_NAME } from './constants';
-import { getCalendarWorldTimePath } from './runtime-config';
+import { getCalendarWorldTimePath } from './runtime-worldbook/config';
 import { ensureMvuReady, syncArchiveFromMvuVariableDiff } from './storage';
 
 let stopMvuUpdateListener: (() => void) | null = null;

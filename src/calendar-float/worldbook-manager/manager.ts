@@ -5,48 +5,62 @@
  */
 import { SCRIPT_NAME } from '../constants';
 import {
-  buildCalendarUpdateRulesEntryContent,
-  buildCalendarVariableListEntryContent,
-} from './content';
-import {
   inspectCalendarRuntimeWorldbookSummary,
   listCalendarRuntimeWorldbookMoveCandidates,
-  type CalendarRuntimeWorldbookMoveCandidate,
 } from '../runtime-worldbook';
-import { getLegacyCalendarVariableListEntryName } from '../storage/legacy-calendar-path';
+import {
+  CALENDAR_MANAGED_WORLDBOOK_VERSION,
+  MANAGED_ENTRY_PREFIX,
+  UPDATE_RULES_ENTRY_NAME,
+  VARIABLE_LIST_ENTRY_DISPLAY_NAME,
+  VARIABLE_LIST_ENTRY_NAME,
+  buildManagedWorldbookEntries,
+  hasExpectedManagedEntries,
+  isManagedWorldbookEntry,
+  readManagedEntry,
+  readVariableListEntry,
+  type ManagedWorldbookEntrySeed,
+} from './entries';
+import {
+  applyManagedRuntimeSummary,
+  applyManagedSourceCandidates,
+  clearManagedWorldbookDiagnosticsError,
+  createDefaultManagedWorldbookDiagnostics,
+  deriveManagedEntryDiagnostics,
+  setManagedWorldbookDiagnosticsError,
+  type CalendarManagedWorldbookDiagnostics,
+} from './diagnostics';
+import {
+  buildManagedWorldbookSearchChain,
+  dedupeManagedWorldbookNames,
+  normalizeManagedWorldbookName,
+  resolveManagedWorldbookTarget,
+  type ManagedWorldbookTargetCandidate,
+  type ManagedWorldbookTargetMode,
+} from './targeting';
+import {
+  buildManagedBackendMoveCandidates,
+  cloneMoveCandidateEntry,
+  mapRuntimeMoveCandidate,
+  mergeTransferredEntry,
+  planSourceEntryRemovals,
+  type CalendarWorldbookMoveCandidate,
+} from './transfer';
 
-const MANAGED_WORLDBOOK_MARKER = 'calendar_float_character_worldbook';
-const MANAGED_ENTRY_PREFIX = '[DLC][扩展][月历球]';
-const LEGACY_META_ENTRY_NAME = `${MANAGED_ENTRY_PREFIX}[meta]manifest`;
-const UPDATE_RULES_ENTRY_NAME = `[mvu_update]${MANAGED_ENTRY_PREFIX}[月历变量更新规则]`;
-const LEGACY_VARIABLE_LIST_ENTRY_NAME = getLegacyCalendarVariableListEntryName(MANAGED_ENTRY_PREFIX);
-const VARIABLE_LIST_ENTRY_NAME = `${MANAGED_ENTRY_PREFIX}[当前月历内容展示]`;
-const VARIABLE_LIST_ENTRY_DISPLAY_NAME = '当前月历内容展示';
 const MANAGED_WORLDBOOK_STORAGE_KEY = `${SCRIPT_NAME}:managed-worldbook-enabled`;
 const MANAGED_WORLDBOOK_TARGET_STORAGE_KEY = `${SCRIPT_NAME}:managed-worldbook-target`;
-const CALENDAR_MANAGED_WORLDBOOK_VERSION = 'v4.1.0';
 
 export const CALENDAR_MANAGED_ENTRY_PREFIX = MANAGED_ENTRY_PREFIX;
 export const CALENDAR_UPDATE_RULES_ENTRY_NAME = UPDATE_RULES_ENTRY_NAME;
 export const CALENDAR_VARIABLE_LIST_ENTRY_NAME = VARIABLE_LIST_ENTRY_NAME;
 export const CALENDAR_VARIABLE_LIST_ENTRY_DISPLAY_NAME = VARIABLE_LIST_ENTRY_DISPLAY_NAME;
 
-const EXPECTED_MANAGED_ENTRY_NAMES = new Set([UPDATE_RULES_ENTRY_NAME, VARIABLE_LIST_ENTRY_NAME]);
-const EXPECTED_MANAGED_ENTRY_COUNT = EXPECTED_MANAGED_ENTRY_NAMES.size;
-type ManagedWorldbookTargetMode =
-  | 'character_primary'
-  | 'character_additional'
-  | 'chat_bound'
-  | 'global'
-  | 'stored_external';
-
-export type CalendarManagedWorldbookConnectivityState =
-  | 'unknown'
-  | 'checking'
-  | 'ready'
-  | 'missing'
-  | 'recreated'
-  | 'error';
+export type {
+  CalendarManagedWorldbookConnectivityState,
+  CalendarManagedWorldbookDiagnostics,
+  CalendarManagedWorldbookSourceItem,
+} from './diagnostics';
+export type { CalendarWorldbookMoveCandidate, CalendarWorldbookMoveCandidateKind, CalendarWorldbookSourceGroup } from './transfer';
 
 export interface EnsureCalendarManagedWorldbookEntriesResult {
   name: string;
@@ -55,26 +69,6 @@ export interface EnsureCalendarManagedWorldbookEntriesResult {
   movedCount?: number;
   removedSourceCount?: number;
   targetMode?: ManagedWorldbookTargetMode;
-}
-
-export type CalendarWorldbookMoveCandidateKind =
-  | 'backend_meta'
-  | 'backend_update_rules'
-  | 'backend_variable_display'
-  | 'runtime_index'
-  | 'runtime_content';
-
-export type CalendarWorldbookSourceGroup = 'event' | 'book' | 'utility';
-
-export interface CalendarWorldbookMoveCandidate {
-  id: string;
-  label: string;
-  kind: CalendarWorldbookMoveCandidateKind;
-  sourceGroup: CalendarWorldbookSourceGroup;
-  sourceWorldbookName: string;
-  entryName: string;
-  entry: Partial<WorldbookEntry>;
-  selectedByDefault: boolean;
 }
 
 export interface CalendarWorldbookMoveCandidatesResult {
@@ -87,79 +81,18 @@ export interface InstallCalendarManagedEntriesToExternalWorldbookOptions {
   removeFromSource?: boolean;
 }
 
-export interface CalendarManagedWorldbookSourceItem {
-  group: CalendarWorldbookSourceGroup;
-  label: string;
-  sourceWorldbookName: string;
-  entryName: string;
-  found: boolean;
-}
-
-export interface CalendarManagedWorldbookDiagnostics {
-  worldbookName: string;
-  version: string;
-  connectivity: CalendarManagedWorldbookConnectivityState;
-  existsInRegistry: boolean;
-  foundByScript: boolean;
-  createdDuringEnsure: boolean;
-  updatedDuringEnsure: boolean;
-  lastEnsureSucceeded: boolean;
-  lastImportTriggered: boolean;
-  entryCount: number;
-  hasMetaEntry: boolean;
-  hasUpdateRulesEntry: boolean;
-  hasVariableListEntry: boolean;
-  runtimeIndexWorldbookName: string;
-  runtimeContentWorldbookNames: string[];
-  managedEntryCount: number;
-  expectedManagedEntryCount: number;
-  allManagedEntriesPresent: boolean;
-  managementEnabled: boolean;
-  lastError: string;
-  lastEnsureAt: string;
-  lastImportAt: string;
-  sourceItems: CalendarManagedWorldbookSourceItem[];
-}
-
-type ManagedWorldbookEntrySeed = Partial<WorldbookEntry>;
-type PositionSlot = 'after_character_definition' | 'd1' | 'd2';
-
-const diagnostics: CalendarManagedWorldbookDiagnostics = {
-  worldbookName: '',
-  version: CALENDAR_MANAGED_WORLDBOOK_VERSION,
-  connectivity: 'unknown',
-  existsInRegistry: false,
-  foundByScript: false,
-  createdDuringEnsure: false,
-  updatedDuringEnsure: false,
-  lastEnsureSucceeded: false,
-  lastImportTriggered: false,
-  entryCount: 0,
-  hasMetaEntry: false,
-  hasUpdateRulesEntry: false,
-  hasVariableListEntry: false,
-  runtimeIndexWorldbookName: '',
-  runtimeContentWorldbookNames: [],
-  managedEntryCount: 0,
-  expectedManagedEntryCount: EXPECTED_MANAGED_ENTRY_COUNT,
-  allManagedEntriesPresent: false,
-  managementEnabled: true,
-  lastError: '',
-  lastEnsureAt: '',
-  lastImportAt: '',
-  sourceItems: [],
-};
+let diagnostics: CalendarManagedWorldbookDiagnostics = createDefaultManagedWorldbookDiagnostics();
 
 function nowIso(): string {
   return new Date().toISOString();
 }
 
 function resetDiagnosticsError(): void {
-  diagnostics.lastError = '';
+  diagnostics = clearManagedWorldbookDiagnosticsError(diagnostics);
 }
 
 function setDiagnosticsError(error: unknown): void {
-  diagnostics.lastError = error instanceof Error ? error.message : String(error ?? '');
+  diagnostics = setManagedWorldbookDiagnosticsError(diagnostics, error);
 }
 
 function emitManagedWorldbookDebugLog(message: string, extra?: Record<string, unknown>): void {
@@ -179,14 +112,11 @@ function emitManagedWorldbookWarnLog(message: string, extra?: Record<string, unk
 }
 
 function normalizeEntryName(name: unknown): string {
-  return String(name || '').trim();
+  return normalizeManagedWorldbookName(name);
 }
 
 function normalizeWorldbookNameList(names: string[]): string[] {
-  return names
-    .map(name => String(name || '').trim())
-    .filter(Boolean)
-    .filter((name, index, list) => list.indexOf(name) === index);
+  return dedupeManagedWorldbookNames(names);
 }
 
 function readAvailableWorldbookNames(): string[] {
@@ -238,193 +168,21 @@ function readEnabledGlobalWorldbookNames(): string[] {
   }
 }
 
-function readManagedWorldbookSearchChain(): Array<{ worldbookName: string; targetMode: ManagedWorldbookTargetMode }> {
+function readManagedWorldbookSearchChain(): ManagedWorldbookTargetCandidate[] {
   const binding = readCurrentCharacterWorldbookBinding();
-  const primary = normalizeEntryName(binding.primary);
-  const additional = binding.additional.map(normalizeEntryName).filter(Boolean);
-  const chat = readCurrentChatWorldbookName();
-  const globals = readEnabledGlobalWorldbookNames();
-  const seen = new Set<string>();
-  return [
-    { worldbookName: primary, targetMode: 'character_primary' as const },
-    ...additional.map(worldbookName => ({ worldbookName, targetMode: 'character_additional' as const })),
-    { worldbookName: chat, targetMode: 'chat_bound' as const },
-    ...globals.map(worldbookName => ({ worldbookName, targetMode: 'global' as const })),
-  ].filter(item => {
-    const normalized = normalizeEntryName(item.worldbookName);
-    if (!normalized || seen.has(normalized)) {
-      return false;
-    }
-    seen.add(normalized);
-    item.worldbookName = normalized;
-    return true;
+  return buildManagedWorldbookSearchChain({
+    primary: binding.primary,
+    additional: binding.additional,
+    chat: readCurrentChatWorldbookName(),
+    globals: readEnabledGlobalWorldbookNames(),
   });
-}
-
-function isManagedWorldbookEntry(entry: Pick<WorldbookEntry, 'name' | 'extra'>): boolean {
-  const entryName = normalizeEntryName(entry.name);
-  return (
-    String(entry.extra?.managedBy ?? '') === MANAGED_WORLDBOOK_MARKER ||
-    entryName === LEGACY_META_ENTRY_NAME ||
-    entryName.startsWith(MANAGED_ENTRY_PREFIX) ||
-    entryName.startsWith(`[mvu_update]${MANAGED_ENTRY_PREFIX}`)
-  );
-}
-
-function readManagedEntry(entries: WorldbookEntry[], entryName: string): WorldbookEntry | undefined {
-  const normalizedEntryName = normalizeEntryName(entryName);
-  return entries.find(entry => normalizeEntryName(entry.name) === normalizedEntryName);
-}
-
-function readVariableListEntry(entries: WorldbookEntry[]): WorldbookEntry | undefined {
-  return readManagedEntry(entries, VARIABLE_LIST_ENTRY_NAME) ?? readManagedEntry(entries, LEGACY_VARIABLE_LIST_ENTRY_NAME);
-}
-
-function hasExpectedManagedEntries(entries: WorldbookEntry[]): boolean {
-  return Boolean(readManagedEntry(entries, UPDATE_RULES_ENTRY_NAME)) && Boolean(readVariableListEntry(entries));
-}
-
-function resolvePosition(slot: PositionSlot, order: number): WorldbookEntry['position'] {
-  if (slot === 'after_character_definition') {
-    return {
-      type: 'after_character_definition',
-      role: 'system',
-      depth: 0,
-      order,
-    };
-  }
-
-  return {
-    type: 'at_depth',
-    role: 'system',
-    depth: slot === 'd2' ? 2 : 1,
-    order,
-  };
-}
-
-function buildManagedEntryBase(args: {
-  name: string;
-  content: string;
-  order: number;
-  slot: PositionSlot;
-  enabled?: boolean;
-  entryKind: string;
-}): ManagedWorldbookEntrySeed {
-  return {
-    name: args.name,
-    enabled: args.enabled !== false,
-    strategy: {
-      type: 'constant',
-      keys: [],
-      keys_secondary: {
-        logic: 'and_any',
-        keys: [],
-      },
-      scan_depth: 'same_as_global',
-    },
-    position: resolvePosition(args.slot, args.order),
-    probability: 100,
-    recursion: {
-      prevent_incoming: true,
-      prevent_outgoing: true,
-      delay_until: null,
-    },
-    effect: {
-      sticky: null,
-      cooldown: null,
-      delay: null,
-    },
-    content: String(args.content || '').trim(),
-    extra: {
-      managedBy: MANAGED_WORLDBOOK_MARKER,
-      version: CALENDAR_MANAGED_WORLDBOOK_VERSION,
-      entryPrefix: MANAGED_ENTRY_PREFIX,
-      entryKind: args.entryKind,
-      slot: args.slot,
-    },
-  };
-}
-
-function buildBackendMoveCandidateId(entryKind: string): string {
-  return `backend::${entryKind}`;
-}
-
-function buildManagedWorldbookEntries(): ManagedWorldbookEntrySeed[] {
-  return [
-    buildManagedEntryBase({
-      name: UPDATE_RULES_ENTRY_NAME,
-      content: buildCalendarUpdateRulesEntryContent(),
-      order: 99998,
-      slot: 'd2',
-      entryKind: 'mvu_update_rule',
-    }),
-    buildManagedEntryBase({
-      name: VARIABLE_LIST_ENTRY_NAME,
-      content: buildCalendarVariableListEntryContent(),
-      order: 99999,
-      slot: 'd1',
-      entryKind: 'variable_list',
-    }),
-  ];
-}
-
-function buildManagedBackendMoveCandidates(): CalendarWorldbookMoveCandidate[] {
-  const targetName = readManagedWorldbookTargetName().worldbookName || '脚本内置';
-  return buildManagedWorldbookEntries().map(entry => {
-    const entryKind = String(entry.extra?.entryKind || 'backend');
-    const label = entryKind === 'mvu_update_rule' ? '基础规则：月历变量更新规则' : `变量展示：${VARIABLE_LIST_ENTRY_DISPLAY_NAME}`;
-    const kind: CalendarWorldbookMoveCandidateKind =
-      entryKind === 'mvu_update_rule' ? 'backend_update_rules' : 'backend_variable_display';
-    return {
-      id: buildBackendMoveCandidateId(entryKind),
-      label,
-      kind,
-      sourceGroup: 'utility',
-      sourceWorldbookName: targetName,
-      entryName: normalizeEntryName(entry.name),
-      entry,
-      selectedByDefault: true,
-    };
-  });
-}
-
-function mapRuntimeMoveCandidate(candidate: CalendarRuntimeWorldbookMoveCandidate): CalendarWorldbookMoveCandidate {
-  return {
-    id: candidate.id,
-    label: candidate.label,
-    kind: candidate.kind,
-    sourceGroup: candidate.label.includes('读物') ? 'book' : 'event',
-    sourceWorldbookName: candidate.sourceWorldbookName,
-    entryName: candidate.entryName,
-    entry: candidate.entry,
-    selectedByDefault: candidate.selectedByDefault,
-  };
-}
-
-function cloneMoveCandidateEntry(candidate: CalendarWorldbookMoveCandidate): ManagedWorldbookEntrySeed {
-  const { uid: _uid, ...entry } = candidate.entry as WorldbookEntry;
-  return {
-    ...entry,
-    name: candidate.entryName || entry.name,
-    extra: {
-      ...(entry.extra ?? {}),
-      calendarFloatMovedFrom: candidate.sourceGroup === 'utility' ? undefined : candidate.sourceWorldbookName,
-    },
-  };
-}
-
-function mergeTransferredEntry(
-  existing: WorldbookEntry | undefined,
-  seed: ManagedWorldbookEntrySeed,
-): ManagedWorldbookEntrySeed {
-  if (!existing) {
-    return seed;
-  }
-  return mergeManagedEntry(existing, seed);
 }
 
 export async function listCalendarWorldbookMoveCandidates(): Promise<CalendarWorldbookMoveCandidatesResult> {
-  const backendCandidates = buildManagedBackendMoveCandidates();
+  const backendCandidates = buildManagedBackendMoveCandidates({
+    targetName: readManagedWorldbookTargetName().worldbookName || '脚本内置',
+    entries: buildManagedWorldbookEntries(),
+  });
   const runtimeResult = await listCalendarRuntimeWorldbookMoveCandidates();
   return {
     candidates: [...backendCandidates, ...runtimeResult.candidates.map(mapRuntimeMoveCandidate)],
@@ -435,15 +193,9 @@ export async function listCalendarWorldbookMoveCandidates(): Promise<CalendarWor
 export async function refreshCalendarManagedWorldbookSourceDiagnostics(): Promise<void> {
   try {
     const result = await listCalendarWorldbookMoveCandidates();
-    diagnostics.sourceItems = result.candidates.map(candidate => ({
-      group: candidate.sourceGroup,
-      label: candidate.label,
-      sourceWorldbookName: candidate.sourceWorldbookName,
-      entryName: candidate.entryName,
-      found: true,
-    }));
+    diagnostics = applyManagedSourceCandidates(diagnostics, result.candidates);
   } catch (error) {
-    diagnostics.sourceItems = [];
+    diagnostics = applyManagedSourceCandidates(diagnostics, []);
     setDiagnosticsError(error);
   }
 }
@@ -452,58 +204,19 @@ export function getCalendarManagedWorldbookTargetName(): string {
   return readManagedWorldbookTargetName().worldbookName;
 }
 
-function mergeManagedEntry(
-  existing: WorldbookEntry | undefined,
-  seed: ManagedWorldbookEntrySeed,
-): ManagedWorldbookEntrySeed {
-  if (!existing) {
-    return seed;
-  }
-
-  return {
-    ...existing,
-    ...seed,
-    strategy: {
-      ...(existing.strategy ?? {}),
-      ...(seed.strategy ?? {}),
-      keys_secondary: {
-        ...(existing.strategy?.keys_secondary ?? {}),
-        ...((seed.strategy as WorldbookEntry['strategy'] | undefined)?.keys_secondary ?? {}),
-      },
-    },
-    position: {
-      ...(existing.position ?? {}),
-      ...(seed.position ?? {}),
-    },
-    recursion: {
-      ...(existing.recursion ?? {}),
-      ...(seed.recursion ?? {}),
-    },
-    effect: {
-      ...(existing.effect ?? {}),
-      ...(seed.effect ?? {}),
-    },
-    extra: {
-      ...(existing.extra ?? {}),
-      ...(seed.extra ?? {}),
-    },
-  };
-}
-
 function syncEntryDiagnostics(entries: WorldbookEntry[], worldbookName: string): void {
-  diagnostics.worldbookName = worldbookName;
-  diagnostics.entryCount = entries.length;
-  diagnostics.hasMetaEntry = false;
-  diagnostics.hasUpdateRulesEntry = Boolean(readManagedEntry(entries, UPDATE_RULES_ENTRY_NAME));
-  diagnostics.hasVariableListEntry = Boolean(readVariableListEntry(entries));
-  diagnostics.managedEntryCount = Number(diagnostics.hasUpdateRulesEntry) + Number(diagnostics.hasVariableListEntry);
-  diagnostics.allManagedEntriesPresent = hasExpectedManagedEntries(entries);
+  diagnostics = deriveManagedEntryDiagnostics({
+    diagnostics,
+    worldbookName,
+    entries,
+    hasUpdateRulesEntry: Boolean(readManagedEntry(entries, UPDATE_RULES_ENTRY_NAME)),
+    hasVariableListEntry: Boolean(readVariableListEntry(entries)),
+  });
 }
 
 export async function refreshCalendarManagedWorldbookRuntimeDiagnostics(): Promise<void> {
   const summary = await inspectCalendarRuntimeWorldbookSummary();
-  diagnostics.runtimeIndexWorldbookName = summary.索引世界书 ?? '';
-  diagnostics.runtimeContentWorldbookNames = summary.正文世界书;
+  diagnostics = applyManagedRuntimeSummary(diagnostics, summary);
 }
 
 function isManagementEnabled(): boolean {
@@ -550,17 +263,14 @@ function readManagedWorldbookTargetName(): {
   worldbookName: string;
   targetMode: ManagedWorldbookTargetMode;
 } {
-  const storedTarget = readStoredManagedWorldbookTargetName();
-  const searchChain = readManagedWorldbookSearchChain();
-  const currentCharacterTarget = searchChain.find(item => item.targetMode === 'character_primary')?.worldbookName ?? '';
-  if (storedTarget) {
-    const activeTarget = searchChain.find(item => item.worldbookName === storedTarget);
-    if (activeTarget) {
-      return activeTarget;
-    }
+  const target = resolveManagedWorldbookTarget({
+    storedTarget: readStoredManagedWorldbookTargetName(),
+    chain: readManagedWorldbookSearchChain(),
+  });
+  if (target.clearedStoredTarget) {
     writeStoredManagedWorldbookTargetName('');
   }
-  return { worldbookName: currentCharacterTarget, targetMode: 'character_primary' };
+  return { worldbookName: target.worldbookName, targetMode: target.targetMode };
 }
 
 function isManagedCharacterWorldbookName(worldbookName: string): boolean {
@@ -1037,23 +747,17 @@ export async function installCalendarManagedEntriesToExternalWorldbook(
   });
 
   let removedSourceCount = 0;
-  if (options.removeFromSource) {
-    const deletionsByWorldbook = new Map<string, Set<string>>();
-    selectedCandidates
-      .filter(candidate => candidate.sourceWorldbookName && candidate.sourceWorldbookName !== '脚本内置')
-      .filter(candidate => candidate.sourceWorldbookName !== targetWorldbookName)
-      .forEach(candidate => {
-        const names = deletionsByWorldbook.get(candidate.sourceWorldbookName) ?? new Set<string>();
-        names.add(candidate.entryName);
-        deletionsByWorldbook.set(candidate.sourceWorldbookName, names);
-      });
-
-    for (const [sourceWorldbookName, entryNames] of deletionsByWorldbook) {
-      const result = await deleteWorldbookEntries(sourceWorldbookName, entry =>
-        entryNames.has(normalizeEntryName(entry.name)),
-      );
-      removedSourceCount += result.deleted_entries.length;
-    }
+  const sourceRemovalPlan = planSourceEntryRemovals({
+    removeFromSource: Boolean(options.removeFromSource),
+    targetWorldbookName,
+    candidates: selectedCandidates,
+  });
+  for (const removal of sourceRemovalPlan) {
+    const entryNames = new Set(removal.entryNames);
+    const result = await deleteWorldbookEntries(removal.sourceWorldbookName, entry =>
+      entryNames.has(normalizeEntryName(entry.name)),
+    );
+    removedSourceCount += result.deleted_entries.length;
   }
 
   const refreshedEntries = await getWorldbook(targetWorldbookName);

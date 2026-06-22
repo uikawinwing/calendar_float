@@ -1,7 +1,8 @@
 import _ from 'lodash';
 
 import { formatDateKey, parseWorldDateAnchor } from '../date';
-import { getCalendarWorldLocationPath, getCalendarWorldTimePath } from '../runtime-config';
+import { getActiveCalendarDateParseOptions } from '../profile';
+import { getCalendarWorldLocationPath, getCalendarWorldTimePath } from '../runtime-worldbook/config';
 import type { CalendarMonthAliasRecord, DatePoint } from '../types';
 import { readMessageVariableData } from './message-variable';
 
@@ -12,7 +13,10 @@ export function readCurrentWorldTime(path = getCalendarWorldTimePath(), monthAli
 } {
   const messageData = readMessageVariableData();
   const text = String(_.get(messageData, path, '') || '');
-  const parsed = parseWorldDateAnchor(text, { monthAliases });
+  const parsed = parseWorldDateAnchor(text, {
+    monthAliases,
+    ...getActiveCalendarDateParseOptions(),
+  });
   return {
     text,
     point: parsed?.point ?? null,

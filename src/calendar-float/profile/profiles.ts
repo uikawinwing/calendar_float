@@ -18,6 +18,7 @@ export const GENERIC_CALENDAR_PROFILE: CalendarProfile = {
     updateRuleTimeExamples: ['完整世界时间（如 488年-6月5日-星期三-09:00）', '完整世界日期（如 488年-6月5日-星期三）', '月日锚点（如 6月5日）'],
     forbiddenRepeatTimeExamples: ['月底', '每隔几天', '488年-6月5日', '课程结束后'],
   },
+  visual: {},
   addons: [],
   detection: {
     characterNames: [],
@@ -42,6 +43,9 @@ export const FATE_POEM_CALENDAR_PROFILE: CalendarProfile = {
     variableDisplayTitle: '现有月历事件',
     updateRuleTimeExamples: ['复兴纪元488年-6月5日-星期三-09:00', '复兴纪元488年-6月5日-星期三', '6月5日'],
     forbiddenRepeatTimeExamples: ['月底', '每隔几天', '复兴纪元488年-6月5日', '课程结束后'],
+  },
+  visual: {
+    festivalMarkerPresetId: 'fate-poem',
   },
   addons: ['dlc_ellia'],
   detection: {

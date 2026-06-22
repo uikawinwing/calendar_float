@@ -1,3 +1,5 @@
+import type { CalendarProfileConfigInput } from '../profile';
+
 export type CalendarWorldbookContentType = '节庆介绍' | '节庆文本' | '节庆提醒' | '读物摘要' | '读物全文' | '其他';
 
 export type CalendarRuntimeMessageMatchLogic = '全部满足' | '任一满足';
@@ -153,6 +155,7 @@ export interface CalendarRuntimeDefaults {
 
 export interface CalendarRuntimeIndex {
   Profile?: string;
+  Profile设置?: CalendarProfileConfigInput;
   版本?: number;
   说明?: string;
   索引条目名?: string;

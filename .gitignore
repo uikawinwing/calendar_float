@@ -1,5 +1,9 @@
 node_modules
 .worktrees/
+.pnpm-store/
+.codegraph/
+.codex/
+.cursor/rules/新增資料夾/
 
 .DS_Store
 Thumbs.db

@@ -1,6 +1,11 @@
 import _ from 'lodash';
 
-import { compareDatePoint, parseMonthDayWithYear, parseWorldDateText } from '../date';
+import {
+  compareDatePoint,
+  parseMonthDayWithYear,
+  parseWorldDateText,
+} from '../date';
+import { getActiveCalendarDateParseOptions } from '../profile';
 import type { CalendarRuntimeDateWindowCondition, CalendarRuntimeFestivalEntry } from '../runtime-worldbook/types';
 import { readCurrentWorldTime } from '../storage';
 import type { DatePoint } from '../types';
@@ -83,7 +88,7 @@ function 尝试解析日期点(value: unknown, fallbackYear?: number): DatePoint
     };
   }
 
-  const worldDate = parseWorldDateText(text);
+  const worldDate = parseWorldDateText(text, getActiveCalendarDateParseOptions());
   if (worldDate) {
     return worldDate;
   }

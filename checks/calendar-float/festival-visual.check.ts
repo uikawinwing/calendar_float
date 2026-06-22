@@ -13,7 +13,7 @@ function readSource(relativePath: string): string {
 }
 
 function testNewBundledIconsAreMapped(): void {
-  const source = readSource('festival-visual.ts');
+  const source = readSource('festival-icons.ts');
   [
     'torii-gate-solid.svg',
     'music-solid.svg',
@@ -42,19 +42,21 @@ function testNewBundledIconsAreMapped(): void {
 
 function testGhostIsNotGenericFallback(): void {
   const source = readSource('festival-visual.ts');
-  const fallbackBlock = source.match(/const FALLBACK_FESTIVAL_MARKERS[\s\S]*?const GENERIC_FALLBACK_FESTIVAL_MARKERS/)?.[0] ?? '';
+  const fallbackBlock =
+    source.match(/const GENERIC_FALLBACK_FESTIVAL_MARKERS[\s\S]*?const GENERIC_FESTIVAL_MARKER_PRESET_GROUP/)?.[0] ??
+    '';
   assert(!fallbackBlock.includes('ghostIconSvg'), 'ghost 图标不应该进入通用 fallback，避免新年等节日随机显示幽灵');
 }
 
 function testCreationDayKeywordsPreferCelebrationIcon(): void {
-  const source = readSource('festival-visual.ts');
+  const source = readSource('profile/festival-visual-presets.ts');
   const champagneBlock = source.match(/iconSvg: champagneGlassesIconSvg[\s\S]*?keywords: \[[^\]]+\]/)?.[0] ?? '';
   assert(champagneBlock.includes('创生'), '创生之日应该命中庆典图标');
   assert(champagneBlock.includes('新年'), '新年应该命中庆典图标');
 }
 
 function testSaireliaUsesMusicIcon(): void {
-  const source = readSource('festival-visual.ts');
+  const source = readSource('profile/festival-visual-presets.ts');
   const musicBlock = source.match(/iconSvg: musicIconSvg[\s\S]*?keywords: \[[^\]]+\]/)?.[0] ?? '';
   assert(musicBlock.includes('赛瑞利亚'), '赛瑞利亚应该命中音乐图标');
 }
@@ -76,7 +78,7 @@ function testTagColorPreviewCoversSvgShapes(): void {
 }
 
 function testFestivalCanUseHashtagColor(): void {
-  const runtimeSource = readSource('runtime-dataset.ts');
+  const runtimeSource = readSource('runtime-dataset/festivals.ts');
   const visualSource = readSource('festival-visual.ts');
   assert(runtimeSource.includes('resolveFestivalHashtagColor'), 'runtime dataset 应该能按节庆名/地点读取标签颜色');
   assert(runtimeSource.includes('tagColor, hashtagColor'), '节庆 metadata 应该保存命中的标签颜色');
@@ -85,7 +87,7 @@ function testFestivalCanUseHashtagColor(): void {
 
 function testBaseHashtagsUseDifferentIcons(): void {
   const source = readSource('festival-visual.ts');
-  const tagPresetBlock = source.match(/const HASHTAG_MARKER_PRESETS[\s\S]*?const FALLBACK_FESTIVAL_MARKERS/)?.[0] ?? '';
+  const tagPresetBlock = source.match(/const HASHTAG_MARKER_PRESETS[\s\S]*?const GENERIC_FALLBACK_FESTIVAL_MARKERS/)?.[0] ?? '';
   [
     ['主线', 'compassIconSvg'],
     ['支线', 'arrowsToCircleIconSvg'],

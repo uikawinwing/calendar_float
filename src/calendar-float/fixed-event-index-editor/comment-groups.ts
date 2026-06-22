@@ -11,7 +11,7 @@ export interface LegacyCommentGroupMigration {
   eventGroupIds: Record<string, string>;
 }
 
-const LEGACY_EVENT_LIST_KEYS = new Set(['固定事件', '节庆', 'fixed_events', 'fixedEvents', 'festival', 'festivals']);
+const LEGACY_EVENT_LIST_KEYS = new Set(['固定事件']);
 
 const LEGACY_COMMENT_GROUP_PRESETS: Record<string, LegacyCommentGroupPreset> = {
   基础历法固定节日: {

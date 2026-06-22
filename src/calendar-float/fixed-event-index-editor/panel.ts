@@ -44,6 +44,7 @@ export interface FixedEventIndexEditorSelection {
     | 'event'
     | 'stage'
     | 'material'
+    | 'profile'
     | 'defaults'
     | 'reminderDefaults'
     | 'bookDefaults'
@@ -68,6 +69,25 @@ function renderList(items: string[], emptyText: string): string {
     return `<li class="th-index-editor-muted">${escapeHtml(emptyText)}</li>`;
   }
   return items.map(item => `<li>${escapeHtml(item)}</li>`).join('');
+}
+
+function renderProfileDatePreview(draft: FixedEventIndexDraft): string {
+  const dateSettings = draft.profile.settings.date;
+  const eraName = String(dateSettings.eraName || '').trim();
+  const numeralText =
+    dateSettings.useChineseNumeralYear === undefined ? '未设置' : dateSettings.useChineseNumeralYear ? '启用' : '关闭';
+  const acceptedText = [
+    eraName ? `纪元前缀：${eraName}` : '纪元前缀：未设置',
+    `中文数字年份：${numeralText}`,
+    '仍支持普通数字日期，例如 2020年9月15日 / 2020-09-15',
+  ];
+
+  return `
+    <div class="th-index-editor-profile-preview" data-role="profile-date-preview">
+      <div class="th-index-editor-muted">日期解析规则来自 Profile设置.date</div>
+      <ul>${acceptedText.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+    </div>
+  `;
 }
 
 function renderCandidate(candidate: CalendarRuntimeIndexSourceCandidate): string {
@@ -323,6 +343,7 @@ function normalizeFixedEventIndexEditorSelection(
     return { ...current, section: 'materials' };
   }
   if (
+    current.scope === 'profile' ||
     current.scope === 'defaults' ||
     current.scope === 'reminderDefaults' ||
     current.scope === 'bookDefaults' ||
@@ -466,25 +487,11 @@ function renderDefaultsEditor(draft: FixedEventIndexDraft): string {
   return `
     <section class="th-index-editor-settings-block">
       <div class="th-index-editor-settings-block-head">
-        <h3>MVU 与书籍全文</h3>
-        <p>决定固定事件索引读取当前世界时间、地点，以及全文资料触发词的默认写法。</p>
+        <h3>书籍全文</h3>
+        <p>决定全文资料触发词的默认写法。MVU 时间和地点路径统一在 Profile 设置里编辑。</p>
       </div>
       <div class="th-index-editor-edit-card" data-role="fixed-event-defaults-row" data-scope="defaults" data-id="main">
         <div class="th-index-editor-edit-grid">
-          ${renderInput({
-            scope: 'defaults',
-            id: 'main',
-            field: 'mvuTimePath',
-            label: 'MVU 时间路径',
-            value: draft.defaults.mvuTimePath,
-          })}
-          ${renderInput({
-            scope: 'defaults',
-            id: 'main',
-            field: 'mvuLocationPath',
-            label: 'MVU 地点路径',
-            value: draft.defaults.mvuLocationPath,
-          })}
           ${renderInput({
             scope: 'defaults',
             id: 'main',
@@ -493,6 +500,73 @@ function renderDefaultsEditor(draft: FixedEventIndexDraft): string {
             value: draft.defaults.fullBookTriggerTemplate,
           })}
         </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderProfileSettingsEditor(draft: FixedEventIndexDraft): string {
+  const profile = draft.profile;
+  return `
+    <section class="th-index-editor-settings-block">
+      <div class="th-index-editor-settings-block-head">
+        <h3>Profile</h3>
+        <p>决定这份索引属于哪种月历配置，以及运行时从哪里读取时间、地点和纪元格式。</p>
+      </div>
+      <div class="th-index-editor-edit-card" data-role="fixed-event-profile-row" data-scope="profile" data-id="main">
+        <div class="th-index-editor-edit-grid">
+          ${renderInput({
+            scope: 'profile',
+            id: 'main',
+            field: 'id',
+            label: 'Profile ID',
+            value: profile.id,
+          })}
+          ${renderInput({
+            scope: 'profile',
+            id: 'main',
+            field: 'label',
+            label: '显示名称',
+            value: profile.settings.label,
+          })}
+          ${renderInput({
+            scope: 'profile',
+            id: 'main',
+            field: 'worldTimePath',
+            label: 'MVU 时间路径',
+            value: profile.settings.paths.worldTime,
+          })}
+          ${renderInput({
+            scope: 'profile',
+            id: 'main',
+            field: 'worldLocationPath',
+            label: 'MVU 地点路径',
+            value: profile.settings.paths.worldLocation,
+          })}
+          ${renderInput({
+            scope: 'profile',
+            id: 'main',
+            field: 'eraName',
+            label: '纪元名',
+            value: profile.settings.date.eraName,
+          })}
+          ${renderSelect({
+            scope: 'profile',
+            id: 'main',
+            field: 'useChineseNumeralYear',
+            label: '中文数字年份',
+            value:
+              profile.settings.date.useChineseNumeralYear === undefined
+                ? undefined
+                : String(profile.settings.date.useChineseNumeralYear),
+            options: [
+              { value: '', label: '未设置' },
+              { value: 'true', label: '是' },
+              { value: 'false', label: '否' },
+            ],
+          })}
+        </div>
+        ${renderProfileDatePreview(draft)}
       </div>
     </section>
   `;
@@ -648,6 +722,7 @@ function renderAllSettingsEditor(draft: FixedEventIndexDraft): string {
         <h2>基础设置</h2>
         <p>这些是固定事件索引的全局默认值。这里可以连续编辑，最后统一保存到世界书。</p>
       </div>
+      ${renderProfileSettingsEditor(draft)}
       ${renderDefaultsEditor(draft)}
       ${renderReminderDefaultsEditor(draft.reminderDefaults)}
       ${renderBookDefaultsEditor(draft.bookDefaults)}

@@ -7,6 +7,7 @@ import type {
   FixedEventIndexDraft,
   FixedEventMaterialDraft,
   FixedEventMonthAliasDraft,
+  FixedEventProfileSettingsDraft,
   FixedEventReminderDefaultsDraft,
   FixedEventReminderDraft,
   FixedEventStageDraft,
@@ -150,6 +151,29 @@ function serializeBookDefaults(defaults: FixedEventBookDefaultsDraft): Record<st
   return output;
 }
 
+function serializeProfileSettings(settings: FixedEventProfileSettingsDraft): Record<string, unknown> | undefined {
+  const paths: Record<string, unknown> = { ...settings.paths.unknownFields };
+  addIfDefined(paths, 'worldTime', settings.paths.worldTime);
+  addIfDefined(paths, 'worldLocation', settings.paths.worldLocation);
+
+  const date: Record<string, unknown> = { ...settings.date.unknownFields };
+  addIfDefined(date, 'eraName', settings.date.eraName);
+  if (settings.date.useChineseNumeralYear !== undefined) {
+    date.useChineseNumeralYear = settings.date.useChineseNumeralYear;
+  }
+
+  const output: Record<string, unknown> = { ...settings.unknownFields };
+  addIfDefined(output, 'label', settings.label);
+  if (Object.keys(paths).length > 0) {
+    output.paths = paths;
+  }
+  if (Object.keys(date).length > 0) {
+    output.date = date;
+  }
+
+  return Object.keys(output).length > 0 ? output : undefined;
+}
+
 function serializeStage(stage: FixedEventStageDraft): Record<string, unknown> {
   const output: Record<string, unknown> = { ...stage.unknownFields };
   output.id = stage.id;
@@ -247,6 +271,11 @@ function serializeMaterial(material: FixedEventMaterialDraft): Record<string, un
 
 export function serializeFixedEventIndexDraft(draft: FixedEventIndexDraft): string {
   const output: Record<string, unknown> = { ...draft.unknownTopLevelFields };
+  addIfDefined(output, 'Profile', draft.profile.id);
+  const profileSettings = serializeProfileSettings(draft.profile.settings);
+  if (profileSettings) {
+    output.Profile设置 = profileSettings;
+  }
   output.版本 = draft.metadata.version ?? 1;
   addIfDefined(output, '说明', draft.metadata.description);
   output.默认设置 = {

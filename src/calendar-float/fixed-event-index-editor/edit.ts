@@ -7,6 +7,7 @@ import type {
   FixedEventIndexSourceInfo,
   FixedEventMaterialDraft,
   FixedEventMonthAliasDraft,
+  FixedEventProfileDraft,
   FixedEventReminderDefaultsDraft,
   FixedEventStageDraft,
 } from './draft-types';
@@ -15,6 +16,15 @@ export interface FixedEventDefaultsStructuredEdit {
   mvuTimePath?: string;
   mvuLocationPath?: string;
   fullBookTriggerTemplate?: string;
+}
+
+export interface FixedEventProfileStructuredEdit {
+  id?: string;
+  label?: string;
+  worldTimePath?: string;
+  worldLocationPath?: string;
+  eraName?: string;
+  useChineseNumeralYear?: string;
 }
 
 export interface FixedEventMonthAliasStructuredEdit {
@@ -94,6 +104,7 @@ export interface FixedEventMaterialStructuredEdit {
 export interface FixedEventIndexStructuredEditInput {
   sourceYaml: string;
   sourceInfo: FixedEventIndexSourceInfo;
+  profile?: FixedEventProfileStructuredEdit;
   defaults?: FixedEventDefaultsStructuredEdit;
   reminderDefaults?: FixedEventReminderDefaultsStructuredEdit;
   bookDefaults?: FixedEventBookDefaultsStructuredEdit;
@@ -210,6 +221,22 @@ function normalizeBooleanText(value: string | undefined, fallback: boolean): boo
   return fallback;
 }
 
+function normalizeOptionalBooleanText(value: string | undefined): boolean | undefined {
+  const text = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (!text) {
+    return undefined;
+  }
+  if (text === 'false' || text === '0' || text === '否' || text === '关闭') {
+    return false;
+  }
+  if (text === 'true' || text === '1' || text === '是' || text === '开启') {
+    return true;
+  }
+  return undefined;
+}
+
 function hasReminderEdit(edit: FixedEventStructuredEdit): boolean {
   return (
     edit.reminderEnabled !== undefined ||
@@ -307,6 +334,34 @@ function buildBookDefaultsEdit(
     ...defaults,
     summaryOutputMode: normalizeOptionalText(edit.summaryOutputMode),
     summaryInjectDepth: normalizeOptionalNumberText(edit.summaryInjectDepth),
+  };
+}
+
+function buildProfileEdit(edit: FixedEventProfileStructuredEdit, profile: FixedEventProfileDraft): FixedEventProfileDraft {
+  return {
+    ...profile,
+    id: edit.id === undefined ? profile.id : normalizeOptionalText(edit.id),
+    settings: {
+      ...profile.settings,
+      label: edit.label === undefined ? profile.settings.label : normalizeOptionalText(edit.label),
+      paths: {
+        ...profile.settings.paths,
+        worldTime:
+          edit.worldTimePath === undefined ? profile.settings.paths.worldTime : normalizeOptionalText(edit.worldTimePath),
+        worldLocation:
+          edit.worldLocationPath === undefined
+            ? profile.settings.paths.worldLocation
+            : normalizeOptionalText(edit.worldLocationPath),
+      },
+      date: {
+        ...profile.settings.date,
+        eraName: edit.eraName === undefined ? profile.settings.date.eraName : normalizeOptionalText(edit.eraName),
+        useChineseNumeralYear:
+          edit.useChineseNumeralYear === undefined
+            ? profile.settings.date.useChineseNumeralYear
+            : normalizeOptionalBooleanText(edit.useChineseNumeralYear),
+      },
+    },
   };
 }
 
@@ -463,6 +518,10 @@ function moveStageInList(
 
 export function applyFixedEventIndexStructuredEditsToYaml(input: FixedEventIndexStructuredEditInput): string {
   const draft = parseFixedEventIndexDraft(input.sourceYaml, input.sourceInfo);
+
+  if (input.profile) {
+    draft.profile = buildProfileEdit(input.profile, draft.profile);
+  }
 
   if (input.defaults) {
     draft.defaults = {

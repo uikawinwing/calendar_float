@@ -1,8 +1,12 @@
 import type { WidgetRefs } from '../types';
-
-type SidebarTab = 'detail' | 'form' | 'archive';
-type AgendaSortMode = 'date-asc' | 'date-desc' | 'title-asc' | 'festival-first' | 'event-first';
-type CalendarBucketType = '临时' | '重复';
+import {
+  parseAgendaSort,
+  parseCalendarBucketType,
+  parseSidebarTab,
+  type AgendaSortMode,
+  type CalendarBucketType,
+  type SidebarTab,
+} from './event-binding/parsers';
 
 export interface BindCalendarWidgetEventsOptions {
   refs: WidgetRefs;
@@ -68,23 +72,6 @@ export interface BindCalendarWidgetEventsOptions {
   onPanelDragMove: (event: MouseEvent) => void;
   onPanelDragEnd: () => void;
   onWindowResize: () => void;
-}
-
-function parseSidebarTab(value: string): SidebarTab {
-  if (value === 'archive') {
-    return 'archive';
-  }
-  return value === 'form' ? 'form' : 'detail';
-}
-
-function parseAgendaSort(value: string): AgendaSortMode {
-  return value === 'date-desc' || value === 'title-asc' || value === 'festival-first' || value === 'event-first'
-    ? value
-    : 'date-asc';
-}
-
-function parseCalendarBucketType(value: string): CalendarBucketType {
-  return value === '重复' ? '重复' : '临时';
 }
 
 function getTouchClientPoint(event: JQuery.TouchEventBase): { clientX: number; clientY: number } | null {

@@ -1,5 +1,26 @@
 import type { CalendarAnchor, CalendarMonthAliasRecord, DatePoint, DateRange } from './types';
 
+const CHINESE_DIGIT_MAP: Record<string, number> = {
+  零: 0,
+  〇: 0,
+  一: 1,
+  二: 2,
+  两: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+  八: 8,
+  九: 9,
+};
+
+const CHINESE_UNIT_MAP: Record<string, number> = {
+  十: 10,
+  百: 100,
+  千: 1000,
+};
+
 const WEEKDAY_ALIAS_MAP: Record<string, number> = {
   星期日: 0,
   星期天: 0,
@@ -17,6 +38,97 @@ function pad2(value: number): string {
 
 function getWeekdayValue(text: string): number | null {
   return Object.prototype.hasOwnProperty.call(WEEKDAY_ALIAS_MAP, text) ? WEEKDAY_ALIAS_MAP[text] : null;
+}
+
+function normalizeEraNames(options?: ParseWorldDateAnchorOptions): string[] {
+  return [...(options?.eraNames ?? []), options?.eraName]
+    .map(item => String(item || '').trim())
+    .filter(Boolean)
+    .filter((item, index, array) => array.indexOf(item) === index)
+    .sort((left, right) => right.length - left.length);
+}
+
+function stripEraPrefix(input: string, options?: ParseWorldDateAnchorOptions): string {
+  let text = input.trim();
+  for (const eraName of normalizeEraNames(options)) {
+    if (text.startsWith(eraName)) {
+      text = text.slice(eraName.length).trim();
+      break;
+    }
+  }
+  return text;
+}
+
+function parseChineseInteger(input: string): number | null {
+  const text = String(input || '').trim();
+  if (!text) {
+    return null;
+  }
+  if (/^\d+$/.test(text)) {
+    return Number(text);
+  }
+  if (!/^[零〇一二两三四五六七八九十百千]+$/.test(text)) {
+    return null;
+  }
+  if (!/[十百千]/.test(text)) {
+    const digits = [...text].map(character => CHINESE_DIGIT_MAP[character]);
+    if (digits.some(value => value === undefined)) {
+      return null;
+    }
+    return Number(digits.join(''));
+  }
+
+  let total = 0;
+  let current = 0;
+  for (const character of text) {
+    if (Object.prototype.hasOwnProperty.call(CHINESE_DIGIT_MAP, character)) {
+      current = CHINESE_DIGIT_MAP[character];
+      continue;
+    }
+    const unit = CHINESE_UNIT_MAP[character];
+    if (!unit) {
+      return null;
+    }
+    total += (current || 1) * unit;
+    current = 0;
+  }
+  return total + current;
+}
+
+function parseDateNumberToken(token: string, options?: ParseWorldDateAnchorOptions): number | null {
+  const text = String(token || '').trim();
+  if (/^\d+$/.test(text)) {
+    return Number(text);
+  }
+  if (!options?.useChineseNumeralYear) {
+    return null;
+  }
+  return parseChineseInteger(text);
+}
+
+function parseWorldDateTextWithProfileDate(
+  input: string,
+  options?: ParseWorldDateAnchorOptions,
+): { point: DatePoint; weekday: number | null } | null {
+  const text = stripEraPrefix(input, options);
+  const yearToken = options?.useChineseNumeralYear ? String.raw`[\d零〇一二两三四五六七八九十百千]+` : String.raw`\d+`;
+  const monthToken = options?.useChineseNumeralYear ? String.raw`[\d零〇一二两三四五六七八九十百千]+` : String.raw`\d+`;
+  const match = text.match(new RegExp(`(${yearToken})\\s*年\\s*[-/ ]?\\s*(${monthToken})\\s*月\\s*(${monthToken})\\s*日`));
+  if (!match) {
+    return null;
+  }
+
+  const year = parseDateNumberToken(match[1], options);
+  const month = parseDateNumberToken(match[2], options);
+  const day = parseDateNumberToken(match[3], options);
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  return {
+    point: { year, month, day },
+    weekday: getWeekdayValue(input.match(/星期[日天一二三四五六]/)?.[0] || ''),
+  };
 }
 
 function buildMonthAliasEntries(monthAliases?: CalendarMonthAliasRecord[]): Array<{ token: string; month: number }> {
@@ -291,6 +403,9 @@ export function formatDateLabel(point: DatePoint, anchor?: CalendarAnchor | null
 
 export interface ParseWorldDateAnchorOptions {
   monthAliases?: CalendarMonthAliasRecord[];
+  eraName?: string;
+  eraNames?: string[];
+  useChineseNumeralYear?: boolean;
 }
 
 export function parseWorldDateAnchor(
@@ -300,6 +415,11 @@ export function parseWorldDateAnchor(
   const text = String(input || '').trim();
   if (!text) {
     return null;
+  }
+
+  const profileDate = parseWorldDateTextWithProfileDate(text, options);
+  if (profileDate) {
+    return profileDate;
   }
 
   const fantasy = parseWorldDateTextWithMonthAliases(text, options);

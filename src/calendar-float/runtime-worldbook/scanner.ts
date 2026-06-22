@@ -8,15 +8,15 @@ import {
   CHAT_RUNTIME_PATH,
   SCRIPT_NAME,
 } from '../constants';
-import { readCalendarTriggerVariableContext, readLatestCalendarTriggerMessages } from '../runtime-chat-context';
+import { readCalendarTriggerVariableContext, readLatestCalendarTriggerMessages } from './chat-context';
 import {
   resolveCalendarContentNode,
   resolveCalendarFestivalReminder,
   resolveCalendarFestivalStageReminder,
   type CalendarRuntimeTriggerContext,
 } from '../runtime-trigger-evaluator';
-import { normalizeCalendarMonthAliasList } from '../runtime-month-alias';
 import { readCalendarRuntimeIndex } from './loader';
+import { normalizeCalendarMonthAliasList } from './month-alias';
 import type { CalendarRuntimeContentNode, CalendarRuntimeIndex } from './types';
 import { readCurrentWorldTime } from '../storage';
 

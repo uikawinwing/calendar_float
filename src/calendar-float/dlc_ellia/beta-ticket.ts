@@ -4,6 +4,7 @@ import {
   ROOT_ID,
 } from '../constants';
 import { formatDateKey, getDaysInMonth, parseWorldDateText } from '../date';
+import { getActiveCalendarDateParseOptions } from '../profile';
 import { getLatestMessageVariableTarget } from '../storage';
 import type { CalendarEventRecord } from '../types';
 
@@ -880,7 +881,12 @@ function readElliaTicketRuntimeState(): { unlocked: boolean; tickets: ElliaAlpha
 }
 
 function parseFullTicketDate(ticket: ElliaAlphaTicketRecord) {
-  return parseWorldDateText(ticket.time) || parseWorldDateText(ticket.fields.date) || parseWorldDateText(ticket.raw);
+  const dateOptions = getActiveCalendarDateParseOptions();
+  return (
+    parseWorldDateText(ticket.time, dateOptions) ||
+    parseWorldDateText(ticket.fields.date, dateOptions) ||
+    parseWorldDateText(ticket.raw, dateOptions)
+  );
 }
 
 function parseTicketMonthDayText(value: unknown): { month: number; day: number } | null {

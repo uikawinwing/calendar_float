@@ -13,6 +13,7 @@ export interface FixedEventIndexDraft {
   canSave: boolean;
   saveBlockedReasons: string[];
   warnings: string[];
+  profile: FixedEventProfileDraft;
   metadata: FixedEventIndexMetadataDraft;
   defaults: FixedEventDefaultsDraft;
   reminderDefaults: FixedEventReminderDefaultsDraft;
@@ -27,6 +28,30 @@ export interface FixedEventIndexDraft {
 export interface FixedEventIndexMetadataDraft {
   version?: number | string;
   description?: string;
+}
+
+export interface FixedEventProfileDraft {
+  id?: string;
+  settings: FixedEventProfileSettingsDraft;
+}
+
+export interface FixedEventProfileSettingsDraft {
+  label?: string;
+  paths: FixedEventProfilePathSettingsDraft;
+  date: FixedEventProfileDateSettingsDraft;
+  unknownFields: Record<string, unknown>;
+}
+
+export interface FixedEventProfilePathSettingsDraft {
+  worldTime?: string;
+  worldLocation?: string;
+  unknownFields: Record<string, unknown>;
+}
+
+export interface FixedEventProfileDateSettingsDraft {
+  eraName?: string;
+  useChineseNumeralYear?: boolean;
+  unknownFields: Record<string, unknown>;
 }
 
 export interface FixedEventDefaultsDraft {
@@ -167,9 +192,9 @@ export interface FixedEventIndexRowIssue {
   message: string;
 }
 
-export const FIXED_EVENT_GROUP_KEYS = ['固定事件分组', '分组', 'event_groups', 'eventGroups', 'groups'] as const;
-export const FIXED_EVENT_LIST_KEYS = ['固定事件', '节庆', 'fixed_events', 'fixedEvents', 'festival', 'festivals'] as const;
-export const TOP_LEVEL_MATERIAL_KEYS = ['补充资料', '书籍', 'materials', 'material', 'book', 'books'] as const;
+export const FIXED_EVENT_GROUP_KEYS = ['固定事件分组'] as const;
+export const FIXED_EVENT_LIST_KEYS = ['固定事件'] as const;
+export const TOP_LEVEL_MATERIAL_KEYS = ['补充资料'] as const;
 
 export const BUNDLED_ICON_FILENAMES = ALL_SVG_FILENAMES;
 

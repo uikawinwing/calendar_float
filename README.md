@@ -1,130 +1,83 @@
 # 月历悬浮球（Calendar Float）
 
-角色卡《命定之诗与黄昏之歌》的 DLC 项目。
+这是一个用于 SillyTavern / Tavern Helper 的月历悬浮窗脚本。它会从角色卡或世界书里的月历索引读取固定事件、节庆、提醒和补充资料，并把它们渲染成可交互的月历 UI。
 
-本项目当前采用 **世界书runtime驱动**：
+项目最早服务于《命定之诗与黄昏之歌》的月历 DLC，现在已经拆成 **通用脚本主体 + profile 配置 + 世界书索引**。不同角色卡可以带自己的 profile、MVU 时间路径、地点路径、固定事件索引和正文条目，不需要额外导入独立 JSON。
 
-- 运行时主数据源是世界书
-- 脚本运行时优先读取世界书中的 `[fixed_event_index]` 条目；旧 `[节庆_索引]` 仍兼容
-- 脚本根据 MVU 变量、最近两层消息、用户消息、日期窗口来决定哪些条目命中
-- 命中世界书条目时，通过 silent `injectprompt` + `should_scan` 触发酒馆扫描
-- 提醒与书籍摘要由脚本直接做可见注入，UI 与触发系统共享同一份索引
+## 当前状态
 
----
+- 适合给熟悉 SillyTavern / Tavern Helper 的用户做 controlled alpha 测试
+- 推荐把脚本、`[fixed_event_index]`、profile 配置和正文世界书条目一起打包进角色卡或配套世界书
+- 旧的《命定之诗》命名仍可读取，但新 profile 不应该复制 `[DLC][扩展]` 这类前缀
 
-## 当前架构
+## 核心入口
 
-系统分成三层：
+- 脚本入口：`src/calendar-float/index.ts`
+- 月历 UI：`src/calendar-float/widget/`
+- 固定事件索引编辑器：`src/calendar-float/fixed-event-index-editor/`
+- profile 配置：`src/calendar-float/profile/`
+- runtime 世界书读取：`src/calendar-float/runtime-worldbook/`
+- 世界书基础设施安装：`src/calendar-float/worldbook-manager/`
+- 仓库结构说明：`structure.md`
 
-### 1. 前端脚本层
+## 构建与开发
 
-- 渲染悬浮月历 UI
-- 读取世界时间 / MVU 变量 / 用户自定义事件
-- 从 世界书 读取 runtime 索引并组装月历数据
-- 在生成后与切换聊天时执行 runtime trigger scan
-- 维护提醒摘要、书籍摘要等运行时变量
-- 安装脚本自带的基础设施世界书条目
+```powershell
+pnpm install
+pnpm run build:dev
+```
 
-### 2. 世界书内容层
+开发时常用：
 
-- 存放索引条目 `[fixed_event_index]`，旧 `[节庆_索引]` 仍可继续使用
-- 存放节庆介绍、书籍全文
-- 为可扫描内容提供专属绿灯触发词
-- 作为 UI 展示与 runtime 触发的统一数据源
+```powershell
+pnpm watch
+```
 
-### 3. 脚本托管基础设施条目层
+如果你要给 SillyTavern / Tavern Helper 加载本地构建产物，再开一个终端运行：
 
-- 变量列表条目
-- `mvu_update` 规则条目
-- 基础连通性检查与重装 / 卸载 / 导出
+```powershell
+pnpm run serve:dev
+```
 
----
+`serve:dev` 会先检查 `127.0.0.1:5500/dist/calendar-float/index.js`。如果服务已经可用，它会直接退出，不会重复占端口；如果端口被别的服务占用但不是当前项目，会报错并停止。
 
-## 运行方式
+`pnpm watch` 只负责重新构建，不负责打开浏览器服务。
 
-### 触发流程
+## 世界书条目
 
-1. 读取世界书中的 `[fixed_event_index]`，若不存在则继续尝试旧 `[节庆_索引]` 等兼容名称
-2. 读取当前MVU世界时间
-3. 读取 MVU 变量
-4. 读取最近两层聊天消息
-5. 优先提取 `<gametxt>...</gametxt>` 内容
-6. 若没有可用 `gametxt`，则回退到普通消息文本，并执行：
-   - 去掉 `</think>` 之前的内容
-   - 去掉 `<UpdateVariable>...</UpdateVariable>` 块
-7. 根据统一触发映射判定节庆介绍 / 节庆提醒 / 节庆文本 / 书籍摘要 / 书籍全文是否命中
-8. 若命中世界书扫描类内容，则 silent inject 专属 token，并开启 `should_scan`
-9. 让 SillyTavern扫描命中对应绿灯条目
-10. 若命中提醒或摘要，则脚本直接做可见 `injectprompt`
+通用 profile 推荐使用这些条目名：
 
----
+- `[fixed_event_index]`：固定事件索引，月历主要数据源
+- `[mvu_update][月历球][月历变量更新规则]`：月历变量更新规则
+- `[月历球][当前月历内容展示]`：当前月历内容展示
 
-## 内容说明
+《命定之诗》profile 仍兼容带 `[DLC][扩展]` 的旧命名，例如：
 
-在世界书里主要维护这些内容：
+- `[DLC][扩展][月历球][月历变量更新规则][mvu_update]`
+- `[DLC][扩展][月历球][当前月历内容展示](...)`
 
-- `[fixed_event_index]`：首选 runtime 索引条目
-- `[节庆_索引]`：旧索引条目，仍会被读取，但新内容不建议继续用它作为主入口
-- 节庆介绍条目：例如 `[节庆_盟约日_介绍]`
-- 书籍全文条目：例如 `[节庆_盟约日_文本_盟约日观礼手册]`
+新角色卡不要硬抄旧前缀。通用脚本只需要能语义匹配 `[月历球][当前月历内容展示]` 和 `[月历球][月历变量更新规则]`。
 
-`[fixed_event_index]` 内部的首选结构是 `固定事件分组`、`固定事件`、`补充资料`。旧字段名如 `节庆`、`书籍`、`event`、`reminder`、`books` 仍尽量兼容，但 README 示例以后以首选结构为准，避免新索引继续写成旧格式。
+## 固定事件索引结构
 
-### 节庆提醒(reminder)
-
-提醒可写在 `提醒默认值`、固定事件 `提醒`、阶段 `提醒` 中。
-
-- 固定事件提醒会在节庆开始前 X 天或进行中插入提醒
-- 阶段提醒用于多阶段节庆，例如“倾国倾城祭”的海选、巡游、决赛
-- 如果未提供自定义提醒文本，会回退到 `提醒默认值.缺省模板`
-
-### 节庆介绍(event)
-
-介绍节庆相关活动。满足日期、地点、聊天文本或触发词条件时，脚本会 silent inject 专属 token 并开启世界书扫描，让对应绿灯条目进入上下文。
-
-### 书籍(books)
-
-现在首选写在 `补充资料`，分为摘要和全文
-
-摘要:
-
-- 不希望把整本书正文直接送进上下文时使用
-- 触发方式: 满足 `[fixed_event_index]` 内配置的关键词或关联事件条件
-
-全文:
-
-- 文本支持MD格式，[newpage]会开新一页
-- 默认触发方式: 用户消息包含 `书籍全文默认关键词模板` 生成的关键词，例如 `[[打开《盟约日观礼手册》]]`
-
-当前部分节庆和读物正文仍是占位文本(咕咕咕)，但已经保留好对应条目与触发逻辑，后续只需要补正文就行
-
----
-
-## 索引维护
-
-条目命名风格：
-
-- 索引条目：`[fixed_event_index]`
-- 兼容旧索引条目：`[节庆_索引]`
-- 节庆介绍：`[节庆_OO节_介绍]`
-- 节庆文本：`[节庆_OO节_文本_文本名]`
-
-若同名节庆一年有多个日期档，例如“深蓝拍卖会”，建议追加日期后缀，例如：
-
-- `[节庆_深蓝拍卖会_6-6_介绍]`
-- `[节庆_深蓝拍卖会_12-12_介绍]`
-
----
-
-## 索引结构
-
-首选结构示例：
+`[fixed_event_index]` 是 YAML。当前推荐结构如下：
 
 ```yaml
-版本: v4.2(0519)
+Profile: generic
+Profile设置:
+  label: 王庭月历
+  paths:
+    worldTime: stat_data.世界信息.完整时间字符串
+    worldLocation: stat_data.世界信息.地点
+  date:
+    eraName: 星历
+    eraNames:
+      - 星历
+      - 王庭历
+    useChineseNumeralYear: true
+版本: 1
+说明: 固定事件索引
 默认设置:
-  mvu时间路径: stat_data.世界.时间
-  mvu地点路径: stat_data.世界.地点
   书籍全文默认关键词模板: "[[打开《${bookname}》]]"
 提醒默认值:
   注入方式: silent_scan
@@ -143,26 +96,26 @@
     名称: 苏醒
     季节: 初春
 固定事件分组:
-  - id: nordgard
-    名称: 诺斯加德联盟节庆
-    图标: 诺斯加德联盟_snowflake-solid-full.svg
+  - id: royal
+    名称: 王庭节庆
+    图标: crown-solid-full.svg
     事件:
       - alliance_day
 固定事件:
   - id: alliance_day
     名称: 盟约日
-    分组: nordgard
+    分组: royal
     开始: 01-08
     结束: 01-08
     地点关键词:
-      - 诺斯加德联盟
+      - 王城
       - 白曜城
     介绍:
       条目名: "[节庆_盟约日_介绍]"
-      简介: 诺斯加德联盟纪念霜狼盟约建立的节日
+      简介: 纪念盟约建立的节日
       关键字:
         - 盟约日
-        - 霜狼盟约
+        - 盟约
     提醒:
       开始前提醒天数: 5
       注入方式: silent_scan
@@ -178,67 +131,82 @@
       - alliance_day
     摘要: 盟约日观礼流程、禁忌与仪式背景摘要
     全文:
-      世界书: 命定之诗
+      世界书: 当前世界书
       条目名: "[节庆_盟约日_文本_盟约日观礼手册]"
     关键字:
       - 盟约
       - 观礼
 ```
 
-多阶段节庆可在固定事件下写 `阶段`：
+旧字段 `默认设置.mvu时间路径` 和 `默认设置.mvu地点路径` 只作为兼容 fallback。新配置应写在 `Profile设置.paths.worldTime` 和 `Profile设置.paths.worldLocation`。
 
-```yaml
-固定事件:
-  - id: goddess_beauty_contest
-    名称: 倾国倾城祭
-    分组: solentis
-    开始: 02-01
-    结束: 02-14
-    阶段:
-      - id: first_bloom
-        名称: 第一阶段·初绽海选
-        开始: 02-01
-        结束: 02-04
-        提醒:
-          开始前提醒天数: 2
-          注入方式: injectprompt
-      - id: final_bloom
-        名称: 第三阶段·怒放决赛
-        开始: 02-14
-        结束: 02-14
+## 固定事件编辑器教程
+
+1. 打开月历悬浮球，进入设置或工具菜单，打开 `固定事件索引`。
+2. 如果提示找不到固定事件索引，点击 `创建空固定事件索引`。脚本会在当前角色的主世界书里创建 `[fixed_event_index]`。
+3. 在 `基础设置` 里填写 profile：
+   - `Profile ID`：通用角色卡通常写 `generic`
+   - `显示名称`：UI 或诊断里显示的名字
+   - `MVU 时间路径`：从 MVU/stat_data 读取当前世界时间的路径
+   - `MVU 地点路径`：从 MVU/stat_data 读取当前地点的路径
+   - `纪元名`：例如 `AC`、`星历`、`王庭历`
+   - `中文数字年份`：如果世界时间会写成 `星历二年五月三日`，设为 `是`
+4. 如果需要自定义月份名，在 `月份别名` 写月份、名称和季节。
+5. 在左侧新增分组。分组用于给事件分类和设置图标。
+6. 新增固定事件，至少填写：
+   - `id`：稳定英文或拼音 id，后续不要随便改
+   - `名称`
+   - `开始` / `结束`：格式 `MM-DD`
+   - `分组`
+   - `地点关键词`：用于地点命中
+7. 如果事件有多阶段，给事件新增 `阶段`，每个阶段也使用 `MM-DD` 日期。
+8. 如果希望 LLM 或世界书能读到节庆说明，在 `介绍` 里填世界书条目名和关键词。
+9. 如果需要提醒，配置 `提醒` 或阶段里的 `提醒`。没有自定义文本时会回退到 `提醒默认值`。
+10. 如果有书籍、信件、手册、档案等资料，在 `补充资料` 新增条目，并把资料 id 挂到固定事件的 `相关资料`。
+11. 切到 `YAML 预览` 检查生成结果。结构化表单和 YAML textarea 会同步。
+12. 点击 `保存到世界书`。保存后重新读取或重新打开月历，确认事件进入月历。
+
+注意事项：
+
+- 不要把 profile 时间路径和 MVU 全局默认路径填两次。当前推荐只填 `Profile设置.paths`。
+- 创建空索引前要确认当前角色卡已经有可写的主世界书。
+- 编辑器会尽量保留未知 YAML 字段，但不要依赖旧顶层字段 `节庆`、`书籍`、`fixed_events`、`event_groups`、`materials`、`books`。
+- 日期解析预览只验证 profile 的纪元和日期规则，不代表对应日期一定有事件。
+- 保存前如果有红色错误提示，先修正；否则可能写入了 UI 能显示但 runtime 无法正确扫描的索引。
+
+## Runtime 行为
+
+运行时会：
+
+1. 读取 `[fixed_event_index]`
+2. 读取 profile 的时间路径和地点路径
+3. 解析当前世界日期、地点、最近消息和用户输入
+4. 根据固定事件日期窗口、地点关键词、正文关键词和资料关键词判断命中
+5. 对世界书扫描类内容 silent inject token 并开启 `should_scan`
+6. 对提醒、摘要等脚本直接展示的内容执行可见注入
+7. 把匹配到的固定事件、归档事件、补充资料组装给月历 UI
+
+## 推荐检查
+
+文档或配置改动后：
+
+```powershell
+git diff --check
 ```
 
-旧格式仍兼容，例如：
+代码改动后至少运行：
 
-```yaml
-节庆:
-  - id: alliance_day
-    名称: 盟约日
-    开始: 01-08
-    结束: 01-08
-    event:
-      世界书条目名称: "[节庆_盟约日_介绍]"
-    reminder:
-      开始前提醒天数: 5
-    books:
-      摘要内容: "要写东西就自行填上内容"
+```powershell
+pnpm run build:dev
 ```
 
----
+固定事件编辑器相关改动可加跑：
 
-## 世界书编辑流程
-
-推荐维护顺序：
-
-1. 在世界书里新建或修改索引条目 `[fixed_event_index]`，并按首选结构填写。旧卡已有的 `[节庆_索引]` 不需要立刻改名
-2. 世界书新增对应正文条目：
-   - `[节庆_XX_介绍]`
-   - `[节庆_XX_文本]`
-3. 世界书条目的绿灯触发词是世界书条目自身名字，例如[节庆_盟约日_介绍]的绿灯触发词是`[节庆_盟约日_介绍]`
-4. 在月历悬浮球设置菜单打开 `固定事件索引`，可用结构化编辑器维护分组、固定事件、阶段、补充资料、默认设置和月份别名
-5. 保存到世界书后，让脚本重新读取或等待运行时扫描
-
----
+```powershell
+pnpm exec ts-node --transpile-only --compiler-options '{"module":"CommonJS","moduleResolution":"node"}' checks/calendar-float/fixed-event-index-editor/profile.check.ts
+pnpm exec ts-node --transpile-only --compiler-options '{"module":"CommonJS","moduleResolution":"node"}' checks/calendar-float/fixed-event-index-editor/save.check.ts
+pnpm exec ts-node --transpile-only --compiler-options '{"module":"CommonJS","moduleResolution":"node"}' checks/calendar-float/widget/fixed-event-editor-row-actions.check.ts
+```
 
 ## 许可证
 

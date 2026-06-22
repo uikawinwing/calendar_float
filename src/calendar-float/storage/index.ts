@@ -19,14 +19,6 @@ export {
 export { readArchiveStore, replaceArchiveStore } from './archive-store';
 export { ensureMvuReady, getLatestMessageVariableTarget } from './message-variable';
 export {
-  getLegacyCalendarEventRootPath,
-  inspectLegacyCalendarBucketsInData,
-  mergeLegacyCalendarBucketsInData,
-  migrateLegacyCalendarVariableTargets,
-  scanLegacyCalendarVariableTargets,
-} from './legacy-calendar-path';
-export { migrateCalendarChatVariableStore, migrateCalendarLatestMessageVariableStore } from './migration';
-export {
   clearCalendarRuntimePathSettings,
   readCalendarRuntimePathSettings,
   replaceCalendarRuntimePathSettings,

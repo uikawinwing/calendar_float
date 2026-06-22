@@ -37,6 +37,7 @@ export {
   type FixedEventMaterialRowAddition,
   type FixedEventMaterialStructuredEdit,
   type FixedEventMonthAliasStructuredEdit,
+  type FixedEventProfileStructuredEdit,
   type FixedEventReminderDefaultsStructuredEdit,
   type FixedEventRowAddition,
   type FixedEventStageRowAddition,

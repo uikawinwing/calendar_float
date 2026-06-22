@@ -1,6 +1,14 @@
 import { SCRIPT_NAME } from '../constants';
-import { CALENDAR_PROFILES, FATE_POEM_CALENDAR_PROFILE, GENERIC_CALENDAR_PROFILE } from './profiles';
-import type { CalendarAddonId, CalendarProfile, CalendarProfileDetectionResult } from './types';
+import type { ParseWorldDateAnchorOptions } from '../date';
+import { FATE_POEM_CALENDAR_PROFILE, GENERIC_CALENDAR_PROFILE } from './profiles';
+import { resolveCalendarProfileConfig } from './normalize';
+import type {
+  CalendarAddonId,
+  CalendarProfile,
+  CalendarProfileConfigInput,
+  CalendarProfileDetectionResult,
+  CalendarProfileResolveResult,
+} from './types';
 
 let activeProfile: CalendarProfile = GENERIC_CALENDAR_PROFILE;
 let lastDetection: CalendarProfileDetectionResult = {
@@ -9,39 +17,12 @@ let lastDetection: CalendarProfileDetectionResult = {
   matchedText: '',
 };
 
-function normalizeMatchText(value: unknown): string {
-  return String(value || '').trim().toLowerCase();
-}
-
-function includesAnyKeyword(value: unknown, keywords: string[]): string {
-  const text = normalizeMatchText(value);
-  if (!text) {
-    return '';
-  }
-  return keywords.find(keyword => text.includes(normalizeMatchText(keyword))) ?? '';
-}
-
 function resolveDetectedProfile(): CalendarProfileDetectionResult {
   return {
     candidate: GENERIC_CALENDAR_PROFILE,
     reason: 'default',
     matchedText: '',
   };
-}
-
-function resolveProfileFromHint(value: unknown): CalendarProfile | null {
-  const text = normalizeMatchText(value);
-  if (!text) {
-    return null;
-  }
-  return (
-    CALENDAR_PROFILES.find(profile => {
-      if (text === normalizeMatchText(profile.id) || text === normalizeMatchText(profile.label)) {
-        return true;
-      }
-      return Boolean(includesAnyKeyword(text, [...profile.detection.characterNames, ...profile.detection.worldbookKeywords]));
-    }) ?? null
-  );
 }
 
 export async function initializeCalendarProfile(): Promise<CalendarProfile> {
@@ -57,10 +38,11 @@ export async function initializeCalendarProfile(): Promise<CalendarProfile> {
 }
 
 export function applyCalendarProfileHint(value: unknown): CalendarProfile {
-  const candidate = resolveProfileFromHint(value);
-  if (!candidate) {
+  const result = resolveCalendarProfileConfig({ profileHint: value });
+  if (result.source === 'default') {
     return activeProfile;
   }
+  const candidate = result.profile;
   const matchedText = String(value || '').trim();
   const changed = candidate.id !== activeProfile.id || lastDetection.matchedText !== matchedText;
   activeProfile = candidate;
@@ -78,8 +60,42 @@ export function applyCalendarProfileHint(value: unknown): CalendarProfile {
   return activeProfile;
 }
 
+export function applyCalendarProfileConfig(args: {
+  profileHint?: unknown;
+  config?: CalendarProfileConfigInput | null;
+}): CalendarProfileResolveResult {
+  const result = resolveCalendarProfileConfig(args);
+  const matchedText = String(args.profileHint || result.profile.id || '').trim();
+  const changed = result.profile.id !== activeProfile.id || lastDetection.matchedText !== matchedText;
+  activeProfile = result.profile;
+  lastDetection = {
+    candidate: result.profile,
+    reason: result.source === 'default' ? 'default' : 'runtime_index_profile',
+    matchedText,
+  };
+  if (changed && result.source !== 'default' && typeof toastr !== 'undefined') {
+    toastr.info(`月历 Profile 已载入：${activeProfile.label}\n来源：固定事件索引 Profile`);
+  }
+  if (changed) {
+    console.info(`[${SCRIPT_NAME}] 月历 profile 已由 runtime index 配置: ${activeProfile.id}`, {
+      matchedText,
+      source: result.source,
+      warnings: result.warnings,
+    });
+  }
+  return result;
+}
+
 export function getActiveCalendarProfile(): CalendarProfile {
   return activeProfile;
+}
+
+export function getActiveCalendarDateParseOptions(): ParseWorldDateAnchorOptions {
+  return {
+    eraName: activeProfile.date.eraName,
+    eraNames: activeProfile.date.eraNames,
+    useChineseNumeralYear: activeProfile.date.useChineseNumeralYear,
+  };
 }
 
 export function getCalendarProfileDetection(): CalendarProfileDetectionResult {
@@ -111,4 +127,10 @@ export function getProfileWorldLocationPath(): string {
 }
 
 export { FATE_POEM_CALENDAR_PROFILE, GENERIC_CALENDAR_PROFILE };
-export type { CalendarAddonId, CalendarProfile, CalendarProfileId } from './types';
+export type {
+  CalendarAddonId,
+  CalendarProfile,
+  CalendarProfileConfigInput,
+  CalendarProfileId,
+  CalendarProfileResolveResult,
+} from './types';

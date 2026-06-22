@@ -1,5 +1,6 @@
 import { extractClockTimeText } from '../date';
-import { formatCalendarMonthTitle } from '../runtime-month-alias';
+import { formatCalendarMonthTitle } from '../runtime-worldbook/month-alias';
+import type { AgendaSortMode, FestivalScopeMode } from './event-binding/types';
 import { renderUtilityIcon } from './icons';
 import type {
   ArchivedCalendarEvent,
@@ -11,9 +12,6 @@ import type {
   DailyAgendaItem,
   MonthDayCell,
 } from '../types';
-
-export type AgendaSortMode = 'date-asc' | 'date-desc' | 'title-asc' | 'festival-first' | 'event-first';
-export type FestivalScopeMode = 'all' | 'local' | 'none';
 
 const MONTH_VISIBLE_SLOT_COUNT = 3;
 
@@ -297,7 +295,7 @@ function getFestivalScopeButtonCopy(festivalScope: {
 
 export function renderCalendarMonthView(options: {
   cells: MonthDayCell[];
-  currentMonth: { year: number; month: number; alias?: string };
+  currentMonth: { year: number; month: number; alias?: string; eraName?: string };
   festivalScope: {
     mode: FestivalScopeMode;
     currentLocationText: string;
@@ -312,7 +310,7 @@ export function renderCalendarMonthView(options: {
     <div class="th-month-view">
       <section class="th-month-header">
         <div>
-          <div class="th-month-title">${escapeWidgetHtml(formatCalendarMonthTitle(currentMonth.year, currentMonth.month, currentMonth.alias))}</div>
+          <div class="th-month-title">${escapeWidgetHtml(formatCalendarMonthTitle(currentMonth.year, currentMonth.month, currentMonth.alias, currentMonth.eraName))}</div>
         </div>
         <div class="th-month-actions">
           <button type="button" class="th-btn th-festival-scope-btn is-${festivalScope.mode}" data-action="toggle-festival-scope" aria-label="${escapeWidgetHtml(scopeButton.title)}" title="${escapeWidgetHtml(scopeButton.title)}">

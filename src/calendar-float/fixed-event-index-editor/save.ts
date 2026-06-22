@@ -1,7 +1,7 @@
 import { parseFixedEventIndexDraft } from './parse';
 import { serializeFixedEventIndexDraft } from './serialize';
 import { validateFixedEventIndexDraft } from './validate';
-import { DEFAULT_MVU_LOCATION_PATH, DEFAULT_MVU_TIME_PATH } from '../runtime-config';
+import { DEFAULT_MVU_LOCATION_PATH, DEFAULT_MVU_TIME_PATH } from '../runtime-worldbook/config';
 import { ensureCalendarCharacterPrimaryWorldbook } from '../worldbook-manager';
 import type { FixedEventIndexDraft } from './draft-types';
 
@@ -49,6 +49,21 @@ function createEmptyFixedEventIndexDraft(source: { worldbookName: string; entryN
     canSave: true,
     saveBlockedReasons: [],
     warnings: [],
+    profile: {
+      id: 'generic',
+      settings: {
+        label: '通用月历',
+        paths: {
+          worldTime: DEFAULT_MVU_TIME_PATH,
+          worldLocation: DEFAULT_MVU_LOCATION_PATH,
+          unknownFields: {},
+        },
+        date: {
+          unknownFields: {},
+        },
+        unknownFields: {},
+      },
+    },
     metadata: {
       version: 1,
       description: '固定事件索引',

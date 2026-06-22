@@ -8,7 +8,7 @@ import {
   buildReminderState,
 } from '../calendar-view-model';
 import { INSTANCE_KEY, MESSAGE_KNOWN_TAGS_PATH, ROOT_ID, SCRIPT_NAME, STYLE_ID } from '../constants';
-import { addDays, compareDatePoint, extractClockTimeText, formatDateKey, getWeekdayFromAnchor } from '../date';
+import { addDays, compareDatePoint, extractClockTimeText, formatDateKey } from '../date';
 import { buildFestivalTagPreviewMarker } from '../festival-visual';
 import {
   applyFixedEventIndexRowOperationsToYaml,
@@ -31,17 +31,18 @@ import {
   type FixedEventGroupStructuredEdit,
   type FixedEventIndexEditorPreviewModel,
   type FixedEventMaterialStructuredEdit,
-  type FixedEventMonthAliasDraft,
   type FixedEventMonthAliasStructuredEdit,
+  type FixedEventProfileStructuredEdit,
   type FixedEventReminderDefaultsStructuredEdit,
   type FixedEventStageStructuredEdit,
   type FixedEventStructuredEdit,
 } from '../fixed-event-index-editor';
 import { saveCalendarForm } from '../form-service';
-import { isCalendarAddonEnabled } from '../profile';
-import { buildSelectedDayDetail, fallbackDateLabel, renderFormHtml } from '../render';
+import { getActiveCalendarProfile, isCalendarAddonEnabled } from '../profile';
 import { loadCalendarDatasetFromRuntimeWorldbook } from '../runtime-ui-dataset';
-import { getCalendarWorldLocationPath, getCalendarWorldTimePath } from '../runtime-config';
+import { getCalendarWorldLocationPath, getCalendarWorldTimePath } from '../runtime-worldbook/config';
+import { buildSelectedDayDetail, fallbackDateLabel } from './day-detail';
+import { renderFormHtml } from './form-render';
 import { getContrastRatio, isValidHexColor, TAG_COLOR_PALETTE } from './helpers/color';
 import { createRenderMarkdownContent, escapeHtml } from './helpers/markdown';
 import { renderUtilityIcon } from './icons';
@@ -60,9 +61,7 @@ import {
   readCalendarRuntimePathSettings,
   replaceCalendarArchivePolicy,
   replaceCalendarRuntimePathSettings,
-  migrateLegacyCalendarVariableTargets,
   restoreArchivedEvent,
-  scanLegacyCalendarVariableTargets,
   syncArchiveOnActiveRemoval,
 } from '../storage';
 import type {
@@ -81,17 +80,63 @@ import type {
   WidgetState,
 } from '../types';
 import { bindCalendarWidgetEvents } from './events';
+import { formatWorldTimeForPoint, parseDateKeyPoint } from './date-actions';
+import {
+  buildDirtyEditorCloseDecision,
+  buildDirtyEditorReloadDecision,
+  type WidgetConfirmDecision,
+  type WidgetNoticeDecision,
+} from './dialog-policy';
+import {
+  buildActiveDeleteDecision,
+  buildArchiveCleanupDecision,
+  buildArchiveCleanupResultNotice,
+  buildArchivePurgeDecision,
+  buildFavoriteProtectedNotice,
+  buildFormSaveFailureNotice,
+  buildInvalidColorNotice,
+  buildQuickInputMissingNotice,
+} from './event-action-policy';
+import {
+  buildFixedEventEditorRenameDecision,
+  getFixedEventEditorRenameScopeLabel,
+  type FixedEventEditorRenameScope,
+  type WidgetInputDecision,
+} from './fixed-event-editor-rename-policy';
+import {
+  buildFixedEventEditorRowAction,
+  type FixedEventEditorRowOperation,
+} from './fixed-event-editor-row-actions';
+import { bindFixedEventIndexEditorDialogEvents } from './fixed-event-editor-bindings';
+import {
+  readFixedEventIndexEditorScrollSnapshot,
+  restoreFixedEventIndexEditorScrollSnapshot,
+} from './fixed-event-editor-scroll';
 import { getViewportSize, isDesktopViewport } from './layout';
 import { buildLocalFestivalSearchTerms, isFestivalVisibleInLocalScope } from './local-festival-scope';
+import {
+  buildManagedWorldbookSummaryLines,
+  filterWorldbookPickerNames,
+  getConnectivityButtonCopy,
+  type ManagedWorldbookDialogMode,
+} from './managed-worldbook/dialog-model';
+import {
+  buildExternalMoveFailureNotice,
+  buildExternalMoveSuccessNotice,
+  buildManagedWorldbookActionErrorNotice,
+  buildManagedWorldbookReinstallSuccessNotice,
+  buildManagedWorldbookUninstallSuccessNotice,
+  validateExternalMoveRequest,
+  type WidgetToastNotice,
+} from './managed-worldbook/notices';
 import {
   renderAgendaPanel as renderAgendaPanelExternal,
   renderArchivePanel as renderArchivePanelExternal,
   renderBookMainView as renderBookMainViewExternal,
   renderCalendarMonthView,
   renderDetailPanel as renderDetailPanelExternal,
-  type AgendaSortMode,
-  type FestivalScopeMode,
 } from './render';
+import type { AgendaSortMode, FestivalScopeMode, SidebarTab } from './event-binding/types';
 import { ensureCalendarWidgetStyle } from './style';
 import {
   getCalendarManagedWorldbookDiagnostics,
@@ -105,6 +150,10 @@ import {
   type CalendarManagedWorldbookDiagnostics,
   type CalendarWorldbookMoveCandidate,
 } from '../worldbook-manager';
+import {
+  buildFixedEventMonthAliasesFromRuntime,
+  createFixedEventIndexEditorLoadingModel,
+} from './fixed-event-editor-host';
 
 const hostWindow =
   window.parent && window.parent !== window && window.parent.document
@@ -121,6 +170,57 @@ function isElliaAddonEnabled(): boolean {
   return isCalendarAddonEnabled('dlc_ellia') && Boolean(elliaAddon);
 }
 
+function showWidgetNotice(notice: WidgetToastNotice): void {
+  if (notice.level === 'success') {
+    toastr.success(notice.message, notice.title);
+    return;
+  }
+  if (notice.level === 'info') {
+    toastr.info(notice.message, notice.title);
+    return;
+  }
+  if (notice.level === 'warning') {
+    toastr.warning(notice.message, notice.title);
+    return;
+  }
+  toastr.error(notice.message, notice.title);
+}
+
+function showDecisionNotice(decision: WidgetNoticeDecision): void {
+  showWidgetNotice({
+    level: decision.level,
+    title: decision.title,
+    message: decision.message,
+    delivery: decision.delivery,
+    blocking: decision.blocking,
+  });
+}
+
+function showWidgetConfirm(decision: WidgetConfirmDecision, onConfirm: () => void | Promise<void>): void {
+  uiState.pendingTextInput = null;
+  uiState.pendingConfirm = {
+    title: decision.title,
+    message: decision.message,
+    confirmLabel: decision.confirmLabel,
+    cancelLabel: decision.cancelLabel,
+    onConfirm,
+  };
+  renderShell();
+}
+
+function showWidgetTextInput(decision: WidgetInputDecision, onSubmit: (value: string) => void | Promise<void>): void {
+  uiState.pendingConfirm = null;
+  uiState.pendingTextInput = {
+    title: decision.title,
+    message: decision.message,
+    initialValue: decision.initialValue,
+    confirmLabel: decision.confirmLabel,
+    cancelLabel: decision.cancelLabel,
+    onSubmit,
+  };
+  renderShell();
+}
+
 async function ensureProfileAddonsLoaded(): Promise<void> {
   if (!isCalendarAddonEnabled('dlc_ellia')) {
     elliaAddon = null;
@@ -129,8 +229,22 @@ async function ensureProfileAddonsLoaded(): Promise<void> {
   elliaAddon ??= await import('../dlc_ellia');
 }
 
-type SidebarTab = 'detail' | 'form' | 'archive';
-type ManagedWorldbookDialogMode = 'menu' | 'confirm-uninstall' | 'confirm-reinstall' | 'export-external';
+interface PendingWidgetConfirm {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  onConfirm: () => void | Promise<void>;
+}
+
+interface PendingWidgetTextInput {
+  title: string;
+  message: string;
+  initialValue: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  onSubmit: (value: string) => void | Promise<void>;
+}
 
 const refs: WidgetRefs = {
   iframe: null,
@@ -159,27 +273,10 @@ const state: WidgetState = {
 
 let monthAliases: CalendarMonthAliasRecord[] = [];
 
-const FALLBACK_FIXED_EVENT_MONTH_ALIASES: FixedEventMonthAliasDraft[] = [
-  { month: 1, name: '苏醒', season: '初春', unknownFields: {} },
-  { month: 2, name: '新芽', season: '初春', unknownFields: {} },
-  { month: 3, name: '风信', season: '初春', unknownFields: {} },
-  { month: 4, name: '辉光', season: '盛夏', unknownFields: {} },
-  { month: 5, name: '繁盛', season: '盛夏', unknownFields: {} },
-  { month: 6, name: '旅人', season: '盛夏', unknownFields: {} },
-  { month: 7, name: '丰收', season: '金秋', unknownFields: {} },
-  { month: 8, name: '赤叶', season: '金秋', unknownFields: {} },
-  { month: 9, name: '静谧', season: '金秋', unknownFields: {} },
-  { month: 10, name: '霜降', season: '寒冬', unknownFields: {} },
-  { month: 11, name: '长夜', season: '寒冬', unknownFields: {} },
-  { month: 12, name: '星见', season: '寒冬', unknownFields: {} },
-];
-
 const BALL_POSITION_VAR_KEY = 'calendar_float_ball_position';
 const BALL_DEFAULT_SIZE = 60;
 const BALL_VIEWPORT_MARGIN = 8;
 const BALL_DRAG_CLICK_THRESHOLD = 4;
-const WORLD_WEEKDAY_TEXT = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-
 const uiState = {
   sidebarTab: 'detail' as SidebarTab,
   panelLeft: null as number | null,
@@ -219,6 +316,8 @@ const uiState = {
   fixedEventIndexEditorModel: null as FixedEventIndexEditorPreviewModel | null,
   fixedEventIndexEditorSelection: null as FixedEventIndexEditorSelection | null,
   fixedEventIndexEditorDirty: false,
+  pendingConfirm: null as PendingWidgetConfirm | null,
+  pendingTextInput: null as PendingWidgetTextInput | null,
 };
 
 function getTodayPoint(): DatePoint {
@@ -467,6 +566,8 @@ function ensureRoot(): void {
     <dialog class="th-managed-worldbook-dialog-layer" data-role="managed-worldbook-dialog-layer" aria-hidden="true"></dialog>
     <dialog class="th-managed-worldbook-dialog-layer" data-role="tag-color-dialog-layer" aria-hidden="true"></dialog>
     <dialog class="th-managed-worldbook-dialog-layer" data-role="fixed-event-index-editor-layer" aria-hidden="true"></dialog>
+    <dialog class="th-managed-worldbook-dialog-layer" data-role="widget-confirm-dialog-layer" aria-hidden="true"></dialog>
+    <dialog class="th-managed-worldbook-dialog-layer" data-role="widget-text-input-dialog-layer" aria-hidden="true"></dialog>
   `;
 
   uiDocument.body.appendChild(root);
@@ -621,38 +722,6 @@ function setPanelFullscreen(fullscreen: boolean): void {
   renderShell();
 }
 
-function buildManagedWorldbookSummaryLines(diagnostics: CalendarManagedWorldbookDiagnostics): string[] {
-  const canUseDiagnosticWorldbook = Boolean(diagnostics.worldbookName && diagnostics.existsInRegistry);
-  const formatLocation = (entryLabel: string, found: boolean): string =>
-    found && canUseDiagnosticWorldbook ? `${diagnostics.worldbookName}；条目：${entryLabel}` : '未找到';
-  const reinstallTarget = canUseDiagnosticWorldbook ? diagnostics.worldbookName : '当前角色绑定世界书';
-  return [
-    `基础规则：${diagnostics.hasUpdateRulesEntry ? '已找到' : '未找到'}｜位置：${formatLocation('月历变量更新规则', diagnostics.hasUpdateRulesEntry)}`,
-    `变量展示：${diagnostics.hasVariableListEntry ? '已找到' : '未找到'}｜位置：${formatLocation(CALENDAR_VARIABLE_LIST_ENTRY_DISPLAY_NAME, diagnostics.hasVariableListEntry)}`,
-    `重装位置：${reinstallTarget}`,
-  ];
-}
-
-/**
- * UI 入口展示 MVU 设定摘要；完整来源诊断保留在控制台，避免弹窗把整本世界书摊出来。
- */
-function getConnectivityButtonCopy(diagnostics: CalendarManagedWorldbookDiagnostics): {
-  text: string;
-  title: string;
-} {
-  const installedText = `${diagnostics.managedEntryCount}/${diagnostics.expectedManagedEntryCount}`;
-  const stateText =
-    diagnostics.connectivity === 'checking'
-      ? '正在检查 MVU 设定'
-      : diagnostics.connectivity === 'error'
-        ? `MVU 设定检查失败；当前 ${installedText}`
-        : `检查 MVU 设定；当前 ${installedText}`;
-  return {
-    text: uiState.managedWorldbookBusy ? '检查中…' : 'MVU设定',
-    title: stateText,
-  };
-}
-
 function updateManagedWorldbookButton(): void {
   if (!refs.root) {
     return;
@@ -663,7 +732,7 @@ function updateManagedWorldbookButton(): void {
   if (!button) {
     return;
   }
-  const copy = getConnectivityButtonCopy(diagnostics);
+  const copy = getConnectivityButtonCopy(diagnostics, { busy: uiState.managedWorldbookBusy });
   button.dataset.state = diagnostics.connectivity;
   button.disabled = uiState.managedWorldbookBusy || diagnostics.connectivity === 'checking';
   button.title = copy.title;
@@ -707,6 +776,149 @@ function closeManagedWorldbookDialog(): void {
   uiState.managedWorldbookDialogDiagnostics = null;
   uiState.mvuPathSettingsFeedback = '';
   renderShell();
+}
+
+function closeWidgetConfirmDialog(): void {
+  uiState.pendingConfirm = null;
+  renderShell();
+}
+
+async function confirmWidgetConfirmDialog(): Promise<void> {
+  const pending = uiState.pendingConfirm;
+  if (!pending) {
+    return;
+  }
+  uiState.pendingConfirm = null;
+  renderShell();
+  await pending.onConfirm();
+}
+
+function renderWidgetConfirmDialog(): void {
+  if (!refs.root) {
+    return;
+  }
+  const layer = refs.root.querySelector<HTMLElement>('[data-role="widget-confirm-dialog-layer"]');
+  if (!layer) {
+    return;
+  }
+  const pending = uiState.pendingConfirm;
+  if (!pending) {
+    syncDialogLayerOpen(layer, false);
+    layer.innerHTML = '';
+    return;
+  }
+
+  layer.innerHTML = `
+    <div class="th-managed-worldbook-dialog-backdrop"></div>
+    <section class="th-managed-worldbook-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(pending.title)}">
+      <div class="th-managed-worldbook-dialog-head">
+        <div class="th-managed-worldbook-dialog-title">${escapeHtml(pending.title)}</div>
+        <div class="th-managed-worldbook-dialog-desc">${escapeHtml(pending.message)}</div>
+      </div>
+      <div class="th-managed-worldbook-dialog-actions">
+        <div class="th-managed-worldbook-action-row is-primary">
+          <button type="button" class="th-btn th-primary-btn th-managed-worldbook-dialog-btn" data-action="widget-confirm-accept">${escapeHtml(pending.confirmLabel)}</button>
+          <button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="widget-confirm-cancel">${escapeHtml(pending.cancelLabel)}</button>
+        </div>
+      </div>
+    </section>
+  `;
+  syncDialogLayerOpen(layer, true);
+
+  const bindClick = (selector: string, handler: () => void | Promise<void>) => {
+    const element = layer.querySelector<HTMLElement>(selector);
+    if (element) {
+      element.onclick = () => {
+        void handler();
+      };
+    }
+  };
+  bindClick('.th-managed-worldbook-dialog-backdrop', closeWidgetConfirmDialog);
+  bindClick('[data-action="widget-confirm-cancel"]', closeWidgetConfirmDialog);
+  bindClick('[data-action="widget-confirm-accept"]', confirmWidgetConfirmDialog);
+}
+
+function closeWidgetTextInputDialog(): void {
+  uiState.pendingTextInput = null;
+  renderShell();
+}
+
+async function submitWidgetTextInputDialog(layer: HTMLElement): Promise<void> {
+  const pending = uiState.pendingTextInput;
+  if (!pending) {
+    return;
+  }
+  const input = layer.querySelector<HTMLInputElement>('[data-role="widget-text-input"]');
+  const value = String(input?.value ?? pending.initialValue);
+  uiState.pendingTextInput = null;
+  renderShell();
+  await pending.onSubmit(value);
+}
+
+function renderWidgetTextInputDialog(): void {
+  if (!refs.root) {
+    return;
+  }
+  const layer = refs.root.querySelector<HTMLElement>('[data-role="widget-text-input-dialog-layer"]');
+  if (!layer) {
+    return;
+  }
+  const pending = uiState.pendingTextInput;
+  if (!pending) {
+    syncDialogLayerOpen(layer, false);
+    layer.innerHTML = '';
+    return;
+  }
+
+  layer.innerHTML = `
+    <div class="th-managed-worldbook-dialog-backdrop"></div>
+    <section class="th-managed-worldbook-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(pending.title)}">
+      <div class="th-managed-worldbook-dialog-head">
+        <div class="th-managed-worldbook-dialog-title">${escapeHtml(pending.title)}</div>
+        <div class="th-managed-worldbook-dialog-desc">${escapeHtml(pending.message)}</div>
+      </div>
+      <div class="th-mvu-path-settings">
+        <label>
+          <span>新 id</span>
+          <input type="text" data-role="widget-text-input" value="${escapeHtml(pending.initialValue)}" autocomplete="off" />
+        </label>
+      </div>
+      <div class="th-managed-worldbook-dialog-actions">
+        <div class="th-managed-worldbook-action-row is-primary">
+          <button type="button" class="th-btn th-primary-btn th-managed-worldbook-dialog-btn" data-action="widget-text-input-submit">${escapeHtml(pending.confirmLabel)}</button>
+          <button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="widget-text-input-cancel">${escapeHtml(pending.cancelLabel)}</button>
+        </div>
+      </div>
+    </section>
+  `;
+  syncDialogLayerOpen(layer, true);
+
+  const input = layer.querySelector<HTMLInputElement>('[data-role="widget-text-input"]');
+  input?.focus();
+  input?.select();
+  if (input) {
+    input.onkeydown = event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        void submitWidgetTextInputDialog(layer);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closeWidgetTextInputDialog();
+      }
+    };
+  }
+
+  const bindClick = (selector: string, handler: () => void | Promise<void>) => {
+    const element = layer.querySelector<HTMLElement>(selector);
+    if (element) {
+      element.onclick = () => {
+        void handler();
+      };
+    }
+  };
+  bindClick('.th-managed-worldbook-dialog-backdrop', closeWidgetTextInputDialog);
+  bindClick('[data-action="widget-text-input-cancel"]', closeWidgetTextInputDialog);
+  bindClick('[data-action="widget-text-input-submit"]', () => submitWidgetTextInputDialog(layer));
 }
 
 function buildMvuPathSettingsPanelHtml(): string {
@@ -769,13 +981,12 @@ function renderManagedWorldbookDialog(): void {
   let bodyHtml = buildMvuPathSettingsPanelHtml();
   let actionHtml = [
     '<details class="th-mvu-maintenance-details">',
-    '<summary><span>高级维护</span><small>搬运、迁移、重装或卸载托管规则</small></summary>',
+    '<summary><span>高级维护</span><small>搬运、重装或卸载托管规则</small></summary>',
     '<div class="th-mvu-maintenance-body">',
     '<div class="th-mvu-action-group th-mvu-action-group--tools">',
-    '<div class="th-mvu-action-copy"><strong>世界书工具</strong><span>把托管规则搬走，或把旧变量迁移到现在的结构。</span></div>',
+    '<div class="th-mvu-action-copy"><strong>世界书工具</strong><span>把托管规则和索引内容搬到其他世界书。</span></div>',
     '<div class="th-managed-worldbook-action-row th-mvu-action-buttons">',
     '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-menu-export-external">搬运到其他世界书</button>',
-    `<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-menu-migrate-legacy" ${uiState.managedWorldbookBusy ? 'disabled' : ''}>旧变量迁移</button>`,
     '</div>',
     '</div>',
     '<div class="th-mvu-action-group th-mvu-action-group--danger">',
@@ -909,9 +1120,6 @@ function renderManagedWorldbookDialog(): void {
   });
   bindClick('[data-action="managed-worldbook-menu-export-external"]', () => {
     void openExternalWorldbookMoveDialog(diagnostics);
-  });
-  bindClick('[data-action="managed-worldbook-menu-migrate-legacy"]', () => {
-    void confirmLegacyCalendarVariableMigration();
   });
   bindClick('[data-action="managed-worldbook-confirm-uninstall"]', () => {
     void confirmManagedWorldbookUninstall();
@@ -1122,34 +1330,10 @@ function resetMvuPathSettingsDialog(): void {
   void refreshDataset();
 }
 
-function createFixedEventIndexEditorLoadingModel(): FixedEventIndexEditorPreviewModel {
-  return {
-    loading: true,
-    source: null,
-    draft: null,
-    yamlPreview: '',
-    validation: null,
-    errorMessage: '',
-    saving: false,
-  };
-}
-
-function buildFixedEventMonthAliasesFromRuntime(): FixedEventMonthAliasDraft[] {
-  const runtimeAliases = monthAliases
-    .map(alias => ({
-      month: alias.month,
-      name: String(alias.label || '').trim(),
-      season: String(alias.season || '').trim() || undefined,
-      unknownFields: {},
-    }))
-    .filter(alias => alias.month >= 1 && alias.month <= 12 && alias.name);
-  return runtimeAliases.length > 0 ? runtimeAliases : FALLBACK_FIXED_EVENT_MONTH_ALIASES;
-}
-
 function hydrateFixedEventIndexMonthAliasesFromRuntime(
   model: FixedEventIndexEditorPreviewModel,
 ): FixedEventIndexEditorPreviewModel {
-  const runtimeAliases = buildFixedEventMonthAliasesFromRuntime();
+  const runtimeAliases = buildFixedEventMonthAliasesFromRuntime(monthAliases);
   if (!model.draft || model.draft.monthAliases.length > 0 || runtimeAliases.length === 0) {
     return model;
   }
@@ -1169,12 +1353,16 @@ function hydrateFixedEventIndexMonthAliasesFromRuntime(
 }
 
 function closeFixedEventIndexEditorDialog(): void {
-  if (
-    uiState.fixedEventIndexEditorDirty &&
-    !hostWindow.confirm('你还没有保存到世界书，离开后这些编辑会丢失。确定要离开吗？')
-  ) {
+  if (uiState.fixedEventIndexEditorDirty) {
+    showWidgetConfirm(buildDirtyEditorCloseDecision(), () => {
+      closeFixedEventIndexEditorDialogAfterConfirm();
+    });
     return;
   }
+  closeFixedEventIndexEditorDialogAfterConfirm();
+}
+
+function closeFixedEventIndexEditorDialogAfterConfirm(): void {
   uiState.fixedEventIndexEditorOpen = false;
   uiState.fixedEventIndexEditorModel = null;
   uiState.fixedEventIndexEditorSelection = null;
@@ -1183,13 +1371,16 @@ function closeFixedEventIndexEditorDialog(): void {
 }
 
 async function openFixedEventIndexEditorDialog(): Promise<void> {
-  if (
-    uiState.fixedEventIndexEditorOpen &&
-    uiState.fixedEventIndexEditorDirty &&
-    !hostWindow.confirm('你还没有保存到世界书，重新读取会丢失当前编辑。确定要重新读取吗？')
-  ) {
+  if (uiState.fixedEventIndexEditorOpen && uiState.fixedEventIndexEditorDirty) {
+    showWidgetConfirm(buildDirtyEditorReloadDecision(), () => {
+      void loadFixedEventIndexEditorDialog();
+    });
     return;
   }
+  await loadFixedEventIndexEditorDialog();
+}
+
+async function loadFixedEventIndexEditorDialog(): Promise<void> {
   uiState.fixedEventIndexEditorOpen = true;
   uiState.fixedEventIndexEditorDirty = false;
   uiState.fixedEventIndexEditorSelection = null;
@@ -1319,6 +1510,7 @@ function readRequiredFixedEventEditField(row: HTMLElement, field: string): strin
 }
 
 function collectFixedEventStructuredEdits(layer: HTMLElement): {
+  profile?: FixedEventProfileStructuredEdit;
   defaults?: FixedEventDefaultsStructuredEdit;
   reminderDefaults?: FixedEventReminderDefaultsStructuredEdit;
   bookDefaults?: FixedEventBookDefaultsStructuredEdit;
@@ -1328,6 +1520,7 @@ function collectFixedEventStructuredEdits(layer: HTMLElement): {
   stages: FixedEventStageStructuredEdit[];
   materials: FixedEventMaterialStructuredEdit[];
 } {
+  const profileRow = layer.querySelector<HTMLElement>('[data-role="fixed-event-profile-row"]');
   const defaultsRow = layer.querySelector<HTMLElement>('[data-role="fixed-event-defaults-row"]');
   const reminderDefaultsRow = layer.querySelector<HTMLElement>('[data-role="fixed-event-reminder-defaults-row"]');
   const bookDefaultsRow = layer.querySelector<HTMLElement>('[data-role="fixed-event-book-defaults-row"]');
@@ -1339,6 +1532,16 @@ function collectFixedEventStructuredEdits(layer: HTMLElement): {
     ...layer.querySelectorAll<HTMLElement>('[data-role="fixed-event-edit-row"][data-scope="material"]'),
   ];
   return {
+    profile: profileRow
+      ? {
+          id: readFixedEventEditField(profileRow, 'id'),
+          label: readFixedEventEditField(profileRow, 'label'),
+          worldTimePath: readFixedEventEditField(profileRow, 'worldTimePath'),
+          worldLocationPath: readFixedEventEditField(profileRow, 'worldLocationPath'),
+          eraName: readFixedEventEditField(profileRow, 'eraName'),
+          useChineseNumeralYear: readFixedEventEditField(profileRow, 'useChineseNumeralYear'),
+        }
+      : undefined,
     defaults: defaultsRow
       ? {
           mvuTimePath: readFixedEventEditField(defaultsRow, 'mvuTimePath'),
@@ -1484,23 +1687,6 @@ function syncFixedEventIndexStructuredEditorToYamlPreview(showMessage = false): 
   }
 }
 
-function nextFixedEventIndexId(prefix: string, usedIds: string[]): string {
-  const used = new Set(usedIds);
-  let index = 1;
-  while (used.has(`${prefix}_${index}`)) {
-    index += 1;
-  }
-  return `${prefix}_${index}`;
-}
-
-function pickDefaultFixedEventGroupId(events: FixedEventDraft[]): string | undefined {
-  return events.find(event => event.groupId)?.groupId;
-}
-
-function nextFixedEventStageId(event: FixedEventDraft | undefined): string {
-  return nextFixedEventIndexId('stage_new', event?.stages?.map(stage => stage.id) ?? []);
-}
-
 function readFixedEventIndexSelectionFromElement(element: HTMLElement): FixedEventIndexEditorSelection {
   const section = String(element.dataset.section || 'events') as FixedEventIndexEditorSelection['section'];
   const scope = String(element.dataset.scope || 'overview') as FixedEventIndexEditorSelection['scope'];
@@ -1521,52 +1707,6 @@ function readFixedEventIndexSelectionFromElement(element: HTMLElement): FixedEve
     eventId,
     detailTab: detailTab || undefined,
   };
-}
-
-function getSelectedFixedEventIndexGroupAfterDelete(rowId: string): FixedEventIndexEditorSelection {
-  return { section: 'events', scope: 'overview', id: rowId || undefined };
-}
-
-function getSelectedFixedEventIndexAfterRowOperation(
-  operation:
-    | 'add-group'
-    | 'add-event'
-    | 'add-material'
-    | 'add-stage'
-    | 'remove-row'
-    | 'remove-stage'
-    | 'move-stage-up'
-    | 'move-stage-down',
-  rowScope: string,
-  rowId: string,
-  stageEventId: string,
-  nextIds: { groupId: string; eventId: string; materialId: string; stageId: string },
-): FixedEventIndexEditorSelection | null {
-  if (operation === 'add-group') {
-    return { section: 'events', scope: 'group', id: nextIds.groupId };
-  }
-  if (operation === 'add-event') {
-    return { section: 'events', scope: 'event', id: nextIds.eventId, detailTab: 'basic' };
-  }
-  if (operation === 'add-material') {
-    return { section: 'materials', scope: 'material', id: nextIds.materialId };
-  }
-  if (operation === 'add-stage') {
-    return { section: 'events', scope: 'stage', eventId: stageEventId, id: nextIds.stageId };
-  }
-  if (operation === 'remove-stage') {
-    return { section: 'events', scope: 'event', id: stageEventId, detailTab: 'stages' };
-  }
-  if (operation === 'remove-row' && rowScope === 'group') {
-    return getSelectedFixedEventIndexGroupAfterDelete(rowId);
-  }
-  if (operation === 'remove-row' && rowScope === 'event') {
-    return { section: 'events', scope: 'overview' };
-  }
-  if (operation === 'remove-row' && rowScope === 'material') {
-    return { section: 'materials', scope: 'overview' };
-  }
-  return null;
 }
 
 function applyFixedEventIndexYamlToEditorModel(
@@ -1607,15 +1747,7 @@ function applyFixedEventIndexStructuredEditor(): void {
 }
 
 function applyFixedEventIndexRowOperation(
-  operation:
-    | 'add-group'
-    | 'add-event'
-    | 'add-material'
-    | 'add-stage'
-    | 'remove-row'
-    | 'remove-stage'
-    | 'move-stage-up'
-    | 'move-stage-down',
+  operation: FixedEventEditorRowOperation,
   row?: HTMLElement,
 ): void {
   const model = uiState.fixedEventIndexEditorModel;
@@ -1631,89 +1763,24 @@ function applyFixedEventIndexRowOperation(
       entryName: source.entryName,
       worldbookName: source.worldbookName,
     });
-    const nextGroupId = nextFixedEventIndexId(
-      'group_new',
-      draft.groups.map(group => group.id),
-    );
-    const nextEventId = nextFixedEventIndexId(
-      'event_new',
-      draft.events.map(event => event.id),
-    );
-    const nextMaterialId = nextFixedEventIndexId(
-      'material_new',
-      draft.materials.map(material => material.id),
-    );
-    const rowScope = String(row?.dataset.scope ?? '');
-    const rowId = String(row?.dataset.id ?? '').trim();
-    const stageEventId = String(row?.dataset.eventId ?? '').trim();
-    const stageEvent = draft.events.find(event => event.id === stageEventId);
-    const nextStageId = nextFixedEventStageId(stageEvent);
+    const action = buildFixedEventEditorRowAction({
+      draft,
+      operation,
+      row: {
+        scope: row?.dataset.scope,
+        id: row?.dataset.id,
+        eventId: row?.dataset.eventId,
+      },
+    });
     const nextYaml = applyFixedEventIndexRowOperationsToYaml({
       sourceYaml,
       sourceInfo: {
         entryName: source.entryName,
         worldbookName: source.worldbookName,
       },
-      addGroups: operation === 'add-group' ? [{ id: nextGroupId, name: '新分组', eventIds: [] }] : undefined,
-      addEvents:
-        operation === 'add-event'
-          ? [
-              {
-                id: nextEventId,
-                name: '新固定事件',
-                groupId: pickDefaultFixedEventGroupId(draft.events) ?? draft.groups[0]?.id,
-                start: '01-01',
-                end: '01-01',
-              },
-            ]
-          : undefined,
-      addMaterials:
-        operation === 'add-material' ? [{ id: nextMaterialId, title: '新补充资料', eventIds: [] }] : undefined,
-      addStages:
-        operation === 'add-stage' && stageEvent
-          ? [
-              {
-                eventId: stageEvent.id,
-                id: nextStageId,
-                name: '新阶段',
-                start: stageEvent.start,
-                end: stageEvent.end,
-              },
-            ]
-          : undefined,
-      deleteGroupIds: operation === 'remove-row' && rowScope === 'group' && rowId ? [rowId] : undefined,
-      deleteEventIds: operation === 'remove-row' && rowScope === 'event' && rowId ? [rowId] : undefined,
-      deleteMaterialIds: operation === 'remove-row' && rowScope === 'material' && rowId ? [rowId] : undefined,
-      deleteStages:
-        operation === 'remove-stage' && stageEventId && rowId ? [{ eventId: stageEventId, id: rowId }] : undefined,
-      moveStages:
-        (operation === 'move-stage-up' || operation === 'move-stage-down') && stageEventId && rowId
-          ? [
-              {
-                eventId: stageEventId,
-                id: rowId,
-                direction: operation === 'move-stage-up' ? 'up' : 'down',
-              },
-            ]
-          : undefined,
+      ...action.operationInput,
     });
-    const operationMessage =
-      operation === 'remove-row' || operation === 'remove-stage'
-        ? '已从 YAML 移除这一行，尚未保存到世界书'
-        : operation === 'move-stage-up' || operation === 'move-stage-down'
-          ? '已调整阶段顺序，尚未保存到世界书'
-          : '已新增一行到 YAML，尚未保存到世界书';
-    applyFixedEventIndexYamlToEditorModel(
-      nextYaml,
-      operationMessage,
-      true,
-      getSelectedFixedEventIndexAfterRowOperation(operation, rowScope, rowId, stageEventId, {
-        groupId: nextGroupId,
-        eventId: nextEventId,
-        materialId: nextMaterialId,
-        stageId: nextStageId,
-      }),
-    );
+    applyFixedEventIndexYamlToEditorModel(nextYaml, action.message, true, action.nextSelection);
   } catch (error) {
     uiState.fixedEventIndexEditorModel = {
       ...model,
@@ -1726,20 +1793,30 @@ function applyFixedEventIndexRowOperation(
 
 function renameFixedEventIndexRowId(row: HTMLElement | undefined): void {
   const model = uiState.fixedEventIndexEditorModel;
+  const scope = String(row?.dataset.scope ?? '') as FixedEventEditorRenameScope;
+  const oldId = String(row?.dataset.id ?? '').trim();
+  if (!model?.source || !oldId || (scope !== 'group' && scope !== 'event' && scope !== 'material')) {
+    return;
+  }
+
+  showWidgetTextInput(buildFixedEventEditorRenameDecision({ scope, oldId }), nextId => {
+    renameFixedEventIndexRowIdAfterInput({ scope, oldId, newId: nextId });
+  });
+}
+
+function renameFixedEventIndexRowIdAfterInput(args: {
+  scope: FixedEventEditorRenameScope;
+  oldId: string;
+  newId: string;
+}): void {
+  const model = uiState.fixedEventIndexEditorModel;
   const source = model?.source;
   const layer = refs.root?.querySelector<HTMLElement>('[data-role="fixed-event-index-editor-layer"]');
-  const scope = String(row?.dataset.scope ?? '') as FixedEventIndexEditableRowScope;
-  const oldId = String(row?.dataset.id ?? '').trim();
-  if (!model || !source || !layer || !oldId || (scope !== 'group' && scope !== 'event' && scope !== 'material')) {
+  if (!model || !source || !layer) {
     return;
   }
 
-  const label = scope === 'group' ? '分组' : scope === 'event' ? '固定事件' : '补充资料';
-  const nextId = hostWindow.prompt(`请输入新的 ${label} id`, oldId);
-  if (nextId === null) {
-    return;
-  }
-
+  const label = getFixedEventEditorRenameScopeLabel(args.scope);
   try {
     const sourceYaml = readCurrentFixedEventIndexYamlWithStructuredEdits(layer, model);
     const nextYaml = renameFixedEventIndexRowIdInYaml({
@@ -1748,14 +1825,14 @@ function renameFixedEventIndexRowId(row: HTMLElement | undefined): void {
         entryName: source.entryName,
         worldbookName: source.worldbookName,
       },
-      scope,
-      oldId,
-      newId: nextId,
+      scope: args.scope,
+      oldId: args.oldId,
+      newId: args.newId,
     });
-    const normalizedNextId = nextId.trim();
+    const normalizedNextId = args.newId.trim();
     const currentSelection = uiState.fixedEventIndexEditorSelection;
     const nextSelection =
-      currentSelection?.scope === scope && currentSelection.id === oldId
+      currentSelection?.scope === args.scope && currentSelection.id === args.oldId
         ? { ...currentSelection, id: normalizedNextId }
         : currentSelection;
     applyFixedEventIndexYamlToEditorModel(
@@ -1772,38 +1849,6 @@ function renameFixedEventIndexRowId(row: HTMLElement | undefined): void {
     };
   }
   renderShell();
-}
-
-interface FixedEventIndexEditorScrollSnapshot {
-  dialogTop: number;
-  navTop: number;
-  detailTop: number;
-}
-
-function readFixedEventIndexEditorScrollSnapshot(layer: HTMLElement): FixedEventIndexEditorScrollSnapshot {
-  return {
-    dialogTop: layer.querySelector<HTMLElement>('.th-index-editor-dialog')?.scrollTop ?? 0,
-    navTop: layer.querySelector<HTMLElement>('[data-role="fixed-event-editor-nav"]')?.scrollTop ?? 0,
-    detailTop: layer.querySelector<HTMLElement>('[data-role="fixed-event-editor-detail"]')?.scrollTop ?? 0,
-  };
-}
-
-function restoreFixedEventIndexEditorScrollSnapshot(snapshot: FixedEventIndexEditorScrollSnapshot): void {
-  window.requestAnimationFrame(() => {
-    const layer = refs.root?.querySelector<HTMLElement>('[data-role="fixed-event-index-editor-layer"]');
-    const dialog = layer?.querySelector<HTMLElement>('.th-index-editor-dialog');
-    const nav = layer?.querySelector<HTMLElement>('[data-role="fixed-event-editor-nav"]');
-    const detail = layer?.querySelector<HTMLElement>('[data-role="fixed-event-editor-detail"]');
-    if (dialog) {
-      dialog.scrollTop = snapshot.dialogTop;
-    }
-    if (nav) {
-      nav.scrollTop = snapshot.navTop;
-    }
-    if (detail) {
-      detail.scrollTop = snapshot.detailTop;
-    }
-  });
 }
 
 function syncFixedEventIndexRecurrenceFields(layer: HTMLElement): void {
@@ -1841,123 +1886,36 @@ function renderFixedEventIndexEditorDialog(): void {
   syncDialogLayerOpen(layer, true);
   syncFixedEventIndexRecurrenceFields(layer);
 
-  layer.querySelectorAll<HTMLElement>('[data-action="close-fixed-event-index-editor"]').forEach(element => {
-    element.onclick = closeFixedEventIndexEditorDialog;
-  });
-  const reload = layer.querySelector<HTMLElement>('[data-action="reload-fixed-event-index-editor"]');
-  if (reload) {
-    reload.onclick = () => {
-      void openFixedEventIndexEditorDialog();
-    };
-  }
-  const save = layer.querySelector<HTMLElement>('[data-action="save-fixed-event-index-editor"]');
-  if (save) {
-    save.onclick = () => {
-      void saveFixedEventIndexEditorDialog();
-    };
-  }
-  const createTemplate = layer.querySelector<HTMLElement>('[data-action="create-empty-fixed-event-index-template"]');
-  if (createTemplate) {
-    createTemplate.onclick = () => {
-      void createEmptyFixedEventIndexTemplateDialog();
-    };
-  }
-  const applyStructuredEdit = layer.querySelector<HTMLElement>(
-    '[data-action="apply-fixed-event-index-structured-edit"]',
-  );
-  if (applyStructuredEdit) {
-    applyStructuredEdit.onclick = applyFixedEventIndexStructuredEditor;
-  }
-  layer.querySelectorAll<HTMLElement>('[data-action="select-fixed-event-index-pane"]').forEach(button => {
-    button.onclick = () => {
+  bindFixedEventIndexEditorDialogEvents(layer, {
+    close: closeFixedEventIndexEditorDialog,
+    reload: openFixedEventIndexEditorDialog,
+    save: saveFixedEventIndexEditorDialog,
+    createTemplate: createEmptyFixedEventIndexTemplateDialog,
+    applyStructuredEdit: applyFixedEventIndexStructuredEditor,
+    selectPane: button => {
       const scrollSnapshot = readFixedEventIndexEditorScrollSnapshot(layer);
       syncFixedEventIndexStructuredEditorToYamlPreview(false);
       uiState.fixedEventIndexEditorSelection = readFixedEventIndexSelectionFromElement(button);
       renderShell();
-      restoreFixedEventIndexEditorScrollSnapshot({ ...scrollSnapshot, detailTop: 0 });
-    };
-  });
-  layer
-    .querySelectorAll<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >('[data-role="fixed-event-edit-row"] input, [data-role="fixed-event-edit-row"] textarea, [data-role="fixed-event-edit-row"] select, [data-role="fixed-event-stage-row"] input, [data-role="fixed-event-stage-row"] textarea, [data-role="fixed-event-stage-row"] select, [data-role="fixed-event-defaults-row"] input, [data-role="fixed-event-defaults-row"] textarea, [data-role="fixed-event-defaults-row"] select, [data-role="fixed-event-reminder-defaults-row"] input, [data-role="fixed-event-reminder-defaults-row"] textarea, [data-role="fixed-event-reminder-defaults-row"] select, [data-role="fixed-event-book-defaults-row"] input, [data-role="fixed-event-book-defaults-row"] textarea, [data-role="fixed-event-book-defaults-row"] select, [data-role="fixed-event-month-alias-row"] input, [data-role="fixed-event-month-alias-row"] textarea, [data-role="fixed-event-month-alias-row"] select')
-    .forEach(input => {
-      input.oninput = () => {
-        if (input.dataset.field === 'recurrenceIntervalYears') {
-          syncFixedEventIndexRecurrenceFields(layer);
-        }
-        syncFixedEventIndexStructuredEditorToYamlPreview(false);
-      };
-      input.onchange = () => {
-        if (input.dataset.field === 'recurrenceIntervalYears') {
-          syncFixedEventIndexRecurrenceFields(layer);
-        }
-        syncFixedEventIndexStructuredEditorToYamlPreview(false);
-      };
-    });
-  const yamlInput = layer.querySelector<HTMLTextAreaElement>('[data-role="fixed-event-index-yaml"]');
-  if (yamlInput) {
-    yamlInput.oninput = () => {
+      restoreFixedEventIndexEditorScrollSnapshot(layer, { ...scrollSnapshot, detailTop: 0 }, callback => {
+        uiWindow.requestAnimationFrame(callback);
+      });
+    },
+    syncStructuredEditor: syncFixedEventIndexStructuredEditorToYamlPreview,
+    syncRecurrenceFields: syncFixedEventIndexRecurrenceFields,
+    updateYamlPreview: value => {
       uiState.fixedEventIndexEditorDirty = true;
       if (uiState.fixedEventIndexEditorModel) {
         uiState.fixedEventIndexEditorModel = {
           ...uiState.fixedEventIndexEditorModel,
-          yamlPreview: yamlInput.value,
+          yamlPreview: value,
           saveMessage: 'YAML 已修改，尚未保存到世界书',
           saveState: 'warning',
         };
       }
-    };
-  }
-  const addGroup = layer.querySelector<HTMLElement>('[data-action="add-fixed-event-index-group"]');
-  if (addGroup) {
-    addGroup.onclick = () => applyFixedEventIndexRowOperation('add-group');
-  }
-  const addEvent = layer.querySelector<HTMLElement>('[data-action="add-fixed-event-index-event"]');
-  if (addEvent) {
-    addEvent.onclick = () => applyFixedEventIndexRowOperation('add-event');
-  }
-  const addMaterial = layer.querySelector<HTMLElement>('[data-action="add-fixed-event-index-material"]');
-  if (addMaterial) {
-    addMaterial.onclick = () => applyFixedEventIndexRowOperation('add-material');
-  }
-  layer.querySelectorAll<HTMLElement>('[data-action="remove-fixed-event-index-row"]').forEach(button => {
-    button.onclick = () =>
-      applyFixedEventIndexRowOperation(
-        'remove-row',
-        button.closest<HTMLElement>('[data-role="fixed-event-edit-row"]') ?? undefined,
-      );
-  });
-  layer.querySelectorAll<HTMLElement>('[data-action="add-fixed-event-index-stage"]').forEach(button => {
-    button.onclick = () => applyFixedEventIndexRowOperation('add-stage', button);
-  });
-  layer.querySelectorAll<HTMLElement>('[data-action="remove-fixed-event-index-stage"]').forEach(button => {
-    button.onclick = () =>
-      applyFixedEventIndexRowOperation(
-        'remove-stage',
-        button.closest<HTMLElement>('[data-role="fixed-event-stage-row"], [data-role="fixed-event-stage-list-row"]') ??
-          undefined,
-      );
-  });
-  layer.querySelectorAll<HTMLElement>('[data-action="move-fixed-event-index-stage-up"]').forEach(button => {
-    button.onclick = () =>
-      applyFixedEventIndexRowOperation(
-        'move-stage-up',
-        button.closest<HTMLElement>('[data-role="fixed-event-stage-row"], [data-role="fixed-event-stage-list-row"]') ??
-          undefined,
-      );
-  });
-  layer.querySelectorAll<HTMLElement>('[data-action="move-fixed-event-index-stage-down"]').forEach(button => {
-    button.onclick = () =>
-      applyFixedEventIndexRowOperation(
-        'move-stage-down',
-        button.closest<HTMLElement>('[data-role="fixed-event-stage-row"], [data-role="fixed-event-stage-list-row"]') ??
-          undefined,
-      );
-  });
-  layer.querySelectorAll<HTMLElement>('[data-action="rename-fixed-event-index-row-id"]').forEach(button => {
-    button.onclick = () =>
-      renameFixedEventIndexRowId(button.closest<HTMLElement>('[data-role="fixed-event-edit-row"]') ?? undefined);
+    },
+    applyRowOperation: applyFixedEventIndexRowOperation,
+    renameRowId: renameFixedEventIndexRowId,
   });
 }
 
@@ -2577,6 +2535,7 @@ function renderMonthView(cells: MonthDayCell[], visibleDataset: CalendarDataset)
       year: state.currentMonth.year,
       month: state.currentMonth.month,
       alias: getCurrentMonthAlias(),
+      eraName: getActiveCalendarProfile().date.eraName,
     },
     festivalScope: {
       mode: uiState.festivalScopeMode,
@@ -2608,7 +2567,7 @@ function quickInputBookTrigger(triggerText: string): void {
     '#send_textarea, textarea[name="send_textarea"], textarea#send_textarea',
   );
   if (!input) {
-    hostWindow.alert(`没有找到酒馆输入框，可手动输入：${text}`);
+    showDecisionNotice(buildQuickInputMissingNotice(text));
     return;
   }
   input.value = text;
@@ -2675,42 +2634,6 @@ function renderArchivePanel(): string {
     policy: readArchiveStore().policy,
     tagCandidates: getKnownTagLabels(),
   });
-}
-
-function pad2(value: number): string {
-  return String(value).padStart(2, '0');
-}
-
-function parseDateKeyPoint(value: string): DatePoint | null {
-  const match = String(value || '')
-    .trim()
-    .match(/^(\d+)[/-](\d{1,2})[/-](\d{1,2})(?:[-/ ]?(?:[01]?\d|2[0-3]):[0-5]\d)?$/);
-  if (!match) {
-    return null;
-  }
-  return {
-    year: Number(match[1]),
-    month: Number(match[2]),
-    day: Number(match[3]),
-  };
-}
-
-function getWorldTimePrefix(nowText: string): string {
-  const match = String(nowText || '').match(/^(.+?)(?=\d+\s*年)/);
-  return match ? match[1].trim() : '';
-}
-
-function formatWorldTimeForPoint(
-  point: DatePoint,
-  args: { nowText: string; anchor?: CalendarDataset['calendarAnchor'] },
-): string {
-  const prefix = getWorldTimePrefix(args.nowText);
-  const weekday = WORLD_WEEKDAY_TEXT[getWeekdayFromAnchor(point, args.anchor)] ?? '';
-  const clock = extractClockTimeText(args.nowText);
-  if (String(args.nowText || '').includes('年')) {
-    return `${prefix}${point.year}年-${point.month}月-${point.day}日-${weekday}${clock ? `-${clock}` : ''}`;
-  }
-  return `${point.year}-${pad2(point.month)}-${pad2(point.day)}${clock ? `-${clock}` : ''}`;
 }
 
 function getLatestWorldTimeContext(): { nowText: string; anchor: CalendarDataset['calendarAnchor'] } {
@@ -2832,6 +2755,8 @@ function renderShell(): void {
   renderManagedWorldbookDialog();
   renderTagColorDialog();
   renderFixedEventIndexEditorDialog();
+  renderWidgetConfirmDialog();
+  renderWidgetTextInputDialog();
   refs.root.querySelectorAll<HTMLElement>('[data-action="switch-tab"]').forEach(button => {
     const tab = button.getAttribute('data-tab') || '';
     button.classList.toggle('is-active', tab === refs.root?.dataset.tab);
@@ -2983,7 +2908,7 @@ async function saveForm(): Promise<void> {
   const formType = readFormValue('type') === '重复' ? '重复' : '临时';
   const repeatSchedule = formType === '重复' ? buildRepeatFormSchedule() : null;
   if (repeatSchedule?.error) {
-    hostWindow.alert(repeatSchedule.error);
+    showDecisionNotice(buildFormSaveFailureNotice(repeatSchedule.error));
     return;
   }
   const result = await saveCalendarForm({
@@ -3003,7 +2928,7 @@ async function saveForm(): Promise<void> {
   });
 
   if (!result.ok) {
-    hostWindow.alert(result.message);
+    showDecisionNotice(buildFormSaveFailureNotice(result.message));
     return;
   }
 
@@ -3018,13 +2943,15 @@ async function deleteEvent(eventId: string): Promise<void> {
   if (!active) {
     return;
   }
-  const ok = hostWindow.confirm(`确认移除事件「${active.title}」吗？\n普通事件会进入归档区；黑名单标签会直接清理。`);
-  if (!ok) {
-    return;
-  }
+  showWidgetConfirm(buildActiveDeleteDecision({ title: active.title }), async () => {
+    await deleteEventAfterConfirm(eventId);
+  });
+}
+
+async function deleteEventAfterConfirm(eventId: string): Promise<void> {
   const result = await removeActiveEventWithPolicy({ id: eventId, completedAt: state.dataset?.nowText || '' });
   if (result === 'protected') {
-    hostWindow.alert('这个事件带有收藏标签，规则已阻止删除。');
+    showDecisionNotice(buildFavoriteProtectedNotice('delete'));
     return;
   }
   await refreshDataset();
@@ -3035,13 +2962,15 @@ async function purgeArchived(eventId: string): Promise<void> {
   if (!archive.completed[eventId]) {
     return;
   }
-  const ok = hostWindow.confirm(`确认彻底删除归档事件「${eventId}」吗？`);
-  if (!ok) {
-    return;
-  }
+  showWidgetConfirm(buildArchivePurgeDecision({ eventId }), async () => {
+    await purgeArchivedAfterConfirm(eventId);
+  });
+}
+
+async function purgeArchivedAfterConfirm(eventId: string): Promise<void> {
   const result = purgeArchivedEventWithPolicy(eventId);
   if (result === 'protected') {
-    hostWindow.alert('这个归档事件带有收藏标签，规则已阻止彻底删除。');
+    showDecisionNotice(buildFavoriteProtectedNotice('purge'));
     return;
   }
   await refreshDataset();
@@ -3128,7 +3057,7 @@ async function saveTagColorHex(): Promise<void> {
   const text = readColorField('text');
   const border = readColorField('border');
   if (!isValidHexColor(background) || !isValidHexColor(text) || (border && !isValidHexColor(border))) {
-    hostWindow.alert('请输入有效的 hex 颜色，例如 #dcecff。');
+    showDecisionNotice(buildInvalidColorNotice());
     return;
   }
   await saveTagColor({ background, text, ...(border ? { border } : {}) });
@@ -3148,14 +3077,14 @@ async function resetSelectedTagColor(): Promise<void> {
 }
 
 async function purgeAutoDeleteArchive(): Promise<void> {
-  const ok = hostWindow.confirm('确认清理所有命中黑名单标签的归档事件吗？收藏标签仍会被保留。');
-  if (!ok) {
-    return;
-  }
+  showWidgetConfirm(buildArchiveCleanupDecision(), async () => {
+    await purgeAutoDeleteArchiveAfterConfirm();
+  });
+}
+
+async function purgeAutoDeleteArchiveAfterConfirm(): Promise<void> {
   const result = purgeAutoDeleteArchivedEvents();
-  hostWindow.alert(
-    `已清理 ${result.deleted} 条归档事件。${result.protected ? `\n收藏保护 ${result.protected} 条。` : ''}`,
-  );
+  showDecisionNotice(buildArchiveCleanupResultNotice({ purged: result.deleted, protectedCount: result.protected }));
   await refreshDataset();
 }
 
@@ -3214,15 +3143,20 @@ function readExternalWorldbookTargetName(layer: HTMLElement): string {
 }
 
 function filterExternalWorldbookPicker(layer: HTMLElement): void {
-  const keyword = readExternalWorldbookTargetName(layer).toLowerCase();
+  const keyword = readExternalWorldbookTargetName(layer);
   const buttons = Array.from(
     layer.querySelectorAll<HTMLElement>('[data-action="managed-worldbook-pick-export-target"]'),
   );
+  const models = filterWorldbookPickerNames(
+    buttons.map(button => String(button.getAttribute('data-worldbook-name') || '').trim()),
+    keyword,
+  );
+  const visibleNames = new Set(models.map(model => model.name));
+  const selectedNames = new Set(models.filter(model => model.selected).map(model => model.name));
   buttons.forEach(button => {
     const name = String(button.getAttribute('data-worldbook-name') || '').trim();
-    const matched = !keyword || name.toLowerCase().includes(keyword);
-    button.hidden = !matched;
-    button.classList.toggle('is-selected', Boolean(name && name.toLowerCase() === keyword));
+    button.hidden = !visibleNames.has(name);
+    button.classList.toggle('is-selected', selectedNames.has(name));
   });
 
   const hasVisibleButton = buttons.some(button => !button.hidden);
@@ -3263,18 +3197,17 @@ async function confirmExternalManagedWorldbookInstall(layer: HTMLElement): Promi
     return;
   }
 
-  const targetName = readExternalWorldbookTargetName(layer);
-  if (!targetName) {
-    hostWindow.alert('请先选择或输入目标世界书名称。');
+  const validation = validateExternalMoveRequest({
+    targetName: readExternalWorldbookTargetName(layer),
+    candidateIds: readExternalWorldbookMoveCandidateIds(layer),
+  });
+  if (!validation.ok) {
+    showWidgetNotice(validation.notice);
     return;
   }
 
-  const candidateIds = readExternalWorldbookMoveCandidateIds(layer);
-  if (candidateIds.length === 0) {
-    hostWindow.alert('请至少勾选一个要搬运的条目。');
-    return;
-  }
-
+  const targetName = validation.targetName;
+  const candidateIds = validation.candidateIds ?? [];
   const removeFromSource = shouldRemoveExternalWorldbookMoveSources(layer);
   uiState.managedWorldbookDialogOpen = false;
   uiState.managedWorldbookDialogMode = null;
@@ -3283,82 +3216,21 @@ async function confirmExternalManagedWorldbookInstall(layer: HTMLElement): Promi
   renderShell();
   try {
     const result = await installCalendarManagedEntriesToExternalWorldbook(targetName, {
-      candidateIds,
+      ...(candidateIds.length > 0 ? { candidateIds } : {}),
       removeFromSource,
     });
     console.info(`[${SCRIPT_NAME}] 已搬运世界书条目`, result);
-    hostWindow.alert(
-      `已搬运 ${result.movedCount ?? candidateIds.length} 个条目到世界书\n世界书：${result.name}${
-        removeFromSource ? `\n已从原来源删除 ${result.removedSourceCount ?? 0} 个条目` : ''
-      }`,
+    showWidgetNotice(
+      buildExternalMoveSuccessNotice({
+        worldbookName: result.name,
+        movedCount: result.movedCount ?? candidateIds.length,
+        removedSourceCount: result.removedSourceCount ?? 0,
+        removeFromSource,
+      }),
     );
   } catch (error) {
     console.warn(`[${SCRIPT_NAME}] 搬运世界书条目失败`, error);
-    hostWindow.alert(`搬运世界书条目失败：${error instanceof Error ? error.message : String(error)}`);
-  } finally {
-    uiState.managedWorldbookBusy = false;
-    renderShell();
-  }
-}
-
-function formatLegacyCalendarMigrationScanMessage(): string {
-  const scan = scanLegacyCalendarVariableTargets();
-  if (scan.legacyTargetCount <= 0) {
-    return '没有发现需要转换的旧月历变量。';
-  }
-  const details = scan.targets
-    .filter(target => target.hasLegacyBuckets)
-    .map(target => `${target.label}：临时 ${target.legacyCounts.临时}，重复 ${target.legacyCounts.重复}`)
-    .join('\n');
-  return [
-    `发现 ${scan.legacyTargetCount} 处旧月历变量。`,
-    details,
-    '',
-    '会合并到 stat_data.事件.月历；同 ID 冲突时保留新数据，并给旧数据改名。',
-    '转换成功后才会删除旧路径。是否继续？',
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
-
-async function confirmLegacyCalendarVariableMigration(): Promise<void> {
-  if (uiState.managedWorldbookBusy) {
-    return;
-  }
-
-  const scan = scanLegacyCalendarVariableTargets();
-  if (scan.legacyTargetCount <= 0) {
-    hostWindow.alert('没有发现需要转换的旧月历变量。');
-    return;
-  }
-  if (!hostWindow.confirm(formatLegacyCalendarMigrationScanMessage())) {
-    return;
-  }
-
-  uiState.managedWorldbookDialogOpen = false;
-  uiState.managedWorldbookDialogMode = null;
-  uiState.managedWorldbookDialogDiagnostics = null;
-  uiState.managedWorldbookBusy = true;
-  renderShell();
-  try {
-    const result = await migrateLegacyCalendarVariableTargets();
-    const migrated = result.targets.filter(target => target.migrated);
-    const mergedCount = migrated.reduce((sum, target) => sum + target.mergedIds.length, 0);
-    const renamedCount = migrated.reduce((sum, target) => sum + target.renamedIds.length, 0);
-    const skippedCount = migrated.reduce((sum, target) => sum + target.skippedIds.length, 0);
-    const failedText = result.failedTargetCount > 0 ? `\n失败目标：${result.failedTargetCount}` : '';
-    hostWindow.alert(
-      [
-        `旧月历变量转换完成：${result.migratedTargetCount} 处`,
-        `合并事件：${mergedCount}`,
-        `冲突改名：${renamedCount}`,
-        `重复跳过：${skippedCount}${failedText}`,
-      ].join('\n'),
-    );
-    console.info(`[${SCRIPT_NAME}] 旧月历变量转换结果`, result);
-  } catch (error) {
-    console.warn(`[${SCRIPT_NAME}] 旧月历变量转换失败`, error);
-    hostWindow.alert(`旧月历变量转换失败：${error instanceof Error ? error.message : String(error)}`);
+    showWidgetNotice(buildExternalMoveFailureNotice(error));
   } finally {
     uiState.managedWorldbookBusy = false;
     renderShell();
@@ -3378,10 +3250,15 @@ async function confirmManagedWorldbookUninstall(): Promise<void> {
   try {
     const result = await uninstallCalendarManagedWorldbookEntries();
     console.info(`[${SCRIPT_NAME}] 一键卸载世界书基础规则成功`, result);
-    hostWindow.alert(`已卸载 ${result.removedCount} 条基础规则\n世界书：${result.worldbookName}`);
+    showWidgetNotice(
+      buildManagedWorldbookUninstallSuccessNotice({
+        worldbookName: result.worldbookName,
+        removedCount: result.removedCount,
+      }),
+    );
   } catch (error) {
     console.warn(`[${SCRIPT_NAME}] 一键卸载世界书基础规则失败`, error);
-    hostWindow.alert(`卸载基础规则失败：${error instanceof Error ? error.message : String(error)}`);
+    showWidgetNotice(buildManagedWorldbookActionErrorNotice('卸载基础规则失败', error));
   } finally {
     uiState.managedWorldbookBusy = false;
     renderShell();
@@ -3401,10 +3278,10 @@ async function confirmManagedWorldbookReinstall(): Promise<void> {
   try {
     const result = await installCalendarManagedWorldbookEntries();
     console.info(`[${SCRIPT_NAME}] 手动重装世界书基础规则成功`, result);
-    hostWindow.alert(`已重装基础规则，两条规则已恢复默认内容\n世界书：${result.name}`);
+    showWidgetNotice(buildManagedWorldbookReinstallSuccessNotice({ worldbookName: result.name }));
   } catch (error) {
     console.warn(`[${SCRIPT_NAME}] 手动重装世界书基础规则失败`, error);
-    hostWindow.alert(`重装基础规则失败：${error instanceof Error ? error.message : String(error)}`);
+    showWidgetNotice(buildManagedWorldbookActionErrorNotice('重装基础规则失败', error));
   } finally {
     uiState.managedWorldbookBusy = false;
     renderShell();
@@ -3687,7 +3564,7 @@ function bindEvents(): void {
         completedAt: state.dataset?.nowText || '',
       });
       if (result === 'protected') {
-        hostWindow.alert('这个事件带有收藏标签，规则已阻止完成后移出。');
+        showDecisionNotice(buildFavoriteProtectedNotice('complete'));
         return;
       }
       await refreshDataset();
