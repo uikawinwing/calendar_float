@@ -115,37 +115,65 @@ function parseKeywordGroups(source: Record<string, unknown>): FixedEventKeywordG
 }
 
 function parseProfile(root: Record<string, unknown>): FixedEventProfileDraft {
-  const settings = readObject(root, ['Profile设置']) ?? {};
-  const paths = readObject(settings, ['paths', '路径']) ?? {};
-  const date = readObject(settings, ['date', '日期']) ?? {};
+  const settings = readObject(root, ['配置档案设置', 'Profile设置']) ?? {};
+  const paths = readObject(settings, ['路径', 'paths']) ?? {};
+  const date = readObject(settings, ['日期', 'date']) ?? {};
   return {
-    id: toText(readField(root, ['Profile'])) || undefined,
+    id: toText(readField(settings, ['id', 'Profile', 'profileId'])) || toText(readField(root, ['Profile'])) || undefined,
     settings: {
-      label: toText(readField(settings, ['label', '名称', '显示名称'])) || undefined,
+      label: toText(readField(settings, ['显示名称', 'label', '名称'])) || undefined,
+      developerMode: toBoolean(readField(settings, ['开发者模式', 'developerMode'])) ?? false,
       paths: {
-        worldTime: toText(readField(paths, ['worldTime', 'mvu时间路径', 'mvuTimePath'])) || undefined,
-        worldLocation: toText(readField(paths, ['worldLocation', 'mvu地点路径', 'mvuLocationPath'])) || undefined,
+        eventRoot: toText(readField(paths, ['事件根路径', 'eventRoot'])) || undefined,
+        tempEvents: toText(readField(paths, ['临时事件路径', 'tempEvents'])) || undefined,
+        repeatEvents: toText(readField(paths, ['重复事件路径', 'repeatEvents'])) || undefined,
+        worldTime: toText(readField(paths, ['世界时间路径', 'worldTime', 'mvu时间路径', 'mvuTimePath'])) || undefined,
+        worldLocation: toText(readField(paths, ['世界地点路径', 'worldLocation', 'mvu地点路径', 'mvuLocationPath'])) || undefined,
         unknownFields: pickUnknownFields(paths, [
+          '事件根路径',
+          'eventRoot',
+          '临时事件路径',
+          'tempEvents',
+          '重复事件路径',
+          'repeatEvents',
+          '世界时间路径',
           'worldTime',
           'mvu时间路径',
           'mvuTimePath',
+          '世界地点路径',
           'worldLocation',
           'mvu地点路径',
           'mvuLocationPath',
         ]),
       },
       date: {
-        eraName: toText(readField(date, ['eraName', '纪元名', '纪元'])) || undefined,
-        useChineseNumeralYear: toBoolean(readField(date, ['useChineseNumeralYear', '中文数字年份'])),
+        eraName: toText(readField(date, ['纪元名', 'eraName', '纪元'])) || undefined,
+        eraNames: toTextList(readField(date, ['纪元别名', 'eraNames'])),
+        useChineseNumeralYear: toBoolean(readField(date, ['中文数字年份', 'useChineseNumeralYear'])),
         unknownFields: pickUnknownFields(date, [
-          'eraName',
           '纪元名',
+          'eraName',
           '纪元',
-          'useChineseNumeralYear',
+          '纪元别名',
+          'eraNames',
           '中文数字年份',
+          'useChineseNumeralYear',
         ]),
       },
-      unknownFields: pickUnknownFields(settings, ['label', '名称', '显示名称', 'paths', '路径', 'date', '日期']),
+      unknownFields: pickUnknownFields(settings, [
+        'id',
+        'Profile',
+        'profileId',
+        '显示名称',
+        'label',
+        '名称',
+        '开发者模式',
+        'developerMode',
+        '路径',
+        'paths',
+        '日期',
+        'date',
+      ]),
     },
   };
 }
@@ -724,6 +752,7 @@ export function parseFixedEventIndexDraft(content: string, source: FixedEventInd
       '说明',
       'description',
       'Profile',
+      '配置档案设置',
       'Profile设置',
       '默认设置',
       'defaults',

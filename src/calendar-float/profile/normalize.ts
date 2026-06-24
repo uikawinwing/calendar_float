@@ -41,6 +41,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 function cloneProfile(profile: CalendarProfile): CalendarProfile {
   return {
     ...profile,
+    developerMode: profile.developerMode,
     paths: { ...profile.paths },
     date: { ...profile.date, eraNames: [...profile.date.eraNames] },
     worldbook: {
@@ -255,6 +256,17 @@ function applyAddonOverrides(profile: CalendarProfile, addons: unknown, warnings
   profile.addons = [...new Set(output)];
 }
 
+function applyDeveloperModeOverride(profile: CalendarProfile, developerMode: unknown, warnings: string[]): void {
+  if (developerMode === undefined) {
+    return;
+  }
+  if (typeof developerMode === 'boolean') {
+    profile.developerMode = developerMode;
+    return;
+  }
+  warnings.push('Profile developerMode 必须是布尔值');
+}
+
 export function resolveCalendarProfileConfig(args: {
   profileHint?: unknown;
   config?: CalendarProfileConfigInput | null;
@@ -283,7 +295,16 @@ export function resolveCalendarProfileConfig(args: {
     };
   }
 
-  warnUnknownKeys(warnings, 'config', config, ['id', 'label', 'paths', 'date', 'worldbook', 'visual', 'addons']);
+  warnUnknownKeys(warnings, 'config', config as Record<string, unknown>, [
+    'id',
+    'label',
+    'developerMode',
+    'paths',
+    'date',
+    'worldbook',
+    'visual',
+    'addons',
+  ]);
 
   if (identity && !builtin) {
     profile.id = identity;
@@ -303,6 +324,7 @@ export function resolveCalendarProfileConfig(args: {
   applyWorldbookOverrides(profile, config.worldbook, warnings);
   applyVisualOverrides(profile, config.visual, warnings);
   applyAddonOverrides(profile, config.addons, warnings);
+  applyDeveloperModeOverride(profile, config.developerMode, warnings);
 
   return {
     profile,

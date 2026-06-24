@@ -63,18 +63,20 @@ pnpm run serve:dev
 `[fixed_event_index]` 是 YAML。当前推荐结构如下：
 
 ```yaml
-Profile: generic
-Profile设置:
-  label: 王庭月历
-  paths:
-    worldTime: stat_data.世界信息.完整时间字符串
-    worldLocation: stat_data.世界信息.地点
-  date:
-    eraName: 星历
-    eraNames:
+配置档案设置:
+  id: generic
+  显示名称: 王庭月历
+  开发者模式: false
+  路径:
+    事件根路径: stat_data.事件.月历
+    世界时间路径: stat_data.世界信息.完整时间字符串
+    世界地点路径: stat_data.世界信息.地点
+  日期:
+    纪元名: 星历
+    纪元别名:
       - 星历
       - 王庭历
-    useChineseNumeralYear: true
+    中文数字年份: true
 版本: 1
 说明: 固定事件索引
 默认设置:
@@ -86,8 +88,8 @@ Profile设置:
   禁用触发词: true
   宏触发词模板: "[[_${id}_reminder_]]"
   缺省模板:
-    未开始: ${节庆名} 将在 ${剩余天数} 天后开始。
-    进行中: ${节庆名} 正在举行。
+    未开始: ${固定事件} 将在 ${剩余天数} 天后开始。
+    进行中: ${固定事件} 正在举行。
 书籍默认值:
   摘要注入方式: injectprompt
   摘要注入深度: 4
@@ -138,14 +140,14 @@ Profile设置:
       - 观礼
 ```
 
-旧字段 `默认设置.mvu时间路径` 和 `默认设置.mvu地点路径` 只作为兼容 fallback。新配置应写在 `Profile设置.paths.worldTime` 和 `Profile设置.paths.worldLocation`。
+旧字段 `默认设置.mvu时间路径` 和 `默认设置.mvu地点路径` 只作为兼容 fallback。新配置应写在 `配置档案设置.路径.世界时间路径` 和 `配置档案设置.路径.世界地点路径`。
 
 ## 固定事件编辑器教程
 
-1. 打开月历悬浮球，进入设置或工具菜单，打开 `固定事件索引`。
+1. 开发者先在 `[fixed_event_index]` 把 `配置档案设置.开发者模式` 设为 `true`，再打开月历悬浮球，从设置或工具菜单进入 `固定事件索引`。普通测试者默认看不到这个入口。
 2. 如果提示找不到固定事件索引，点击 `创建空固定事件索引`。脚本会在当前角色的主世界书里创建 `[fixed_event_index]`。
 3. 在 `基础设置` 里填写 profile：
-   - `Profile ID`：通用角色卡通常写 `generic`
+   - `Profile ID`：写入 `配置档案设置.id`，通用角色卡通常写 `generic`
    - `显示名称`：UI 或诊断里显示的名字
    - `MVU 时间路径`：从 MVU/stat_data 读取当前世界时间的路径
    - `MVU 地点路径`：从 MVU/stat_data 读取当前地点的路径
@@ -168,7 +170,7 @@ Profile设置:
 
 注意事项：
 
-- 不要把 profile 时间路径和 MVU 全局默认路径填两次。当前推荐只填 `Profile设置.paths`。
+- 不要把 profile 时间路径和 MVU 全局默认路径填两次。当前推荐只填 `配置档案设置.路径`。
 - 创建空索引前要确认当前角色卡已经有可写的主世界书。
 - 编辑器会尽量保留未知 YAML 字段，但不要依赖旧顶层字段 `节庆`、`书籍`、`fixed_events`、`event_groups`、`materials`、`books`。
 - 日期解析预览只验证 profile 的纪元和日期规则，不代表对应日期一定有事件。

@@ -1,4 +1,5 @@
 import { readRuntimeField } from './aliases';
+import type { CalendarProfileConfigInput } from '../profile';
 import {
   构建节庆共享触发映射,
   取唯一文本,
@@ -32,7 +33,6 @@ import type {
   CalendarRuntimeIndex,
   CalendarRuntimeReminderDefaults,
   CalendarRuntimeTextLibrary,
-  CalendarRuntimeTriggerMap,
 } from './types';
 export function 提取文本库映射(data: unknown): CalendarRuntimeTextLibrary {
   if (!是否对象(data)) {
@@ -353,6 +353,62 @@ function 规范化顶层书籍列表(
   return output;
 }
 
+function 去掉未定义字段(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function 去掉空对象(value: Record<string, unknown>): Record<string, unknown> | undefined {
+  const cleaned = 去掉未定义字段(value);
+  return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+}
+
+function 规范化配置档案设置(data: Record<string, unknown>, warnings: string[]): CalendarProfileConfigInput | undefined {
+  const rawSettings = 读取对象字段(data, ['配置档案设置', 'Profile设置']);
+  if (rawSettings === undefined) {
+    return undefined;
+  }
+  if (!是否对象(rawSettings)) {
+    warnings.push('配置档案设置 必须是对象');
+    return undefined;
+  }
+
+  const rawPaths = 读取对象(rawSettings, ['路径', 'paths']) ?? {};
+  const rawDate = 读取对象(rawSettings, ['日期', 'date']) ?? {};
+  const rawWorldbook = 读取对象(rawSettings, ['世界书', 'worldbook']) ?? {};
+  const rawVisual = 读取对象(rawSettings, ['视觉', 'visual']) ?? {};
+
+  const config = 去掉未定义字段({
+    id: 读取对象字段(rawSettings, ['id', 'Profile', 'profileId']) ?? 读取对象字段(data, ['Profile']),
+    label: 读取对象字段(rawSettings, ['显示名称', 'label', '名称']),
+    developerMode: 读取对象字段(rawSettings, ['开发者模式', 'developerMode']),
+    paths: 去掉空对象({
+      eventRoot: 读取对象字段(rawPaths, ['事件根路径', 'eventRoot']),
+      tempEvents: 读取对象字段(rawPaths, ['临时事件路径', 'tempEvents']),
+      repeatEvents: 读取对象字段(rawPaths, ['重复事件路径', 'repeatEvents']),
+      worldTime: 读取对象字段(rawPaths, ['世界时间路径', 'worldTime', 'mvu时间路径', 'mvuTimePath']),
+      worldLocation: 读取对象字段(rawPaths, ['世界地点路径', 'worldLocation', 'mvu地点路径', 'mvuLocationPath']),
+    }),
+    date: 去掉空对象({
+      eraName: 读取对象字段(rawDate, ['纪元名', 'eraName', '纪元']),
+      eraNames: 读取对象字段(rawDate, ['纪元别名', 'eraNames']),
+      useChineseNumeralYear: 读取对象字段(rawDate, ['中文数字年份', 'useChineseNumeralYear']),
+    }),
+    worldbook: 去掉空对象({
+      variableDisplayTitle: 读取对象字段(rawWorldbook, ['变量展示标题', 'variableDisplayTitle']),
+      updateRuleTimeExamples: 读取对象字段(rawWorldbook, ['更新规则时间示例', 'updateRuleTimeExamples']),
+      forbiddenRepeatTimeExamples: 读取对象字段(rawWorldbook, [
+        '禁止重复时间示例',
+        'forbiddenRepeatTimeExamples',
+      ]),
+    }),
+    visual: 去掉空对象({
+      festivalMarkerPresetId: 读取对象字段(rawVisual, ['节庆标记预设', 'festivalMarkerPresetId']),
+    }),
+    addons: 读取对象字段(rawSettings, ['插件', 'addons']),
+  });
+  return Object.keys(config).length > 0 ? (config as CalendarProfileConfigInput) : undefined;
+}
+
 export function normalizeCalendarRuntimeIndexDocument(data: unknown, warnings: string[] = []): CalendarRuntimeIndex | null {
   if (!是否对象(data)) {
     warnings.push('索引解析结果不是对象');
@@ -400,14 +456,11 @@ export function normalizeCalendarRuntimeIndexDocument(data: unknown, warnings: s
   const 合并后书籍 = new Map<string, CalendarRuntimeBookEntry>();
   节庆与书籍.内嵌书籍.forEach(book => 合并书籍(合并后书籍, book));
   顶层书籍.forEach(book => 合并书籍(合并后书籍, book));
-  const Profile设置 = 读取对象字段(data, ['Profile设置']);
-  if (Profile设置 !== undefined && !是否对象(Profile设置)) {
-    warnings.push('Profile设置 必须是对象');
-  }
+  const Profile设置 = 规范化配置档案设置(data, warnings);
 
   return {
-    Profile: 规范化名称(读取对象字段(data, ['Profile'])) || undefined,
-    Profile设置: 是否对象(Profile设置) ? Profile设置 : undefined,
+    Profile: 规范化名称(Profile设置?.id ?? 读取对象字段(data, ['Profile'])) || undefined,
+    Profile设置,
     版本: 规范化数字(读取对象字段(data, ['版本', 'version'])),
     说明: 规范化名称(读取对象字段(data, ['说明', 'description'])) || undefined,
     索引条目名: 规范化名称(读取对象字段(data, ['索引条目名', 'index_entry'])) || undefined,

@@ -34,6 +34,7 @@ export interface CalendarProfileDetectionRule {
 export interface CalendarProfile {
   id: CalendarProfileId;
   label: string;
+  developerMode: boolean;
   paths: CalendarProfilePaths;
   date: CalendarProfileDateSettings;
   worldbook: CalendarProfileWorldbookSettings;
@@ -45,6 +46,7 @@ export interface CalendarProfile {
 export interface CalendarProfileConfigInput {
   id?: unknown;
   label?: unknown;
+  developerMode?: unknown;
   paths?: Partial<Record<keyof CalendarProfilePaths, unknown>>;
   date?: Partial<Record<keyof CalendarProfileDateSettings, unknown>>;
   worldbook?: Partial<Record<keyof CalendarProfileWorldbookSettings, unknown>>;

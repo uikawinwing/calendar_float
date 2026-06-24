@@ -84,7 +84,7 @@ function renderProfileDatePreview(draft: FixedEventIndexDraft): string {
 
   return `
     <div class="th-index-editor-profile-preview" data-role="profile-date-preview">
-      <div class="th-index-editor-muted">日期解析规则来自 Profile设置.date</div>
+      <div class="th-index-editor-muted">日期解析规则来自配置档案设置.日期</div>
       <ul>${acceptedText.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
     </div>
   `;
@@ -510,7 +510,7 @@ function renderProfileSettingsEditor(draft: FixedEventIndexDraft): string {
   return `
     <section class="th-index-editor-settings-block">
       <div class="th-index-editor-settings-block-head">
-        <h3>Profile</h3>
+        <h3>配置档案</h3>
         <p>决定这份索引属于哪种月历配置，以及运行时从哪里读取时间、地点和纪元格式。</p>
       </div>
       <div class="th-index-editor-edit-card" data-role="fixed-event-profile-row" data-scope="profile" data-id="main">

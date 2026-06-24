@@ -153,22 +153,29 @@ function serializeBookDefaults(defaults: FixedEventBookDefaultsDraft): Record<st
 
 function serializeProfileSettings(settings: FixedEventProfileSettingsDraft): Record<string, unknown> | undefined {
   const paths: Record<string, unknown> = { ...settings.paths.unknownFields };
-  addIfDefined(paths, 'worldTime', settings.paths.worldTime);
-  addIfDefined(paths, 'worldLocation', settings.paths.worldLocation);
+  addIfDefined(paths, '事件根路径', settings.paths.eventRoot);
+  addIfDefined(paths, '临时事件路径', settings.paths.tempEvents);
+  addIfDefined(paths, '重复事件路径', settings.paths.repeatEvents);
+  addIfDefined(paths, '世界时间路径', settings.paths.worldTime);
+  addIfDefined(paths, '世界地点路径', settings.paths.worldLocation);
 
   const date: Record<string, unknown> = { ...settings.date.unknownFields };
-  addIfDefined(date, 'eraName', settings.date.eraName);
+  addIfDefined(date, '纪元名', settings.date.eraName);
+  if (settings.date.eraNames.length > 0) {
+    date.纪元别名 = settings.date.eraNames;
+  }
   if (settings.date.useChineseNumeralYear !== undefined) {
-    date.useChineseNumeralYear = settings.date.useChineseNumeralYear;
+    date.中文数字年份 = settings.date.useChineseNumeralYear;
   }
 
   const output: Record<string, unknown> = { ...settings.unknownFields };
-  addIfDefined(output, 'label', settings.label);
+  addIfDefined(output, '显示名称', settings.label);
+  output.开发者模式 = settings.developerMode;
   if (Object.keys(paths).length > 0) {
-    output.paths = paths;
+    output.路径 = paths;
   }
   if (Object.keys(date).length > 0) {
-    output.date = date;
+    output.日期 = date;
   }
 
   return Object.keys(output).length > 0 ? output : undefined;
@@ -271,11 +278,11 @@ function serializeMaterial(material: FixedEventMaterialDraft): Record<string, un
 
 export function serializeFixedEventIndexDraft(draft: FixedEventIndexDraft): string {
   const output: Record<string, unknown> = { ...draft.unknownTopLevelFields };
-  addIfDefined(output, 'Profile', draft.profile.id);
   const profileSettings = serializeProfileSettings(draft.profile.settings);
-  if (profileSettings) {
-    output.Profile设置 = profileSettings;
-  }
+  output.配置档案设置 = {
+    ...(draft.profile.id ? { id: draft.profile.id } : {}),
+    ...(profileSettings ?? {}),
+  };
   output.版本 = draft.metadata.version ?? 1;
   addIfDefined(output, '说明', draft.metadata.description);
   output.默认设置 = {

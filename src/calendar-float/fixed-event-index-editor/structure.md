@@ -7,13 +7,13 @@
 - `index.ts`：公共导出门面。外部模块应优先从这里导入编辑器 API
 - `draft-types.ts`：编辑器 draft 类型、校验类型和内置图标文件名
 - `parse.ts`：把 YAML 文本解析成 `FixedEventIndexDraft`
-  - 当前顶层字段：`Profile`、`Profile设置`、`固定事件分组`、`固定事件`、`补充资料`
+  - 当前顶层字段：`配置档案设置`、`固定事件分组`、`固定事件`、`补充资料`
   - runtime defaults：`默认设置`、`提醒默认值`、`书籍默认值`、`月份别名`
   - 旧顶层字段 `节庆`、`书籍`、`fixed_events`、`event_groups`、`materials`、`books` 不再作为当前 schema 解析
   - 保留未知字段，避免结构化编辑洗掉暂未支持的 YAML 内容
 - `serialize.ts`：把 `FixedEventIndexDraft` 写回 preferred YAML
   - 稳定输出 profile、默认值、月份别名、分组、事件、阶段、提醒、补充资料
-  - 新 profile 路径写入 `Profile设置.paths.worldTime` 和 `Profile设置.paths.worldLocation`
+  - 新 profile 路径写入 `配置档案设置.路径.世界时间路径` 和 `配置档案设置.路径.世界地点路径`
 - `edit.ts`：纯 YAML 变换层
   - `applyFixedEventIndexStructuredEditsToYaml()`：把表单字段套用进 YAML
   - `applyFixedEventIndexRowOperationsToYaml()`：新增 / 删除 / 移动分组、事件、补充资料、阶段
@@ -45,7 +45,7 @@
 
 当前相关 checks：
 
-- `checks/calendar-float/fixed-event-index-editor/profile.check.ts`：Profile / Profile设置 / 日期解析
+- `checks/calendar-float/fixed-event-index-editor/profile.check.ts`：配置档案设置 / 日期解析
 - `checks/calendar-float/fixed-event-index-editor/save.check.ts`：保存工作流
 - `checks/calendar-float/widget/fixed-event-editor-host.check.ts`：编辑器 loading model / 月份别名回填
 - `checks/calendar-float/widget/fixed-event-editor-bindings.check.ts`：DOM 事件绑定

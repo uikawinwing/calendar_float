@@ -81,6 +81,7 @@ import type {
 } from '../types';
 import { bindCalendarWidgetEvents } from './events';
 import { formatWorldTimeForPoint, parseDateKeyPoint } from './date-actions';
+import { shouldShowCalendarDeveloperTools } from './developer-mode';
 import {
   buildDirtyEditorCloseDecision,
   buildDirtyEditorReloadDecision,
@@ -510,6 +511,9 @@ function ensureRoot(): void {
   root.dataset.tagColorOpen = 'false';
   root.dataset.externalHost = 'false';
   root.dataset.managedWorldbookConnectivity = 'unknown';
+  const developerToolsHidden = shouldShowCalendarDeveloperTools(getActiveCalendarProfile())
+    ? ''
+    : ' hidden aria-hidden="true"';
   root.innerHTML = `
     <button type="button" class="th-calendar-ball" aria-label="打开月历">📅</button>
     <section class="th-calendar-panel" aria-label="月历悬浮面板">
@@ -525,8 +529,8 @@ function ensureRoot(): void {
           <div class="th-tool-menu-panel" role="menu" aria-label="设置菜单">
             <button type="button" class="th-tool-menu-item" data-action="toggle-theme" role="menuitem">主题颜色</button>
             <button type="button" class="th-tool-menu-item" data-action="open-tag-color-panel" role="menuitem">标签颜色</button>
-            <button type="button" class="th-tool-menu-item" data-action="open-fixed-event-index-editor" role="menuitem">固定事件索引</button>
-            <button type="button" class="th-tool-menu-item th-connectivity-button" data-action="open-mvu-settings" data-state="unknown" role="menuitem" aria-label="MVU设定">
+            <button type="button" class="th-tool-menu-item" data-action="open-fixed-event-index-editor" data-role="developer-tool-menu-item" role="menuitem"${developerToolsHidden}>固定事件索引</button>
+            <button type="button" class="th-tool-menu-item th-connectivity-button" data-action="open-mvu-settings" data-role="developer-tool-menu-item" data-state="unknown" role="menuitem" aria-label="MVU设定"${developerToolsHidden}>
               <span class="th-connectivity-text">MVU设定</span>
             </button>
           </div>
@@ -581,6 +585,22 @@ function ensureRoot(): void {
   refs.formPanel = root.querySelector<HTMLElement>('[data-role="form-panel"]');
   restoreBallPosition();
 }
+
+function isCalendarDeveloperModeEnabled(): boolean {
+  return shouldShowCalendarDeveloperTools(getActiveCalendarProfile());
+}
+
+function syncDeveloperToolMenuItems(): void {
+  if (!refs.root) {
+    return;
+  }
+	  const showDeveloperTools = isCalendarDeveloperModeEnabled();
+	  refs.root.querySelectorAll<HTMLElement>('[data-role="developer-tool-menu-item"]').forEach(item => {
+	    item.hidden = !showDeveloperTools;
+	    item.classList.toggle('is-hidden', !showDeveloperTools);
+	    item.setAttribute('aria-hidden', showDeveloperTools ? 'false' : 'true');
+	  });
+	}
 
 function getEditingRecord() {
   if (!state.dataset || !state.editingEventId) {
@@ -2751,6 +2771,7 @@ function renderShell(): void {
   applyBallPosition();
   applyTheme();
   updatePanelFullscreenButton();
+  syncDeveloperToolMenuItems();
   updateManagedWorldbookButton();
   renderManagedWorldbookDialog();
   renderTagColorDialog();
@@ -3438,8 +3459,18 @@ function bindEvents(): void {
     },
     onOpenTagColorPanel: openTagColorDialog,
     onCloseTagColorPanel: closeTagColorDialog,
-    onOpenFixedEventIndexEditor: openFixedEventIndexEditorDialog,
-    onManagedWorldbookClick: handleManagedWorldbookClick,
+    onOpenFixedEventIndexEditor: () => {
+      if (!isCalendarDeveloperModeEnabled()) {
+        return;
+      }
+      void openFixedEventIndexEditorDialog();
+    },
+    onManagedWorldbookClick: () => {
+      if (!isCalendarDeveloperModeEnabled()) {
+        return;
+      }
+      void handleManagedWorldbookClick();
+    },
     onSwitchTab: switchSidebarTab,
     onOpenCreateForm: startCreateForm,
     onOpenMobileAgenda: () => {

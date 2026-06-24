@@ -3,6 +3,7 @@ import type { CalendarProfile } from './types';
 export const GENERIC_CALENDAR_PROFILE: CalendarProfile = {
   id: 'generic',
   label: '通用月历',
+  developerMode: false,
   paths: {
     eventRoot: 'stat_data.事件.月历',
     tempEvents: 'stat_data.事件.月历.临时',
@@ -29,6 +30,7 @@ export const GENERIC_CALENDAR_PROFILE: CalendarProfile = {
 export const FATE_POEM_CALENDAR_PROFILE: CalendarProfile = {
   id: 'fate-poem',
   label: '命定之诗',
+  developerMode: false,
   paths: {
     eventRoot: 'stat_data.事件.月历',
     tempEvents: 'stat_data.事件.月历.临时',

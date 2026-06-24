@@ -42,15 +42,16 @@ function testTopLevelMaterialLinksBackToFestival(): void {
 
 function testProfileIsReadFromRuntimeIndex(): void {
   const yamlText = `
-Profile: 命定之诗
-Profile设置:
-  label: 命定之诗
-  paths:
-    worldTime: stat_data.世界.时辰
-    worldLocation: stat_data.世界.所在地
-  date:
-    eraName: 复兴纪元
-    useChineseNumeralYear: true
+配置档案设置:
+  id: fate-poem
+  显示名称: 命定之诗
+  开发者模式: false
+  路径:
+    世界时间路径: stat_data.世界.时辰
+    世界地点路径: stat_data.世界.所在地
+  日期:
+    纪元名: 复兴纪元
+    中文数字年份: true
 固定事件: []
 补充资料: []
 `;
@@ -58,9 +59,10 @@ Profile设置:
   const parsed = parseDocument(yamlText).toJS();
   const normalized = normalizeCalendarRuntimeIndexDocument(parsed, warnings) as any;
   assert(normalized, '索引应该能被成功归一化');
-  assert(normalized.Profile === '命定之诗', '索引顶层 Profile 应该被保留用于 profile 识别');
-  assert(normalized.Profile设置?.paths?.worldTime === 'stat_data.世界.时辰', 'Profile设置.paths 应该被保留');
-  assert(normalized.Profile设置?.date?.eraName === '复兴纪元', 'Profile设置.date 应该被保留');
+  assert(normalized.Profile === 'fate-poem', '配置档案设置.id 应该用于 profile 识别');
+  assert(normalized.Profile设置?.paths?.worldTime === 'stat_data.世界.时辰', '配置档案设置.路径 应该被转成内部 profile paths');
+  assert(normalized.Profile设置?.date?.eraName === '复兴纪元', '配置档案设置.日期 应该被转成内部 profile date');
+  assert(normalized.Profile设置?.developerMode === false, '配置档案设置.开发者模式 应该被保留');
 }
 
 function testRuntimeIndexRejectsOldTopLevelSchemaAliases(): void {
@@ -121,12 +123,13 @@ async function testRuntimeIndexAppliesProfileConfigBeforeDefaults(): Promise<voi
     {
       name: '[fixed_event_index]',
       content: `
-Profile: custom-court
-Profile设置:
-  label: 王庭月历
-  paths:
-    worldTime: stat_data.王庭.时辰
-    worldLocation: stat_data.王庭.所在地
+配置档案设置:
+  id: custom-court
+  显示名称: 王庭月历
+  开发者模式: true
+  路径:
+    世界时间路径: stat_data.王庭.时辰
+    世界地点路径: stat_data.王庭.所在地
 固定事件: []
 补充资料: []
 `,
@@ -136,15 +139,16 @@ Profile设置:
 
   try {
     const result = await readCalendarRuntimeIndex();
-    assert(result.索引?.Profile === 'custom-court', 'loader 应该读取 Profile');
+    assert(result.索引?.Profile === 'custom-court', 'loader 应该读取配置档案设置.id');
     assert(getActiveCalendarProfile().id === 'custom-court', 'loader 应该应用自定义 Profile');
+    assert(getActiveCalendarProfile().developerMode === true, 'loader 应该应用开发者模式');
     assert(
       getCalendarRuntimeDefaults().mvu时间路径 === 'stat_data.王庭.时辰',
-      'runtime defaults 应该使用 Profile设置.paths.worldTime',
+      'runtime defaults 应该使用配置档案设置.路径.世界时间路径',
     );
     assert(
       getCalendarRuntimeDefaults().mvu地点路径 === 'stat_data.王庭.所在地',
-      'runtime defaults 应该使用 Profile设置.paths.worldLocation',
+      'runtime defaults 应该使用配置档案设置.路径.世界地点路径',
     );
   } finally {
     host.getVariables = previousGetVariables;

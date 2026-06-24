@@ -10,9 +10,14 @@ export const CALENDAR_WIDGET_BASE_STYLE = `
       color: #2b241c;
     }
 
-    #${ROOT_ID} * { box-sizing: border-box; }
+	    #${ROOT_ID} * { box-sizing: border-box; }
 
-    #${ROOT_ID} .th-calendar-ball {
+	    #${ROOT_ID} [data-role='developer-tool-menu-item'][hidden],
+	    #${ROOT_ID} [data-role='developer-tool-menu-item'].is-hidden {
+	      display: none !important;
+	    }
+
+	    #${ROOT_ID} .th-calendar-ball {
       position: fixed;
       left: calc(100vw - 88px);
       top: 32vh;

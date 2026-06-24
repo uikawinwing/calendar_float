@@ -367,7 +367,8 @@ function 渲染节庆提醒宏触发词(template: string | undefined, festivalId
       .replaceAll('${节庆id}', festivalId)
       .replaceAll('${name}', festivalName)
       .replaceAll('${festivalName}', festivalName)
-      .replaceAll('${节庆名}', festivalName),
+      .replaceAll('${节庆名}', festivalName)
+      .replaceAll('${固定事件}', festivalName),
   );
 }
 

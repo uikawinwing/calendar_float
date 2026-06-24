@@ -54,6 +54,7 @@ async function testCustomProfileConfigOverridesDataOnlyFields(): Promise<void> {
         festivalMarkerPresetId: 'fate-poem',
       },
       addons: ['dlc_ellia'],
+      developerMode: true,
     },
   });
 
@@ -70,6 +71,32 @@ async function testCustomProfileConfigOverridesDataOnlyFields(): Promise<void> {
   assert(result.profile.worldbook.forbiddenRepeatTimeExamples.length > 0, 'worldbook defaults should be retained');
   assert(result.profile.visual?.festivalMarkerPresetId === 'fate-poem', 'visual preset id should be overridden');
   assert(result.profile.addons.includes('dlc_ellia'), 'known addon should be accepted');
+  assert(result.profile.developerMode === true, 'developer mode should be applied');
+}
+
+function testProfileLoadedToastIsSingleLine(): void {
+  const messages: string[] = [];
+  const originalToastr = (globalThis as any).toastr;
+  (globalThis as any).toastr = {
+    info: (message: string) => {
+      messages.push(message);
+    },
+  };
+  try {
+    applyCalendarProfileConfig({
+      profileHint: 'toast-test-profile',
+      config: {
+        id: 'toast-test-profile',
+        label: '提示测试',
+      },
+    });
+  } finally {
+    (globalThis as any).toastr = originalToastr;
+  }
+
+  assert(messages.length > 0, 'profile change should send a toastr message');
+  assert(!messages[0].includes('\n'), 'profile toastr should not use multiline text');
+  assert(!messages[0].includes('来源'), 'profile toastr should not include noisy source text');
 }
 
 function testBuiltinProfilesOwnVisualCapabilities(): void {
@@ -122,6 +149,7 @@ async function main(): Promise<void> {
   testBuiltinProfilesOwnVisualCapabilities();
   testUnknownProfileFallsBackToGenericWithWarning();
   testFunctionLikeValuesAreRejected();
+  testProfileLoadedToastIsSingleLine();
   console.log('profile.check.ts OK');
 }
 

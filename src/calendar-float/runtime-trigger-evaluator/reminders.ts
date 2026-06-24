@@ -52,6 +52,7 @@ export function buildCalendarFestivalWindow(
 function 渲染提醒模板(template: string, festival: CalendarRuntimeFestivalEntry, window: CalendarRuntimeFestivalWindowResult): string {
   return template
     .replaceAll('${节庆名}', festival.名称)
+    .replaceAll('${固定事件}', festival.名称)
     .replaceAll('${剩余天数}', String(Math.max(0, window.距离开始天数)))
     .replaceAll('${开始日期}', festival.开始)
     .replaceAll('${结束日期}', festival.结束 || festival.开始);

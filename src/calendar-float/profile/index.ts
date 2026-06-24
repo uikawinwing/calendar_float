@@ -52,7 +52,7 @@ export function applyCalendarProfileHint(value: unknown): CalendarProfile {
     matchedText,
   };
   if (changed && typeof toastr !== 'undefined') {
-    toastr.info(`月历 Profile 已载入：${activeProfile.label}\n来源：固定事件索引 Profile`);
+    toastr.info(`月历 Profile：${activeProfile.label}`);
   }
   if (changed) {
     console.info(`[${SCRIPT_NAME}] 月历 profile 已由 runtime index 指定: ${activeProfile.id}`, { matchedText });
@@ -74,7 +74,7 @@ export function applyCalendarProfileConfig(args: {
     matchedText,
   };
   if (changed && result.source !== 'default' && typeof toastr !== 'undefined') {
-    toastr.info(`月历 Profile 已载入：${activeProfile.label}\n来源：固定事件索引 Profile`);
+    toastr.info(`月历 Profile：${activeProfile.label}`);
   }
   if (changed) {
     console.info(`[${SCRIPT_NAME}] 月历 profile 已由 runtime index 配置: ${activeProfile.id}`, {

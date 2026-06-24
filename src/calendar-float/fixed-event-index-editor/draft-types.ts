@@ -37,12 +37,16 @@ export interface FixedEventProfileDraft {
 
 export interface FixedEventProfileSettingsDraft {
   label?: string;
+  developerMode: boolean;
   paths: FixedEventProfilePathSettingsDraft;
   date: FixedEventProfileDateSettingsDraft;
   unknownFields: Record<string, unknown>;
 }
 
 export interface FixedEventProfilePathSettingsDraft {
+  eventRoot?: string;
+  tempEvents?: string;
+  repeatEvents?: string;
   worldTime?: string;
   worldLocation?: string;
   unknownFields: Record<string, unknown>;
@@ -50,6 +54,7 @@ export interface FixedEventProfilePathSettingsDraft {
 
 export interface FixedEventProfileDateSettingsDraft {
   eraName?: string;
+  eraNames: string[];
   useChineseNumeralYear?: boolean;
   unknownFields: Record<string, unknown>;
 }

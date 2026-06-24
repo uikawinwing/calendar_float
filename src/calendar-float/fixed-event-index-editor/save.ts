@@ -53,12 +53,15 @@ function createEmptyFixedEventIndexDraft(source: { worldbookName: string; entryN
       id: 'generic',
       settings: {
         label: '通用月历',
+        developerMode: false,
         paths: {
+          eventRoot: 'stat_data.事件.月历',
           worldTime: DEFAULT_MVU_TIME_PATH,
           worldLocation: DEFAULT_MVU_LOCATION_PATH,
           unknownFields: {},
         },
         date: {
+          eraNames: [],
           unknownFields: {},
         },
         unknownFields: {},
@@ -80,8 +83,8 @@ function createEmptyFixedEventIndexDraft(source: { worldbookName: string; entryN
       disableRecursive: true,
       disableKeywords: true,
       macroTemplate: '[[_${id}_reminder_]]',
-      inactiveTemplate: '${节庆名} 将在 ${剩余天数} 天后开始。',
-      activeTemplate: '${节庆名} 正在举行。',
+      inactiveTemplate: '${固定事件} 将在 ${剩余天数} 天后开始。',
+      activeTemplate: '${固定事件} 正在举行。',
       unknownFields: {},
       templateUnknownFields: {},
     },
