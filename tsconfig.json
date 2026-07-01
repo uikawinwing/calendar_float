@@ -1,17 +1,41 @@
 {
   "compilerOptions": {
+<<<<<<< HEAD
     "types": ["jquery", "jqueryui", "lodash", "toastr", "type-fest", "yaml", "zod"],
+=======
+    "types": [
+      "jquery",
+      "jqueryui",
+      "lodash",
+      "toastr",
+      "type-fest",
+      "yaml",
+      "zod",
+    ],
+>>>>>>> 92bc9ed4a5ff1e65a494b9644780983031cdb1df
     "target": "ESNext",
     "module": "ESNext",
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
+<<<<<<< HEAD
       "@util/*": ["./util/*"],
       "@/*": ["./src/*"]
     },
     "moduleDetection": "auto",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
+=======
+      "@util/*": [
+        "./util/*"
+      ],
+      "@/*": [
+        "./src/*"
+      ]
+    },
+    "moduleDetection": "auto",
+    "moduleResolution": "bundler",
+>>>>>>> 92bc9ed4a5ff1e65a494b9644780983031cdb1df
     "allowUmdGlobalAccess": true,
     "allowSyntheticDefaultImports": true,
     "strictBindCallApply": true,
@@ -27,6 +51,21 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true
   },
+<<<<<<< HEAD
   "include": ["@types", "初始模板", "示例", "src", "util", "*.d.ts"],
   "exclude": ["**/dist/**", "**/node_modules/**"]
+=======
+  "include": [
+    "@types",
+    "初始模板",
+    "示例",
+    "src",
+    "util",
+    "*.d.ts",
+  ],
+  "exclude": [
+    "**/dist/**",
+    "**/node_modules/**",
+  ]
+>>>>>>> 92bc9ed4a5ff1e65a494b9644780983031cdb1df
 }
