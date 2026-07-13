@@ -1,5 +1,6 @@
 import { resolveCalendarBookAbstract, resolveCalendarContentNode } from '../runtime-trigger-evaluator';
 import type { CalendarRuntimeBookEntry } from '../runtime-worldbook/types';
+import type { CalendarRuntimeWorldbookSnapshot } from '../runtime-worldbook/snapshot';
 import type { CalendarBookRecord, DatePoint } from '../types';
 import { buildRuntimeDatasetTriggerContext } from './context';
 
@@ -8,10 +9,14 @@ function buildBookTriggerText(bookTitle: string): string {
   return `[[打开《${title}》]]`;
 }
 
-export async function buildRuntimeBookRecord(book: CalendarRuntimeBookEntry, now: DatePoint): Promise<CalendarBookRecord> {
+export async function buildRuntimeBookRecord(
+  book: CalendarRuntimeBookEntry,
+  now: DatePoint,
+  snapshot?: CalendarRuntimeWorldbookSnapshot,
+): Promise<CalendarBookRecord> {
   const context = buildRuntimeDatasetTriggerContext(now);
-  const abstract = await resolveCalendarBookAbstract(book, context);
-  const fulltext = await resolveCalendarContentNode(book.全文, context, { ignoreTrigger: true });
+  const abstract = await resolveCalendarBookAbstract(book, context, snapshot);
+  const fulltext = await resolveCalendarContentNode(book.全文, context, { ignoreTrigger: true, snapshot });
   return {
     id: book.id,
     title: book.名称,

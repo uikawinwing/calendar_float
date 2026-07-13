@@ -1,6 +1,7 @@
 import { compareDatePoint, ensureRangeOrder, formatMonthDay, inferAnchorYear, parseMonthDayWithYear } from '../date';
 import { resolveCalendarContentNode } from '../runtime-trigger-evaluator';
 import type { CalendarRuntimeFestivalEntry, CalendarRuntimeFestivalStageEntry } from '../runtime-worldbook/types';
+import type { CalendarRuntimeWorldbookSnapshot } from '../runtime-worldbook/snapshot';
 import type { CalendarArchivePolicy, CalendarEventColorStyle, DatePoint, FestivalRecord, WorldbookStageRecord } from '../types';
 import { buildRuntimeDatasetTriggerContext } from './context';
 import { normalizeRuntimeMonthDayText } from './date-utils';
@@ -128,6 +129,7 @@ export async function buildRuntimeFestivalRecord(
   festival: CalendarRuntimeFestivalEntry,
   now: DatePoint,
   tagColors: CalendarArchivePolicy['tagColors'],
+  snapshot?: CalendarRuntimeWorldbookSnapshot,
 ): Promise<FestivalRecord | null> {
   const dateRange = buildFestivalDateRange(festival, now);
   if (!dateRange) {
@@ -135,7 +137,7 @@ export async function buildRuntimeFestivalRecord(
   }
 
   const context = buildRuntimeDatasetTriggerContext(now);
-  const intro = await resolveCalendarContentNode(festival.介绍, context, { ignoreTrigger: true });
+  const intro = await resolveCalendarContentNode(festival.介绍, context, { ignoreTrigger: true, snapshot });
   const entryName = festival.介绍?.条目?.条目名 || festival.介绍?.文本库?.条目名;
   const uiSummary = readUiSummary(festival.介绍?.元数据);
   const introText = uiSummary || intro.正文 || festival.名称;

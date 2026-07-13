@@ -1,3 +1,4 @@
+import { loadCalendarDatasetFromRuntimeWorldbook } from '../../../src/calendar-float/runtime-dataset';
 import { loadCalendarRuntimeWorldbookSnapshot } from '../../../src/calendar-float/runtime-worldbook/snapshot';
 
 function assert(condition: unknown, message: string): void {
@@ -130,9 +131,138 @@ async function testSnapshotTextLibraryCacheKeysDoNotCollideOnSeparators(): Promi
   }
 }
 
+async function testDatasetReusesOneSnapshotAcrossAllContentNodes(): Promise<void> {
+  const host = globalThis as any;
+  const previousGetVariables = host.getVariables;
+  const previousGetLastMessageId = host.getLastMessageId;
+  const previousGetCharWorldbookNames = host.getCharWorldbookNames;
+  const previousGetGlobalWorldbookNames = host.getGlobalWorldbookNames;
+  const previousGetWorldbook = host.getWorldbook;
+  const previousWaitGlobalInitialized = host.waitGlobalInitialized;
+  const previousMvu = host.Mvu;
+  const previousToastr = host.toastr;
+  const callCounts = new Map<string, number>();
+  const sourceConfig = {
+    useChatBoundWorldbook: false,
+    extraWorldbooks: ['正文世界书'],
+    devWorldbooks: [],
+  };
+
+  host.getVariables = (target: { type?: string }) =>
+    target?.type === 'chat'
+      ? {
+          calendar_float_store: {
+            archive: {
+              sources: sourceConfig,
+            },
+          },
+        }
+      : {};
+  host.getLastMessageId = () => 0;
+  host.getCharWorldbookNames = () => ({ primary: '索引世界书', additional: [] });
+  host.getGlobalWorldbookNames = () => [];
+  host.waitGlobalInitialized = undefined;
+  host.Mvu = {
+    getMvuData: () => ({}),
+    replaceMvuData: async () => undefined,
+  };
+  host.getWorldbook = async (name: string) => {
+    callCounts.set(name, (callCounts.get(name) ?? 0) + 1);
+    if (name === '索引世界书') {
+      return [
+        {
+          name: '[fixed_event_index]',
+          content: `
+固定事件:
+  - id: festival_a
+    名称: 节庆甲
+    开始: 01-01
+    结束: 01-02
+    介绍:
+      条目名: "[节庆甲_介绍]"
+  - id: festival_b
+    名称: 节庆乙
+    开始: 02-01
+    结束: 02-02
+    介绍:
+      条目名: "[节庆乙_介绍]"
+补充资料:
+  - id: book_a
+    书名: 读物甲
+    摘要:
+      条目名: "[读物甲_摘要]"
+    全文:
+      条目名: "[读物甲_占位全文]"
+  - id: book_b
+    书名: 读物乙
+    摘要:
+      条目名: "[读物乙_摘要]"
+    全文:
+      条目名: "[读物乙_占位全文]"
+`,
+        },
+      ];
+    }
+    if (name === '正文世界书') {
+      return [
+        { name: '[节庆甲_介绍]', content: '节庆甲正文' },
+        { name: '[节庆乙_介绍]', content: '节庆乙正文' },
+        { name: '[读物甲_摘要]', content: '读物甲摘要' },
+        { name: '[读物乙_摘要]', content: '读物乙摘要' },
+        { name: '[共享文本库]', content: '读物甲全文: 共享库甲正文\n读物乙全文: 共享库乙正文' },
+      ];
+    }
+    throw new Error(`不应该读取未知世界书：${name}`);
+  };
+  host.toastr = { info: () => undefined, warning: () => undefined };
+
+  try {
+    const snapshot = await loadCalendarRuntimeWorldbookSnapshot(sourceConfig);
+    const books = snapshot.indexResult.索引?.书籍 ?? [];
+    assert(books.length === 2, 'fixture 应该生成两本读物');
+    books[0].全文 = {
+      ...books[0].全文!,
+      条目: null,
+      文本库: { 世界书: '正文世界书', 条目名: '[共享文本库]', 键: '读物甲全文' },
+    };
+    books[1].全文 = {
+      ...books[1].全文!,
+      条目: null,
+      文本库: { 世界书: '正文世界书', 条目名: '[共享文本库]', 键: '读物乙全文' },
+    };
+
+    const dataset = await loadCalendarDatasetFromRuntimeWorldbook(snapshot);
+    const observedCounts = Object.fromEntries(callCounts);
+
+    assert(
+      callCounts.get('索引世界书') === 1 && callCounts.get('正文世界书') === 1,
+      `一次 dataset load 应该对每个来源只调用一次 getWorldbook，实际：${JSON.stringify(observedCounts)}`,
+    );
+    assert(
+      dataset.festivals.map(item => item.summary).join('|') === '节庆甲正文|节庆乙正文',
+      '两个节庆应该从普通条目解析正文',
+    );
+    assert(dataset.books.book_a?.summary === '读物甲摘要', '读物甲应该从普通条目解析摘要');
+    assert(dataset.books.book_b?.summary === '读物乙摘要', '读物乙应该从普通条目解析摘要');
+    assert(dataset.books.book_a?.content === '共享库甲正文', '读物甲应该从共享文本库解析全文');
+    assert(dataset.books.book_b?.content === '共享库乙正文', '读物乙应该从共享文本库解析全文');
+    console.log(`dataset snapshot counts/content OK: ${JSON.stringify(observedCounts)}`);
+  } finally {
+    host.getVariables = previousGetVariables;
+    host.getLastMessageId = previousGetLastMessageId;
+    host.getCharWorldbookNames = previousGetCharWorldbookNames;
+    host.getGlobalWorldbookNames = previousGetGlobalWorldbookNames;
+    host.getWorldbook = previousGetWorldbook;
+    host.waitGlobalInitialized = previousWaitGlobalInitialized;
+    host.Mvu = previousMvu;
+    host.toastr = previousToastr;
+  }
+}
+
 async function main(): Promise<void> {
   await testSnapshotReadsEachWorldbookOnceAndCachesTextLibraries();
   await testSnapshotTextLibraryCacheKeysDoNotCollideOnSeparators();
+  await testDatasetReusesOneSnapshotAcrossAllContentNodes();
   console.log('snapshot.check.ts OK');
 }
 

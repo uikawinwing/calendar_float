@@ -3,6 +3,7 @@ import type {
   CalendarRuntimeBookEntry,
   CalendarRuntimeContentNode,
 } from '../runtime-worldbook/types';
+import type { CalendarRuntimeWorldbookSnapshot } from '../runtime-worldbook/snapshot';
 import { evaluateCalendarRuntimeTrigger } from './conditions';
 import type {
   CalendarRuntimeBookSummaryResolveResult,
@@ -12,6 +13,7 @@ import type {
 export async function resolveCalendarBookAbstract(
   book: CalendarRuntimeBookEntry,
   context: CalendarRuntimeTriggerContext,
+  snapshot?: CalendarRuntimeWorldbookSnapshot,
 ): Promise<CalendarRuntimeBookSummaryResolveResult> {
   if (!book.摘要) {
     return {
@@ -34,7 +36,7 @@ export async function resolveCalendarBookAbstract(
     };
   }
 
-  const resolved = await resolveCalendarRuntimeNodeText({ node: book.摘要 });
+  const resolved = await resolveCalendarRuntimeNodeText({ node: book.摘要, snapshot });
   return {
     正文: resolved.正文,
     可提供给LLM: Boolean(resolved.正文),
@@ -47,7 +49,7 @@ export async function resolveCalendarBookAbstract(
 export async function resolveCalendarContentNode(
   node: CalendarRuntimeContentNode | null | undefined,
   context: CalendarRuntimeTriggerContext,
-  options: { ignoreTrigger?: boolean } = {},
+  options: { ignoreTrigger?: boolean; snapshot?: CalendarRuntimeWorldbookSnapshot } = {},
 ): Promise<{ 命中: boolean; 正文: string; 警告: string[] }> {
   if (!node || node.启用 === false) {
     return { 命中: false, 正文: '', 警告: [] };
@@ -64,7 +66,7 @@ export async function resolveCalendarContentNode(
     }
   }
 
-  const resolved = await resolveCalendarRuntimeNodeText({ node });
+  const resolved = await resolveCalendarRuntimeNodeText({ node, snapshot: options.snapshot });
   return {
     命中: true,
     正文: resolved.正文,

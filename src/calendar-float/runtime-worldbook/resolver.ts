@@ -4,9 +4,8 @@
  */
 import {
   findCalendarRuntimeEntryByReference,
-  readCalendarRuntimeTextLibrary,
-  readCalendarRuntimeWorldbookEntries,
 } from './loader';
+import { loadCalendarRuntimeWorldbookSnapshot, type CalendarRuntimeWorldbookSnapshot } from './snapshot';
 import type { CalendarWorldbookReference, CalendarWorldbookSourceEntry, CalendarTextLibraryReference, CalendarRuntimeContentNode } from './types';
 
 export interface CalendarRuntimeContentResolveResult {
@@ -18,9 +17,6 @@ export interface CalendarRuntimeContentResolveResult {
 export interface CalendarRuntimeNodeTextResolveResult extends CalendarRuntimeContentResolveResult {
   文本库键: string | null;
 }
-
-type 世界书条目读取函数 = typeof readCalendarRuntimeWorldbookEntries;
-type 世界书条目读取结果 = Awaited<ReturnType<世界书条目读取函数>>;
 
 function 规范化名称(value: unknown): string {
   return String(value ?? '').trim();
@@ -60,6 +56,7 @@ export function resolveCalendarRuntimeEntryContentByReference(
 
 export async function resolveCalendarRuntimeTextByLibraryReference(
   reference: CalendarTextLibraryReference | null | undefined,
+  snapshot?: CalendarRuntimeWorldbookSnapshot,
 ): Promise<CalendarRuntimeNodeTextResolveResult> {
   if (!reference) {
     return {
@@ -71,7 +68,8 @@ export async function resolveCalendarRuntimeTextByLibraryReference(
   }
 
   const 键 = 规范化名称(reference.键);
-  const library = await readCalendarRuntimeTextLibrary(reference);
+  const runtimeSnapshot = snapshot ?? (await loadCalendarRuntimeWorldbookSnapshot());
+  const library = runtimeSnapshot.readTextLibrary(reference);
   if (!键) {
     return {
       正文: '',
@@ -92,7 +90,7 @@ export async function resolveCalendarRuntimeTextByLibraryReference(
 
 export async function resolveCalendarRuntimeNodeText(args: {
   node: CalendarRuntimeContentNode | null | undefined;
-  preloaded?: 世界书条目读取结果;
+  snapshot?: CalendarRuntimeWorldbookSnapshot;
 }): Promise<CalendarRuntimeNodeTextResolveResult> {
   const node = args.node;
   if (!node || node.启用 === false) {
@@ -115,7 +113,8 @@ export async function resolveCalendarRuntimeNodeText(args: {
   }
 
   if (node.文本库) {
-    return resolveCalendarRuntimeTextByLibraryReference(node.文本库);
+    const snapshot = args.snapshot ?? (await loadCalendarRuntimeWorldbookSnapshot());
+    return resolveCalendarRuntimeTextByLibraryReference(node.文本库, snapshot);
   }
 
   if (!node.条目) {
@@ -127,8 +126,8 @@ export async function resolveCalendarRuntimeNodeText(args: {
     };
   }
 
-  const preloaded = args.preloaded ?? (await readCalendarRuntimeWorldbookEntries());
-  const result = resolveCalendarRuntimeEntryContentByReference(preloaded.条目, node.条目);
+  const snapshot = args.snapshot ?? (await loadCalendarRuntimeWorldbookSnapshot());
+  const result = resolveCalendarRuntimeEntryContentByReference(snapshot.entries, node.条目);
   return {
     正文: result.正文,
     来源条目名: result.来源条目名,
