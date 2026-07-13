@@ -105,14 +105,19 @@ function assertActionDispatcherContract(actionTypes: string[], functionNode: ts.
   const defaults = clauses.filter(ts.isDefaultClause);
   assert(defaults.length === 1, `dispatchWidgetAction 必须有一个 exhaustive default，实际 ${defaults.length}`);
   let exhaustiveNeverCount = 0;
+  function isNestedFunctionLike(node: ts.Node): boolean {
+    return (
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node)
+    );
+  }
   function visitDefault(node: ts.Node): void {
-    if (
-      node !== defaults[0] &&
-      (ts.isFunctionDeclaration(node) ||
-        ts.isFunctionExpression(node) ||
-        ts.isArrowFunction(node) ||
-        ts.isMethodDeclaration(node))
-    ) {
+    if (node !== defaults[0] && isNestedFunctionLike(node)) {
       return;
     }
     if (
@@ -184,25 +189,42 @@ function assertManagerEffectsStayInProductionAdapter(file: ts.SourceFile): void 
     'uninstallCalendarManagedWorldbookEntries',
   ]);
   const localBindings = new Map<string, string>();
+  const namespaceBindings = new Set<string>();
   for (const statement of file.statements) {
     if (
       !ts.isImportDeclaration(statement) ||
       !ts.isStringLiteral(statement.moduleSpecifier) ||
       !statement.moduleSpecifier.text.endsWith('/worldbook-manager') ||
-      !statement.importClause?.namedBindings ||
-      !ts.isNamedImports(statement.importClause.namedBindings)
+      !statement.importClause?.namedBindings
     ) {
       continue;
     }
-    for (const specifier of statement.importClause.namedBindings.elements) {
+    const bindings = statement.importClause.namedBindings;
+    if (ts.isNamespaceImport(bindings)) {
+      namespaceBindings.add(bindings.name.text);
+      continue;
+    }
+    for (const specifier of bindings.elements) {
       const importedName = specifier.propertyName?.text ?? specifier.name.text;
-      if (importedEffectNames.has(importedName)) localBindings.set(specifier.name.text, importedName);
+      if (importedEffectNames.has(importedName)) {
+        localBindings.set(specifier.name.text, importedName);
+      }
     }
   }
   const violations: string[] = [];
 
   function visit(node: ts.Node, owner: string | null): void {
     const nextOwner = ts.isFunctionDeclaration(node) && node.name ? node.name.text : owner;
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      namespaceBindings.has(node.expression.text) &&
+      ts.isIdentifier(node.name) &&
+      importedEffectNames.has(node.name.text) &&
+      nextOwner !== 'createProductionManagedWorldbookFlow'
+    ) {
+      violations.push(`${node.name.text} as ${node.expression.text}.${node.name.text}@${nextOwner ?? '<top>'}`);
+    }
     if (ts.isIdentifier(node) && localBindings.has(node.text) && !ts.isImportSpecifier(node.parent)) {
       const isPropertyName =
         (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) ||
@@ -235,7 +257,7 @@ function testDispatcherMutationGuards(): void {
   const mutations = [
     [
       'unrelated switch',
-      "async function dispatchWidgetAction(action: WidgetAction) { switch (other.type) { case 'real': return; } }",
+      "async function dispatchWidgetAction(action: WidgetAction) { switch (other.type) { case 'real': return; default: { const exhaustiveCheck: never = action; throw exhaustiveCheck; } } }",
     ],
     [
       'nested case',
@@ -248,6 +270,18 @@ function testDispatcherMutationGuards(): void {
     [
       'nested exhaustive declaration',
       "async function dispatchWidgetAction(action: WidgetAction) { switch (action.type) { case 'real': return; default: { function fake() { const exhaustiveCheck: never = action; } } } }",
+    ],
+    [
+      'constructor exhaustive declaration',
+      "async function dispatchWidgetAction(action: WidgetAction) { switch (action.type) { case 'real': return; default: { class Fake { constructor() { const exhaustiveCheck: never = action; } } } } }",
+    ],
+    [
+      'getter exhaustive declaration',
+      "async function dispatchWidgetAction(action: WidgetAction) { switch (action.type) { case 'real': return; default: { class Fake { get value() { const exhaustiveCheck: never = action; return exhaustiveCheck; } } } } }",
+    ],
+    [
+      'setter exhaustive declaration',
+      "async function dispatchWidgetAction(action: WidgetAction) { switch (action.type) { case 'real': return; default: { class Fake { set value(next: unknown) { const exhaustiveCheck: never = action; void next; void exhaustiveCheck; } } } } }",
     ],
   ] as const;
   for (const [name, source] of mutations) {
@@ -268,10 +302,24 @@ function testManagerEffectAliasMutationGuard(): void {
   );
 }
 
+function testManagerEffectNamespaceMutationGuard(): void {
+  const importLine = "import * as manager from '../worldbook-manager';\n";
+  const adapter = 'function createProductionManagedWorldbookFlow() { return { refreshRuntime: manager.refreshCalendarManagedWorldbookRuntimeDiagnostics }; }\n';
+  assertManagerEffectsStayInProductionAdapter(parseFixture(`${importLine}${adapter}`));
+  expectContractFailure('namespace manager effect outside adapter', () =>
+    assertManagerEffectsStayInProductionAdapter(
+      parseFixture(
+        `${importLine}${adapter}function refreshOutsideAdapter() { return manager.refreshCalendarManagedWorldbookRuntimeDiagnostics(); }\n`,
+      ),
+    ),
+  );
+}
+
 function main(): void {
   testExportMutationGuards();
   testDispatcherMutationGuards();
   testManagerEffectAliasMutationGuard();
+  testManagerEffectNamespaceMutationGuard();
   const host = readSource('../../../src/calendar-float/widget/index.ts');
   const actions = readSource('../../../src/calendar-float/widget/actions.ts');
   const events = readSource('../../../src/calendar-float/widget/events.ts');
