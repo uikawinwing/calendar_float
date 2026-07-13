@@ -38,7 +38,7 @@ interface ScannerHostState {
   infoLogs: number;
 }
 
-function installScannerHost(firstRead: Promise<WorldbookEntry[]>): {
+function installScannerHost(firstRead: Promise<WorldbookEntry[]>, secondRead?: Promise<WorldbookEntry[]>): {
   state: ScannerHostState;
   restore: () => void;
 } {
@@ -75,6 +75,9 @@ function installScannerHost(firstRead: Promise<WorldbookEntry[]>): {
     try {
       if (state.worldbookCalls === 1) {
         return await firstRead;
+      }
+      if (state.worldbookCalls === 2 && secondRead) {
+        return await secondRead;
       }
       return [];
     } finally {
@@ -255,9 +258,85 @@ async function testTeardownInvalidatesInFlightScanBeforeSideEffects(): Promise<v
   }
 }
 
+async function testNewGenerationRequestWaitsForStaleInFlightScanAndStillRuns(): Promise<void> {
+  const firstRead = deferred<WorldbookEntry[]>();
+  const secondRead = deferred<WorldbookEntry[]>();
+  const host = installScannerHost(firstRead.promise, secondRead.promise);
+  try {
+    const staleRequest = requestCalendarRuntimeWorldbookScan();
+    await waitFor(() => host.state.worldbookCalls === 1, '旧 generation 应该启动第一次 scan');
+
+    teardownCalendarRuntimeWorldbookScanner();
+    const freshRequest = requestCalendarRuntimeWorldbookScan();
+    let freshSettled = false;
+    void freshRequest.then(() => {
+      freshSettled = true;
+    });
+
+    assert(freshRequest !== staleRequest, '新 generation request 必须返回覆盖 fresh scan 的新 Promise');
+    assert(host.state.worldbookCalls === 1, '旧 scan 未结束前不得并发启动新 generation scan');
+
+    firstRead.resolve([]);
+    await staleRequest;
+    await waitFor(() => host.state.worldbookCalls === 2, '旧 Promise settle 后应该启动 fresh scan');
+
+    assert(host.state.maxActiveScans === 1, '跨 generation 的 scan 最大并发仍应为 1');
+    assert(!freshSettled, 'fresh request Promise 必须等待 fresh scan 完成');
+    assert(host.state.variableWrites === 0, '旧 generation scan 不得发布副作用');
+
+    secondRead.resolve([]);
+    await freshRequest;
+
+    assert(host.state.worldbookCalls === 2, '新 generation 只应执行一次 fresh scan，不得多余 rerun');
+    assert(host.state.variableWrites === 1, '只有 fresh generation 应发布一次结果');
+    assert(host.state.promptInjections === 0, '空结果不应注入 prompt');
+    console.log(
+      `generation handoff OK: samePromise=${freshRequest === staleRequest}, maxActive=${host.state.maxActiveScans}, scans=${host.state.worldbookCalls}, writes=${host.state.variableWrites}`,
+    );
+  } finally {
+    host.restore();
+  }
+}
+
+async function testStaleGenerationErrorIsSilentButCurrentErrorStillRejects(): Promise<void> {
+  const host = installScannerHost(Promise.resolve([]));
+  const runtimeHost = globalThis as any;
+  try {
+    let sourceErrorMessage = '旧 generation 读取失败';
+    runtimeHost.getCharWorldbookNames = () => {
+      throw new Error(sourceErrorMessage);
+    };
+    let staleWarningLogs = 0;
+    const staleRequest = requestCalendarRuntimeWorldbookScan().catch(() => {
+      staleWarningLogs += 1;
+    });
+    teardownCalendarRuntimeWorldbookScanner();
+    await staleRequest;
+
+    assert(staleWarningLogs === 0, '失效 generation 的 rejection 不得触发 scanner 外层 warning log');
+
+    sourceErrorMessage = '当前 generation 读取失败';
+    const currentRequest = requestCalendarRuntimeWorldbookScan();
+    let currentError: unknown = null;
+    try {
+      await currentRequest;
+    } catch (error) {
+      currentError = error;
+    }
+
+    assert(currentError instanceof Error, '当前 generation 的真实错误仍须通过 request Promise 暴露');
+    assert(currentError.message === '当前 generation 读取失败', '当前 generation 应保留原始错误消息');
+    console.log(`generation errors OK: staleWarnings=${staleWarningLogs}, currentError=${currentError.message}`);
+  } finally {
+    host.restore();
+  }
+}
+
 async function main(): Promise<void> {
   await testConcurrentRequestsCollapseIntoOneQueuedFreshRerun();
   await testTeardownInvalidatesInFlightScanBeforeSideEffects();
+  await testNewGenerationRequestWaitsForStaleInFlightScanAndStillRuns();
+  await testStaleGenerationErrorIsSilentButCurrentErrorStillRejects();
   await testSuccessfulReadIsInfoDiagnosticAndNotScannerWarning();
   await testSourceDiagnosticsPreserveErrorsAcrossOrdinaryAndTextLibraryResolution();
   console.log('scanner-concurrency.check.ts OK');

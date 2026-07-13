@@ -35,6 +35,7 @@ let chatChangedHookBound = false;
 let generationHookStop: (() => void) | null = null;
 let chatChangedHookStop: (() => void) | null = null;
 let scanInFlight: Promise<void> | null = null;
+let scanInFlightGeneration: number | null = null;
 let scanQueued = false;
 let scanGeneration = 0;
 
@@ -345,35 +346,68 @@ async function publishCalendarRuntimeWorldbookScan(result: CalendarRuntimeScanRe
 }
 
 async function runCalendarRuntimeWorldbookScan(generation: number): Promise<void> {
-  const snapshot = await loadCalendarRuntimeWorldbookSnapshot();
-  const result = await scanCalendarRuntimeWorldbook(snapshot);
-  if (generation !== scanGeneration) {
-    return;
+  try {
+    const snapshot = await loadCalendarRuntimeWorldbookSnapshot();
+    const result = await scanCalendarRuntimeWorldbook(snapshot);
+    if (generation !== scanGeneration) {
+      return;
+    }
+    await publishCalendarRuntimeWorldbookScan(result);
+  } catch (error) {
+    if (generation !== scanGeneration) {
+      return;
+    }
+    throw error;
   }
-  await publishCalendarRuntimeWorldbookScan(result);
 }
 
-async function drainCalendarRuntimeScanQueue(generation: number): Promise<void> {
-  do {
+async function drainCalendarRuntimeScanQueue(generation: number, rerunAfterFirstScan = false): Promise<void> {
+  let rerunRequested = rerunAfterFirstScan;
+  while (generation === scanGeneration) {
     scanQueued = false;
     await runCalendarRuntimeWorldbookScan(generation);
     if (generation !== scanGeneration) {
       return;
     }
-  } while (scanQueued);
+    if (!rerunRequested && !scanQueued) {
+      return;
+    }
+    rerunRequested = false;
+  }
+}
+
+function startCalendarRuntimeScan(
+  generation: number,
+  predecessor: Promise<void> | null = null,
+): Promise<void> {
+  const operation = predecessor
+    ? predecessor.then(
+        () => drainCalendarRuntimeScanQueue(generation, scanQueued),
+        () => drainCalendarRuntimeScanQueue(generation, scanQueued),
+      )
+    : drainCalendarRuntimeScanQueue(generation);
+  const trackedPromise = operation.finally(() => {
+    if (scanInFlight !== trackedPromise) {
+      return;
+    }
+    scanInFlight = null;
+    scanInFlightGeneration = null;
+    scanQueued = false;
+  });
+  scanInFlight = trackedPromise;
+  scanInFlightGeneration = generation;
+  return trackedPromise;
 }
 
 export function requestCalendarRuntimeWorldbookScan(): Promise<void> {
   if (scanInFlight) {
+    if (scanInFlightGeneration !== scanGeneration) {
+      return startCalendarRuntimeScan(scanGeneration, scanInFlight);
+    }
     scanQueued = true;
     return scanInFlight;
   }
-  const generation = scanGeneration;
-  scanInFlight = drainCalendarRuntimeScanQueue(generation).finally(() => {
-    scanInFlight = null;
-    scanQueued = false;
-  });
-  return scanInFlight;
+  return startCalendarRuntimeScan(scanGeneration);
 }
 
 export function applyCalendarRuntimeWorldbookScan(): Promise<void> {
