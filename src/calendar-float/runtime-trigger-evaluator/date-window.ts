@@ -1,10 +1,10 @@
 import _ from 'lodash';
 
 import {
-  compareDatePoint,
   parseMonthDayWithYear,
   parseWorldDateText,
 } from '../date';
+import { resolveFestivalDateRange } from '../festival-date-range';
 import { getActiveCalendarDateParseOptions } from '../profile';
 import type { CalendarRuntimeDateWindowCondition, CalendarRuntimeFestivalEntry } from '../runtime-worldbook/types';
 import { readCurrentWorldTime } from '../storage';
@@ -12,53 +12,21 @@ import type { DatePoint } from '../types';
 import { 规范化文本 } from './text';
 import type { CalendarRuntimeTriggerContext } from './types';
 
-function 推断年份(now: DatePoint, month: number): number {
-  if (month + 6 < now.month) {
-    return now.year + 1;
-  }
-  if (month - 6 > now.month) {
-    return now.year - 1;
-  }
-  return now.year;
-}
-
-function 解析周期举办年份(year: number, intervalYears?: number, lastYear?: number): number {
-  const interval = Math.floor(Number(intervalYears));
-  const last = Math.floor(Number(lastYear));
-  if (!Number.isFinite(interval) || interval <= 1 || !Number.isFinite(last)) {
-    return year;
-  }
-  const remainder = (((year - last) % interval) + interval) % interval;
-  const previous = year - remainder;
-  const next = previous + interval;
-  return Math.abs(year - previous) <= Math.abs(next - year) ? previous : next;
-}
-
 export function 解析节庆日期范围(
   festival: CalendarRuntimeFestivalEntry,
   now: DatePoint,
 ): { 开始: DatePoint; 结束: DatePoint } | null {
-  const 开始文本 = 规范化文本(festival.开始);
-  const 结束文本 = 规范化文本(festival.结束 || festival.开始);
-  if (!开始文本 || !结束文本) {
+  const resolved = resolveFestivalDateRange({
+    start: festival.开始,
+    end: festival.结束,
+    recurrence: festival.周期 ? { intervalYears: festival.周期.每隔年, lastYear: festival.周期.上次年份 } : undefined,
+    now,
+  });
+  if (!resolved) {
     return null;
   }
 
-  const 开始月份 = Number(开始文本.split('-')[0]);
-  const 举办年份 = 解析周期举办年份(推断年份(now, 开始月份), festival.周期?.每隔年, festival.周期?.上次年份);
-  const 开始 = parseMonthDayWithYear(开始文本, 举办年份);
-  let 结束 = parseMonthDayWithYear(结束文本, 举办年份);
-  if (!开始 || !结束) {
-    return null;
-  }
-  if (compareDatePoint(结束, 开始) < 0) {
-    结束 = parseMonthDayWithYear(结束文本, 举办年份 + 1);
-    if (!结束) {
-      return null;
-    }
-  }
-
-  return compareDatePoint(开始, 结束) <= 0 ? { 开始, 结束 } : { 开始: 结束, 结束: 开始 };
+  return { 开始: resolved.range.start, 结束: resolved.range.end };
 }
 
 function 尝试解析日期点(value: unknown, fallbackYear?: number): DatePoint | null {
@@ -131,30 +99,21 @@ export function 构建日期窗口(
     return null;
   }
 
-  const 开始文本 = 规范化文本(condition.开始);
-  const 结束文本 = 规范化文本(condition.结束 || condition.开始);
-  if (!开始文本 || !结束文本) {
+  const resolved = resolveFestivalDateRange({
+    start: String(condition.开始 || ''),
+    end: String(condition.结束 || condition.开始 || ''),
+    recurrence: { intervalYears: Number(condition.每隔年), lastYear: Number(condition.上次年份) },
+    now: 当前日期,
+    prepareDays: condition.提前天数,
+  });
+  if (!resolved) {
     return null;
-  }
-
-  const 开始月份 = Number(开始文本.split('-')[0]);
-  const 举办年份 = 解析周期举办年份(推断年份(当前日期, 开始月份), condition.每隔年, condition.上次年份);
-  const 开始 = parseMonthDayWithYear(开始文本, 举办年份);
-  let 结束 = parseMonthDayWithYear(结束文本, 举办年份);
-  if (!开始 || !结束) {
-    return null;
-  }
-  if (compareDatePoint(结束, 开始) < 0) {
-    结束 = parseMonthDayWithYear(结束文本, 举办年份 + 1);
-    if (!结束) {
-      return null;
-    }
   }
 
   return {
     当前日期,
-    开始: compareDatePoint(开始, 结束) <= 0 ? 开始 : 结束,
-    结束: compareDatePoint(开始, 结束) <= 0 ? 结束 : 开始,
+    开始: resolved.range.start,
+    结束: resolved.range.end,
     提前天数: Math.max(0, Number(condition.提前天数 ?? 0)),
     延后天数: Math.max(0, Number(condition.延后天数 ?? 0)),
   };

@@ -1,10 +1,10 @@
-import { compareDatePoint, ensureRangeOrder, formatMonthDay, inferAnchorYear, parseMonthDayWithYear } from '../date';
+import { formatMonthDay } from '../date';
+import { resolveFestivalDateRange } from '../festival-date-range';
 import { resolveCalendarContentNode } from '../runtime-trigger-evaluator';
 import type { CalendarRuntimeFestivalEntry, CalendarRuntimeFestivalStageEntry } from '../runtime-worldbook/types';
 import type { CalendarRuntimeWorldbookSnapshot } from '../runtime-worldbook/snapshot';
 import type { CalendarArchivePolicy, CalendarEventColorStyle, DatePoint, FestivalRecord, WorldbookStageRecord } from '../types';
 import { buildRuntimeDatasetTriggerContext } from './context';
-import { normalizeRuntimeMonthDayText } from './date-utils';
 
 function readUiSummary(metadata: Record<string, unknown> | undefined): string {
   return String(metadata?.简介 ?? metadata?.summary ?? metadata?.uiSummary ?? '').trim();
@@ -40,58 +40,21 @@ function resolveFestivalHashtagColor(args: {
   return undefined;
 }
 
-function isFestivalOccurrenceYear(year: number, recurrence?: CalendarRuntimeFestivalEntry['周期']): boolean {
-  if (!recurrence) {
-    return true;
-  }
-  const intervalYears = Math.floor(Number(recurrence.每隔年));
-  const lastYear = Math.floor(Number(recurrence.上次年份));
-  if (!Number.isFinite(intervalYears) || intervalYears <= 1 || !Number.isFinite(lastYear)) {
-    return true;
-  }
-  return (year - lastYear) % intervalYears === 0;
-}
-
-function getNearestFestivalOccurrenceYear(year: number, recurrence?: CalendarRuntimeFestivalEntry['周期']): number {
-  if (!recurrence || isFestivalOccurrenceYear(year, recurrence)) {
-    return year;
-  }
-  const intervalYears = Math.floor(Number(recurrence.每隔年));
-  const lastYear = Math.floor(Number(recurrence.上次年份));
-  if (!Number.isFinite(intervalYears) || intervalYears <= 1 || !Number.isFinite(lastYear)) {
-    return year;
-  }
-  const remainder = (((year - lastYear) % intervalYears) + intervalYears) % intervalYears;
-  const previous = year - remainder;
-  const next = previous + intervalYears;
-  return Math.abs(year - previous) <= Math.abs(next - year) ? previous : next;
-}
-
 export function buildFestivalDateRange(festival: CalendarRuntimeFestivalEntry, now: DatePoint) {
-  const startText = normalizeRuntimeMonthDayText(String(festival.开始 || ''));
-  const endText = normalizeRuntimeMonthDayText(String(festival.结束 || festival.开始 || ''));
-  if (!startText || !endText) {
+  const resolved = resolveFestivalDateRange({
+    start: festival.开始,
+    end: festival.结束,
+    recurrence: festival.周期 ? { intervalYears: festival.周期.每隔年, lastYear: festival.周期.上次年份 } : undefined,
+    now,
+  });
+  if (!resolved) {
     return null;
-  }
-
-  const startMonth = Number(startText.split('-')[0]);
-  const occurrenceYear = getNearestFestivalOccurrenceYear(inferAnchorYear(now, startMonth), festival.周期);
-  const start = parseMonthDayWithYear(startText, occurrenceYear);
-  let end = parseMonthDayWithYear(endText, occurrenceYear);
-  if (!start || !end) {
-    return null;
-  }
-  if (compareDatePoint(end, start) < 0) {
-    end = parseMonthDayWithYear(endText, occurrenceYear + 1);
-    if (!end) {
-      return null;
-    }
   }
 
   return {
-    startText,
-    endText,
-    range: ensureRangeOrder({ start, end }),
+    startText: resolved.startText,
+    endText: resolved.endText,
+    range: resolved.range,
   };
 }
 
