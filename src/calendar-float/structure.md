@@ -8,6 +8,7 @@
 - `constants.ts`：共享常量，例如脚本名、根 DOM id
 - `types.ts`：跨模块共享的月历数据类型
 - `date.ts`：日期解析、格式化、范围判断、世界时间文本解析
+- `festival-date-range.ts`：节庆月日范围的唯一纯 resolver；统一规范化、最近举办年、周期、跨年、提醒预窗口与状态
 - `host-adapter.ts`：和外部宿主页 / host 的桥接启动与清理
 - `mvu-removal-archive.ts`：把 MVU 变量删除同步到月历归档的桥接逻辑
 - `form-service.ts`：用户自定义事件的新增、编辑、删除等表单保存逻辑
@@ -25,9 +26,9 @@
 - `calendar-view-model/`：把 dataset 转为月视图格子、日程列表、月内条形 chip 等 UI view model
 - `fixed-event-index-editor/`：`[fixed_event_index]` 结构化编辑器，见 `fixed-event-index-editor/structure.md`
 - `profile/`：通用月历 / 命定之诗 profile 检测、路径配置、日期设置和 profile 专属视觉 preset
-- `runtime-dataset/`：把世界书索引、主动事件、归档事件、节庆和读物组装成 UI 使用的 `CalendarDataset`
+- `runtime-dataset/`：把世界书索引、主动事件、归档事件、节庆和读物组装成 UI 使用的 `CalendarDataset`；单次 load 传递 operation-scoped worldbook snapshot
 - `runtime-trigger-evaluator/`：runtime 命中判定、日期窗口、关键词、提醒和内容解析
-- `runtime-worldbook/`：世界书索引来源发现、YAML 读取、schema 归一化、正文解析、runtime defaults、月份别名、scanner 输入上下文和 bootstrap
+- `runtime-worldbook/`：世界书索引来源发现、YAML 读取、schema 归一化、正文解析、runtime defaults、月份别名、scanner 输入上下文和 bootstrap；snapshot 不跨 operation 复用，scanner 对 generation 采用 single-flight 与 teardown invalidation
 - `storage/`：聊天变量、消息变量、归档策略、世界书来源配置、事件颜色和标签建议
 - `widget/`：悬浮月历 UI、事件绑定、渲染和样式，见 `widget/structure.md`
 - `worldbook-manager/`：脚本托管的基础设施世界书条目安装、重装、卸载、诊断和搬运
@@ -40,6 +41,7 @@
 - 只改 runtime 读取兼容性：优先改 `runtime-worldbook/loader.ts`、`normalizer.ts` 和对应 check
 - 只改 UI dataset 组装：优先改 `runtime-dataset/`，widget 仍从 `runtime-ui-dataset.ts` 门面读取
 - 只改命中条件：优先改 `runtime-trigger-evaluator/`
+- 只改节庆月日范围、跨年或提醒预窗口：优先改 `festival-date-range.ts`；dataset 与 evaluator 只保留兼容 facade，不要再各自推断年份
 - 只改 profile 专属节庆图标 / 颜色规则：优先改 `profile/festival-visual-presets.ts`
 - 只改 UI 展示：优先改 `widget/render.ts`、`widget/form-render.ts`、`widget/day-detail.ts`、`widget/index.ts`、`widget/style-parts/`
 - 只改持久化：优先改 `storage/`，不要改现有变量 key，除非有迁移计划
@@ -51,3 +53,4 @@
 - 不要为新 profile 复制 `[DLC][扩展]` 这类旧命名前缀
 - 不要把旧字段 `默认设置.mvu时间路径` / `默认设置.mvu地点路径` 写成新文档示例；它们只属于 fallback
 - 不要把新的 `.check.ts` 放在 `src/`；check 统一放到 `checks/calendar-float/`，按原模块路径分目录
+- 不要绕过 `runtime-worldbook/snapshot.ts` 在一次 dataset/scan 内重复读取同一世界书，也不要给 scanner 加平行 publish 通道

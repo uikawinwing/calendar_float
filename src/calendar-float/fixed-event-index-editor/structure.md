@@ -27,15 +27,16 @@
   - 通过 `replaceWorldbook()` 写回
 - `validate.ts`：校验 draft 是否可保存，并生成顶部 / 行内提示
 - `comment-groups.ts`：在当前 `固定事件:` 列表缺少显式分组时，尝试把注释分组迁移为 editable `固定事件分组`
+- `../widget/fixed-event-editor-session.ts`：编辑器 UI 状态与 load/save/dirty/stale ordering 的唯一 owner；不把这些状态镜像回 widget host
+- `../widget/fixed-event-editor-bindings.ts`：浏览器 DOM 字段采集与 intent 转换；不做 YAML 变换
 
 ## 数据流
 
-1. `panel.ts` 调 `readCalendarRuntimeIndexSourceEntry()` 读取 runtime 索引来源
-2. `parse.ts` 把来源 YAML 解析成 draft
-3. `validate.ts` 生成可保存状态和行内提示
-4. `panel.ts` 渲染结构化表单和 YAML 预览
-5. `widget/index.ts` 收集表单字段，调用 `edit.ts` 更新 YAML preview
-6. 用户点击保存后，`save.ts` 写回世界书
+1. session 通过 adapter 读取 runtime 索引来源，并拥有 open/model/selection/dirty 状态
+2. `parse.ts` 把来源 YAML 解析成 draft；未知顶层和嵌套字段在 serialize/编辑后 round-trip 保留
+3. `validate.ts` 生成可保存状态和行内提示，`panel.ts` 只渲染结构化表单和 YAML 预览
+4. bindings 从 DOM 采集 intent；session 调 `edit.ts` 更新 YAML preview 并处理 stale load/save
+5. 用户确认保存后，session 经 `save.ts` effect adapter 写回世界书；host 只做浏览器确认、订阅和渲染
 
 ## 用户教程位置
 
