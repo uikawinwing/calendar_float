@@ -15,6 +15,7 @@ import type {
   CalendarWorldbookIndexReadResult,
   CalendarWorldbookSourceEntry,
   CalendarWorldbookTextLibraryReadResult,
+  CalendarRuntimeDiagnostic,
 } from './types';
 
 export interface CalendarRuntimeWorldbookSnapshot {
@@ -22,6 +23,7 @@ export interface CalendarRuntimeWorldbookSnapshot {
   entries: CalendarWorldbookSourceEntry[];
   indexResult: CalendarWorldbookIndexReadResult;
   warnings: string[];
+  diagnostics: CalendarRuntimeDiagnostic[];
   readTextLibrary(reference: CalendarTextLibraryReference): CalendarWorldbookTextLibraryReadResult;
 }
 
@@ -37,13 +39,14 @@ export async function loadCalendarRuntimeWorldbookSnapshot(
     entries: loaded.条目,
     indexResult,
     warnings: [...loaded.警告],
+    diagnostics: [...(loaded.诊断 ?? [])],
     readTextLibrary(reference) {
       const key = JSON.stringify([reference.世界书?.trim() ?? '', reference.条目名.trim()]);
       const cached = textLibraryCache.get(key);
       if (cached) {
         return cached;
       }
-      const result = readCalendarRuntimeTextLibraryFromEntries(loaded.条目, reference, loaded.警告);
+      const result = readCalendarRuntimeTextLibraryFromEntries(loaded.条目, reference, loaded.警告, loaded.诊断 ?? []);
       textLibraryCache.set(key, result);
       return result;
     },
