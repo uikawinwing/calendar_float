@@ -1,5 +1,6 @@
 import { INSTANCE_KEY } from '../../src/calendar-float/constants';
 import { bootstrapCalendarFloatHostAdapter, teardownCalendarFloatHostAdapter } from '../../src/calendar-float/host-adapter';
+import { beginCalendarFloatLifecycle } from '../../src/calendar-float/lifecycle';
 
 function assert(condition: unknown, message: string): void {
   if (!condition) {
@@ -40,7 +41,7 @@ async function testHostRegistrationWaitsForWidgetApi(): Promise<void> {
     };
   }, 5);
 
-  await bootstrapCalendarFloatHostAdapter();
+  await bootstrapCalendarFloatHostAdapter(beginCalendarFloatLifecycle());
 
   assert(registeredModuleClick, '应该注册到 host ball');
   assert(externalHostEnabled, 'widget API 延迟出现后仍应该进入 external host mode');

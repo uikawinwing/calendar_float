@@ -1,5 +1,10 @@
 import { SCRIPT_NAME } from './constants';
 import { bootstrapCalendarFloatHostAdapter, teardownCalendarFloatHostAdapter } from './host-adapter';
+import {
+  beginCalendarFloatLifecycle,
+  invalidateCalendarFloatLifecycle,
+  isCalendarFloatLifecycleCancelledError,
+} from './lifecycle';
 import { bootstrapCalendarMvuRemovalArchive, teardownCalendarMvuRemovalArchive } from './mvu-removal-archive';
 import { initializeCalendarProfile } from './profile';
 import {
@@ -91,8 +96,17 @@ async function refreshManagedWorldbookDiagnosticsAndNotifyMissingRules(): Promis
 }
 
 async function init(): Promise<void> {
+  const lifecycle = beginCalendarFloatLifecycle();
   console.info(`[${SCRIPT_NAME}] 开始初始化`);
-  await initializeCalendarProfile();
+  try {
+    await initializeCalendarProfile();
+    lifecycle.throwIfStale();
+  } catch (error) {
+    if (isCalendarFloatLifecycleCancelledError(error)) {
+      return;
+    }
+    throw error;
+  }
   void ensureCalendarLatestMessageVariableStore().catch(error => {
     console.warn(`[${SCRIPT_NAME}] 初始化最新消息变量失败`, error);
   });
@@ -102,10 +116,18 @@ async function init(): Promise<void> {
     });
   bootstrapCalendarMvuRemovalArchive();
   bootstrapCalendarRuntimeWorldbookScanner();
-  void bootstrapCalendarWidget().catch(error => {
+  void bootstrapCalendarWidget(lifecycle).catch(error => {
+    if (isCalendarFloatLifecycleCancelledError(error)) {
+      return;
+    }
     console.warn(`[${SCRIPT_NAME}] 初始化月历 widget 失败`, error);
   });
-  void bootstrapCalendarFloatHostAdapter();
+  void bootstrapCalendarFloatHostAdapter(lifecycle).catch(error => {
+    if (isCalendarFloatLifecycleCancelledError(error)) {
+      return;
+    }
+    console.warn(`[${SCRIPT_NAME}] 初始化月历 host adapter 失败`, error);
+  });
   bootstrapCalendarRuntimeContextWatcher();
 
   Object.assign(globalThis, {
@@ -117,6 +139,7 @@ async function init(): Promise<void> {
 }
 
 function cleanup(): void {
+  invalidateCalendarFloatLifecycle();
   console.info(`[${SCRIPT_NAME}] 开始卸载`);
   teardownCalendarMvuRemovalArchive();
   teardownCalendarFloatHostAdapter({ unregister: true, silent: true });

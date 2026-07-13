@@ -10,6 +10,7 @@ import {
 import { INSTANCE_KEY, MESSAGE_KNOWN_TAGS_PATH, ROOT_ID, SCRIPT_NAME, STYLE_ID } from '../constants';
 import { addDays, compareDatePoint, extractClockTimeText, formatDateKey } from '../date';
 import { buildFestivalTagPreviewMarker } from '../festival-visual';
+import type { CalendarFloatLifecycleToken } from '../lifecycle';
 import {
   applyFixedEventIndexRowOperationsToYaml,
   applyFixedEventIndexStructuredEditsToYaml,
@@ -3706,9 +3707,22 @@ function setExternalHostMode(enabled: boolean): void {
   syncIframePointerEvents();
 }
 
-export async function bootstrapCalendarWidget(): Promise<void> {
+export interface CalendarWidgetBootstrapDependencies {
+  ensureProfileAddonsLoaded(): Promise<void>;
+}
+
+const DEFAULT_BOOTSTRAP_DEPENDENCIES: CalendarWidgetBootstrapDependencies = {
+  ensureProfileAddonsLoaded,
+};
+
+export async function bootstrapCalendarWidget(
+  lifecycle: CalendarFloatLifecycleToken,
+  dependencies: CalendarWidgetBootstrapDependencies = DEFAULT_BOOTSTRAP_DEPENDENCIES,
+): Promise<void> {
+  lifecycle.throwIfStale();
   hostWindow[INSTANCE_KEY]?.destroy('reload');
-  await ensureProfileAddonsLoaded();
+  await dependencies.ensureProfileAddonsLoaded();
+  lifecycle.throwIfStale();
   state.destroyed = false;
   ensureIframe();
   ensureStyle();
