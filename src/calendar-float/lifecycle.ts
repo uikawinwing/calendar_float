@@ -32,7 +32,7 @@ export function invalidateCalendarFloatLifecycle(): void {
 
 export async function completeCalendarFloatLifecycleInitialization(
   lifecycle: CalendarFloatLifecycleToken,
-  initialize: () => Promise<void>,
+  initialize: () => Promise<unknown>,
 ): Promise<boolean> {
   try {
     await initialize();
