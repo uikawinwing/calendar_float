@@ -84,7 +84,7 @@ export async function resolveCalendarRuntimeTextByLibraryReference(
     正文,
     来源条目名: library.命中条目名,
     文本库键: 键,
-    警告: 正文 ? library.警告 : [...library.警告, `文本库「${reference.条目名}」中缺少键「${键}」`],
+    警告: 正文 ? [...library.警告] : [...library.警告, `文本库「${reference.条目名}」中缺少键「${键}」`],
   };
 }
 

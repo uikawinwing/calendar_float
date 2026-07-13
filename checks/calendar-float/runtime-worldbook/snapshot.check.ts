@@ -1,4 +1,5 @@
 import { loadCalendarDatasetFromRuntimeWorldbook } from '../../../src/calendar-float/runtime-dataset';
+import { resolveCalendarRuntimeNodeText } from '../../../src/calendar-float/runtime-worldbook/resolver';
 import { loadCalendarRuntimeWorldbookSnapshot } from '../../../src/calendar-float/runtime-worldbook/snapshot';
 
 function assert(condition: unknown, message: string): void {
@@ -231,8 +232,33 @@ async function testDatasetReusesOneSnapshotAcrossAllContentNodes(): Promise<void
       文本库: { 世界书: '正文世界书', 条目名: '[共享文本库]', 键: '读物乙全文' },
     };
 
+    const libraryReference = books[0].全文!.文本库!;
+    const cachedLibrary = snapshot.readTextLibrary(libraryReference);
+    const cachedWarningsBefore = [...cachedLibrary.警告];
+    const snapshotWarningsBefore = [...snapshot.warnings];
+    const resolveA = await resolveCalendarRuntimeNodeText({ node: books[0].全文, snapshot });
+    resolveA.警告.push('外部 resolve warnings mutation');
+    const resolveB = await resolveCalendarRuntimeNodeText({ node: books[0].全文, snapshot });
+
+    assert(!resolveB.警告.includes('外部 resolve warnings mutation'), '修改 resolve A warnings 不应修改 resolve B warnings');
+    assert(
+      JSON.stringify(cachedLibrary.警告) === JSON.stringify(cachedWarningsBefore),
+      '修改 resolve warnings 不应修改 snapshot 的文本库缓存 warnings',
+    );
+    assert(
+      JSON.stringify(snapshot.warnings) === JSON.stringify(snapshotWarningsBefore),
+      '修改 resolve warnings 不应修改 snapshot warnings',
+    );
+
+    const indexWarningsBefore = [...snapshot.indexResult.警告];
     const dataset = await loadCalendarDatasetFromRuntimeWorldbook(snapshot);
     const observedCounts = Object.fromEntries(callCounts);
+
+    dataset.sourceWarnings.push('外部 dataset warnings mutation');
+    assert(
+      JSON.stringify(snapshot.indexResult.警告) === JSON.stringify(indexWarningsBefore),
+      '修改 dataset sourceWarnings 不应修改 snapshot index warnings',
+    );
 
     assert(
       callCounts.get('索引世界书') === 1 && callCounts.get('正文世界书') === 1,

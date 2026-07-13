@@ -66,6 +66,6 @@ export async function loadCalendarDatasetFromRuntimeWorldbook(
     monthAliases,
     sourceConfig: archive.sources,
     worldbookSources: runtimeSources,
-    sourceWarnings: runtimeIndex.警告,
+    sourceWarnings: [...runtimeIndex.警告],
   };
 }
