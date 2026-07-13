@@ -243,10 +243,10 @@ export function createFixedEventEditorSession(adapters: FixedEventEditorSessionA
       if (!isCurrentOperation(epoch) || !state.model?.saving) {
         return getSnapshot();
       }
-      const savedYaml = result.ok && result.yaml ? result.yaml : model.yamlPreview;
+      const savedYaml = result.ok ? (result.yaml ?? model.yamlPreview) : model.yamlPreview;
       let savedDraft = model.draft;
       let savedValidation = model.validation;
-      if (result.ok && result.yaml) {
+      if (result.ok) {
         savedDraft = parseFixedEventIndexDraft(savedYaml, model.source);
         savedValidation = validateFixedEventIndexDraft(savedDraft);
       }
@@ -254,7 +254,7 @@ export function createFixedEventEditorSession(adapters: FixedEventEditorSessionA
         ...state,
         model: {
           ...model,
-          source: result.ok && result.yaml ? { ...model.source, content: result.yaml } : model.source,
+          source: result.ok ? { ...model.source, content: savedYaml } : model.source,
           draft: savedDraft,
           yamlPreview: savedYaml,
           validation: savedValidation,

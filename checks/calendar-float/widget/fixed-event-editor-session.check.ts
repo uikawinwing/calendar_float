@@ -362,6 +362,26 @@ async function testSaveSuccessFailureThrowAndDoubleClick(): Promise<void> {
   assert(thrown.dirty && thrown.model?.saving === false, 'save throw 必须保留 dirty 并退出 saving');
 }
 
+async function testSaveSuccessWithoutYamlCommitsCurrentYamlAsConflictBaseline(): Promise<void> {
+  const fake = createFakeAdapters();
+  const session = await openReady(fake);
+  const currentYaml = SOURCE_YAML.replace('名称: 旧事件', '名称: 无返回 YAML 的保存内容');
+  await session.dispatch({ type: 'replace-yaml', yaml: currentYaml });
+
+  const firstSave = session.dispatch({ type: 'save' });
+  fake.saveQueue[0].resolve({ ok: true, message: 'saved without yaml' });
+  const saved = await firstSave;
+  assert(saved.model?.yamlPreview === currentYaml, 'ok/no-yaml 必须保留当前 YAML');
+  assert(saved.model?.source?.content === currentYaml, 'ok/no-yaml 必须把当前 YAML 提升为新 source content');
+  assert(saved.model?.draft?.events[0]?.name === '无返回 YAML 的保存内容', 'ok/no-yaml 必须用当前 YAML 重建 draft');
+  assert(saved.model?.validation?.canSave === true && !saved.dirty, 'ok/no-yaml 必须重建 validation 并 clean');
+
+  const secondSave = session.dispatch({ type: 'save' });
+  assert(fake.saveCalls[1].source.content === currentYaml, '第二次 save 必须使用上次成功后的 source 作为冲突基线');
+  fake.saveQueue[1].resolve({ ok: true, message: 'saved twice' });
+  await secondSave;
+}
+
 async function testEpochRejectsStaleLoadsAndSaves(): Promise<void> {
   const fake = createFakeAdapters();
   const session = createFixedEventEditorSession(fake.adapters);
@@ -492,6 +512,7 @@ async function main(): Promise<void> {
   await testDirtyCloseAndReloadConfirmationsSettle();
   await testStructuredRowRenameAndFailurePreserveState();
   await testSaveSuccessFailureThrowAndDoubleClick();
+  await testSaveSuccessWithoutYamlCommitsCurrentYamlAsConflictBaseline();
   await testEpochRejectsStaleLoadsAndSaves();
   await testCreateTemplateSuccessFailureAndStaleResult();
   testSessionSourceBoundary();
