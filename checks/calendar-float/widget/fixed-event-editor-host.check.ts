@@ -1,4 +1,6 @@
+// eslint-disable-next-line import-x/no-nodejs-modules -- focused source-boundary check runs under Node/ts-node.
 import { readFileSync } from 'node:fs';
+// eslint-disable-next-line import-x/no-nodejs-modules -- focused source-boundary check runs under Node/ts-node.
 import { resolve } from 'node:path';
 import {
   buildFixedEventMonthAliasesFromRuntime,
