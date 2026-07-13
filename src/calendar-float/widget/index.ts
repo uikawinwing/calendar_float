@@ -12,31 +12,10 @@ import { addDays, compareDatePoint, extractClockTimeText, formatDateKey } from '
 import { buildFestivalTagPreviewMarker } from '../festival-visual';
 import type { CalendarFloatLifecycleToken } from '../lifecycle';
 import {
-  applyFixedEventIndexRowOperationsToYaml,
-  applyFixedEventIndexStructuredEditsToYaml,
-  collectMonthAliasStructuredEdits,
   createEmptyFixedEventIndexTemplateInCharacterWorldbook,
-  getDefaultFixedEventIndexEditorSelection,
   loadFixedEventIndexEditorPreview,
-  parseFixedEventIndexDraft,
-  renameFixedEventIndexRowIdInYaml,
   renderFixedEventIndexEditorPreview,
   saveFixedEventIndexYamlToWorldbook,
-  serializeFixedEventIndexDraft,
-  validateFixedEventIndexDraft,
-  type FixedEventIndexEditableRowScope,
-  type FixedEventBookDefaultsStructuredEdit,
-  type FixedEventDraft,
-  type FixedEventDefaultsStructuredEdit,
-  type FixedEventIndexEditorSelection,
-  type FixedEventGroupStructuredEdit,
-  type FixedEventIndexEditorPreviewModel,
-  type FixedEventMaterialStructuredEdit,
-  type FixedEventMonthAliasStructuredEdit,
-  type FixedEventProfileStructuredEdit,
-  type FixedEventReminderDefaultsStructuredEdit,
-  type FixedEventStageStructuredEdit,
-  type FixedEventStructuredEdit,
 } from '../fixed-event-index-editor';
 import { saveCalendarForm } from '../form-service';
 import { getActiveCalendarProfile, isCalendarAddonEnabled } from '../profile';
@@ -100,17 +79,17 @@ import {
   buildInvalidColorNotice,
   buildQuickInputMissingNotice,
 } from './event-action-policy';
+import { buildFixedEventEditorRenameDecision, type WidgetInputDecision } from './fixed-event-editor-rename-policy';
 import {
-  buildFixedEventEditorRenameDecision,
-  getFixedEventEditorRenameScopeLabel,
-  type FixedEventEditorRenameScope,
-  type WidgetInputDecision,
-} from './fixed-event-editor-rename-policy';
+  bindFixedEventIndexEditorDialogEvents,
+  syncFixedEventEditorRecurrenceFields,
+  type FixedEventEditorBindingIntent,
+} from './fixed-event-editor-bindings';
 import {
-  buildFixedEventEditorRowAction,
-  type FixedEventEditorRowOperation,
-} from './fixed-event-editor-row-actions';
-import { bindFixedEventIndexEditorDialogEvents } from './fixed-event-editor-bindings';
+  createFixedEventEditorSession,
+  type FixedEventEditorSession,
+  type FixedEventEditorSessionState,
+} from './fixed-event-editor-session';
 import {
   readFixedEventIndexEditorScrollSnapshot,
   restoreFixedEventIndexEditorScrollSnapshot,
@@ -155,10 +134,7 @@ import {
   type CalendarManagedWorldbookDiagnostics,
   type CalendarWorldbookMoveCandidate,
 } from '../worldbook-manager';
-import {
-  buildFixedEventMonthAliasesFromRuntime,
-  createFixedEventIndexEditorLoadingModel,
-} from './fixed-event-editor-host';
+import { hydrateFixedEventIndexMonthAliasesFromRuntime } from './fixed-event-editor-host';
 
 const hostWindow =
   window.parent && window.parent !== window && window.parent.document
@@ -201,7 +177,12 @@ function showDecisionNotice(decision: WidgetNoticeDecision): void {
   });
 }
 
-function showWidgetConfirm(decision: WidgetConfirmDecision, onConfirm: () => void | Promise<void>): void {
+function showWidgetConfirm(
+  decision: WidgetConfirmDecision,
+  onConfirm: () => void | Promise<void>,
+  onCancel?: () => void | Promise<void>,
+): void {
+  void uiState.pendingConfirm?.onCancel?.();
   uiState.pendingTextInput = null;
   uiState.pendingConfirm = {
     title: decision.title,
@@ -209,11 +190,13 @@ function showWidgetConfirm(decision: WidgetConfirmDecision, onConfirm: () => voi
     confirmLabel: decision.confirmLabel,
     cancelLabel: decision.cancelLabel,
     onConfirm,
+    onCancel,
   };
   renderShell();
 }
 
 function showWidgetTextInput(decision: WidgetInputDecision, onSubmit: (value: string) => void | Promise<void>): void {
+  void uiState.pendingConfirm?.onCancel?.();
   uiState.pendingConfirm = null;
   uiState.pendingTextInput = {
     title: decision.title,
@@ -240,6 +223,7 @@ interface PendingWidgetConfirm {
   confirmLabel: string;
   cancelLabel: string;
   onConfirm: () => void | Promise<void>;
+  onCancel?: () => void | Promise<void>;
 }
 
 interface PendingWidgetTextInput {
@@ -317,13 +301,64 @@ const uiState = {
   selectedTagColorTag: '主线',
   tagColorFeedback: '',
   mvuPathSettingsFeedback: '',
-  fixedEventIndexEditorOpen: false,
-  fixedEventIndexEditorModel: null as FixedEventIndexEditorPreviewModel | null,
-  fixedEventIndexEditorSelection: null as FixedEventIndexEditorSelection | null,
-  fixedEventIndexEditorDirty: false,
   pendingConfirm: null as PendingWidgetConfirm | null,
   pendingTextInput: null as PendingWidgetTextInput | null,
 };
+
+let fixedEventEditorSession: FixedEventEditorSession | null = null;
+let fixedEventEditorSessionUnsubscribe: (() => void) | null = null;
+
+function shouldRenderFixedEventEditorSessionTransition(
+  previous: Readonly<FixedEventEditorSessionState>,
+  next: Readonly<FixedEventEditorSessionState>,
+): boolean {
+  return (
+    previous.open !== next.open ||
+    previous.model?.loading !== next.model?.loading ||
+    previous.model?.saving !== next.model?.saving
+  );
+}
+
+function initializeFixedEventEditorSession(): FixedEventEditorSession {
+  fixedEventEditorSessionUnsubscribe?.();
+  fixedEventEditorSession = createFixedEventEditorSession({
+    load: async () =>
+      hydrateFixedEventIndexMonthAliasesFromRuntime(await loadFixedEventIndexEditorPreview(), monthAliases),
+    save: saveFixedEventIndexYamlToWorldbook,
+    createTemplate: createEmptyFixedEventIndexTemplateInCharacterWorldbook,
+    confirmDiscard: reason =>
+      new Promise<boolean>(resolve => {
+        showWidgetConfirm(
+          reason === 'close' ? buildDirtyEditorCloseDecision() : buildDirtyEditorReloadDecision(),
+          () => resolve(true),
+          () => resolve(false),
+        );
+      }),
+  });
+  let previous = fixedEventEditorSession.getSnapshot();
+  fixedEventEditorSessionUnsubscribe = fixedEventEditorSession.subscribe(snapshot => {
+    const shouldRender = shouldRenderFixedEventEditorSessionTransition(previous, snapshot);
+    previous = snapshot;
+    if (shouldRender) {
+      renderShell();
+    }
+  });
+  return fixedEventEditorSession;
+}
+
+function getFixedEventEditorSession(): FixedEventEditorSession {
+  return fixedEventEditorSession ?? initializeFixedEventEditorSession();
+}
+
+function destroyFixedEventEditorSession(): void {
+  const pending = uiState.pendingConfirm;
+  uiState.pendingConfirm = null;
+  uiState.pendingTextInput = null;
+  void pending?.onCancel?.();
+  fixedEventEditorSessionUnsubscribe?.();
+  fixedEventEditorSessionUnsubscribe = null;
+  fixedEventEditorSession = null;
+}
 
 function getTodayPoint(): DatePoint {
   const now = new Date();
@@ -803,8 +838,10 @@ function closeManagedWorldbookDialog(): void {
 }
 
 function closeWidgetConfirmDialog(): void {
+  const pending = uiState.pendingConfirm;
   uiState.pendingConfirm = null;
   renderShell();
+  void pending?.onCancel?.();
 }
 
 async function confirmWidgetConfirmDialog(): Promise<void> {
@@ -1354,539 +1391,32 @@ function resetMvuPathSettingsDialog(): void {
   void refreshDataset();
 }
 
-function hydrateFixedEventIndexMonthAliasesFromRuntime(
-  model: FixedEventIndexEditorPreviewModel,
-): FixedEventIndexEditorPreviewModel {
-  const runtimeAliases = buildFixedEventMonthAliasesFromRuntime(monthAliases);
-  if (!model.draft || model.draft.monthAliases.length > 0 || runtimeAliases.length === 0) {
-    return model;
-  }
-  const draft = {
-    ...model.draft,
-    monthAliases: runtimeAliases,
-    warnings: [...model.draft.warnings, '当前索引未写入月份别名，已自动回填 1-12 月；保存后会写回世界书。'],
-  };
-  return {
-    ...model,
-    draft,
-    validation: validateFixedEventIndexDraft(draft),
-    yamlPreview: serializeFixedEventIndexDraft(draft),
-    saveMessage: model.saveMessage ?? '已自动回填月份别名，尚未保存到世界书',
-    saveState: model.saveState ?? 'warning',
-  };
-}
-
-function closeFixedEventIndexEditorDialog(): void {
-  if (uiState.fixedEventIndexEditorDirty) {
-    showWidgetConfirm(buildDirtyEditorCloseDecision(), () => {
-      closeFixedEventIndexEditorDialogAfterConfirm();
-    });
-    return;
-  }
-  closeFixedEventIndexEditorDialogAfterConfirm();
-}
-
-function closeFixedEventIndexEditorDialogAfterConfirm(): void {
-  uiState.fixedEventIndexEditorOpen = false;
-  uiState.fixedEventIndexEditorModel = null;
-  uiState.fixedEventIndexEditorSelection = null;
-  uiState.fixedEventIndexEditorDirty = false;
-  renderShell();
-}
-
-async function openFixedEventIndexEditorDialog(): Promise<void> {
-  if (uiState.fixedEventIndexEditorOpen && uiState.fixedEventIndexEditorDirty) {
-    showWidgetConfirm(buildDirtyEditorReloadDecision(), () => {
-      void loadFixedEventIndexEditorDialog();
-    });
-    return;
-  }
-  await loadFixedEventIndexEditorDialog();
-}
-
-async function loadFixedEventIndexEditorDialog(): Promise<void> {
-  uiState.fixedEventIndexEditorOpen = true;
-  uiState.fixedEventIndexEditorDirty = false;
-  uiState.fixedEventIndexEditorSelection = null;
-  uiState.fixedEventIndexEditorModel = createFixedEventIndexEditorLoadingModel();
-  renderShell();
-  const model = hydrateFixedEventIndexMonthAliasesFromRuntime(await loadFixedEventIndexEditorPreview());
-  if (!uiState.fixedEventIndexEditorOpen) {
-    return;
-  }
-  uiState.fixedEventIndexEditorModel = model;
-  uiState.fixedEventIndexEditorSelection = getDefaultFixedEventIndexEditorSelection(model.draft);
-  renderShell();
-}
-
-async function saveFixedEventIndexEditorDialog(): Promise<void> {
-  syncFixedEventIndexStructuredEditorToYamlPreview(false);
-  const model = uiState.fixedEventIndexEditorModel;
-  if (!uiState.fixedEventIndexEditorOpen || !model?.source || model.saving) {
-    return;
-  }
-  const layer = refs.root?.querySelector<HTMLElement>('[data-role="fixed-event-index-editor-layer"]');
-  const editedYaml = String(
-    layer?.querySelector<HTMLTextAreaElement>('[data-role="fixed-event-index-yaml"]')?.value ?? model.yamlPreview,
-  );
-
-  uiState.fixedEventIndexEditorModel = {
-    ...model,
-    yamlPreview: editedYaml,
-    saving: true,
-    saveMessage: '正在保存固定事件索引…',
-    saveState: 'warning',
-  };
-  renderShell();
-
-  const currentModel = uiState.fixedEventIndexEditorModel;
-  if (!currentModel?.source) {
-    return;
-  }
-
-  try {
-    const result = await saveFixedEventIndexYamlToWorldbook({
-      source: currentModel.source,
-      yaml: editedYaml,
-    });
-    if (!uiState.fixedEventIndexEditorOpen) {
-      return;
-    }
-
-    uiState.fixedEventIndexEditorModel = {
-      ...currentModel,
-      source: result.ok && result.yaml ? { ...currentModel.source, content: result.yaml } : currentModel.source,
-      yamlPreview: result.ok && result.yaml ? result.yaml : currentModel.yamlPreview,
-      saving: false,
-      saveMessage: result.message,
-      saveState: result.ok ? 'success' : 'danger',
-    };
-    if (result.ok) {
-      uiState.fixedEventIndexEditorDirty = false;
-    }
-  } catch (error) {
-    if (!uiState.fixedEventIndexEditorOpen) {
-      return;
-    }
-    uiState.fixedEventIndexEditorModel = {
-      ...currentModel,
-      saving: false,
-      saveMessage: `保存固定事件索引失败：${error instanceof Error ? error.message : String(error)}`,
-      saveState: 'danger',
-    };
-  }
-  renderShell();
-}
-
-async function createEmptyFixedEventIndexTemplateDialog(): Promise<void> {
-  const model = uiState.fixedEventIndexEditorModel;
-  if (!uiState.fixedEventIndexEditorOpen || model?.saving) {
-    return;
-  }
-
-  uiState.fixedEventIndexEditorModel = {
-    ...(model ?? createFixedEventIndexEditorLoadingModel()),
-    saving: true,
-    saveMessage: '正在创建空固定事件索引…',
-    saveState: 'warning',
-  };
-  renderShell();
-
-  try {
-    const result = await createEmptyFixedEventIndexTemplateInCharacterWorldbook();
-    if (!uiState.fixedEventIndexEditorOpen) {
-      return;
-    }
-    const nextModel = await loadFixedEventIndexEditorPreview();
-    if (!uiState.fixedEventIndexEditorOpen) {
-      return;
-    }
-    uiState.fixedEventIndexEditorModel = {
-      ...nextModel,
-      saveMessage: result.message,
-      saveState: result.ok ? 'success' : 'danger',
-    };
-    uiState.fixedEventIndexEditorSelection = getDefaultFixedEventIndexEditorSelection(nextModel.draft);
-    uiState.fixedEventIndexEditorDirty = false;
-  } catch (error) {
-    if (!uiState.fixedEventIndexEditorOpen) {
-      return;
-    }
-    uiState.fixedEventIndexEditorModel = {
-      ...(uiState.fixedEventIndexEditorModel ?? createFixedEventIndexEditorLoadingModel()),
-      saving: false,
-      saveMessage: `创建固定事件索引失败：${error instanceof Error ? error.message : String(error)}`,
-      saveState: 'danger',
-    };
-  }
-  renderShell();
-}
-
-function readFixedEventEditField(row: HTMLElement, field: string): string | undefined {
-  const input = row.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-    `[data-field="${field}"]`,
-  );
-  return input ? String(input.value ?? '').trim() : undefined;
-}
-
-function readRequiredFixedEventEditField(row: HTMLElement, field: string): string {
-  return readFixedEventEditField(row, field) ?? '';
-}
-
-function collectFixedEventStructuredEdits(layer: HTMLElement): {
-  profile?: FixedEventProfileStructuredEdit;
-  defaults?: FixedEventDefaultsStructuredEdit;
-  reminderDefaults?: FixedEventReminderDefaultsStructuredEdit;
-  bookDefaults?: FixedEventBookDefaultsStructuredEdit;
-  monthAliases?: FixedEventMonthAliasStructuredEdit[];
-  groups: FixedEventGroupStructuredEdit[];
-  events: FixedEventStructuredEdit[];
-  stages: FixedEventStageStructuredEdit[];
-  materials: FixedEventMaterialStructuredEdit[];
-} {
-  const profileRow = layer.querySelector<HTMLElement>('[data-role="fixed-event-profile-row"]');
-  const defaultsRow = layer.querySelector<HTMLElement>('[data-role="fixed-event-defaults-row"]');
-  const reminderDefaultsRow = layer.querySelector<HTMLElement>('[data-role="fixed-event-reminder-defaults-row"]');
-  const bookDefaultsRow = layer.querySelector<HTMLElement>('[data-role="fixed-event-book-defaults-row"]');
-  const monthAliasRows = [...layer.querySelectorAll<HTMLElement>('[data-role="fixed-event-month-alias-row"]')];
-  const groupRows = [...layer.querySelectorAll<HTMLElement>('[data-role="fixed-event-edit-row"][data-scope="group"]')];
-  const eventRows = [...layer.querySelectorAll<HTMLElement>('[data-role="fixed-event-edit-row"][data-scope="event"]')];
-  const stageRows = [...layer.querySelectorAll<HTMLElement>('[data-role="fixed-event-stage-row"]')];
-  const materialRows = [
-    ...layer.querySelectorAll<HTMLElement>('[data-role="fixed-event-edit-row"][data-scope="material"]'),
-  ];
-  return {
-    profile: profileRow
-      ? {
-          id: readFixedEventEditField(profileRow, 'id'),
-          label: readFixedEventEditField(profileRow, 'label'),
-          worldTimePath: readFixedEventEditField(profileRow, 'worldTimePath'),
-          worldLocationPath: readFixedEventEditField(profileRow, 'worldLocationPath'),
-          eraName: readFixedEventEditField(profileRow, 'eraName'),
-          useChineseNumeralYear: readFixedEventEditField(profileRow, 'useChineseNumeralYear'),
-        }
-      : undefined,
-    defaults: defaultsRow
-      ? {
-          mvuTimePath: readFixedEventEditField(defaultsRow, 'mvuTimePath'),
-          mvuLocationPath: readFixedEventEditField(defaultsRow, 'mvuLocationPath'),
-          fullBookTriggerTemplate: readFixedEventEditField(defaultsRow, 'fullBookTriggerTemplate'),
-        }
-      : undefined,
-    reminderDefaults: reminderDefaultsRow
-      ? {
-          outputMode: readFixedEventEditField(reminderDefaultsRow, 'outputMode'),
-          injectDepth: readFixedEventEditField(reminderDefaultsRow, 'injectDepth'),
-          disableRecursive: readFixedEventEditField(reminderDefaultsRow, 'disableRecursive'),
-          disableKeywords: readFixedEventEditField(reminderDefaultsRow, 'disableKeywords'),
-          macroTemplate: readFixedEventEditField(reminderDefaultsRow, 'macroTemplate'),
-          inactiveTemplate: readFixedEventEditField(reminderDefaultsRow, 'inactiveTemplate'),
-          activeTemplate: readFixedEventEditField(reminderDefaultsRow, 'activeTemplate'),
-        }
-      : undefined,
-    bookDefaults: bookDefaultsRow
-      ? {
-          summaryOutputMode: readFixedEventEditField(bookDefaultsRow, 'summaryOutputMode'),
-          summaryInjectDepth: readFixedEventEditField(bookDefaultsRow, 'summaryInjectDepth'),
-        }
-      : undefined,
-    monthAliases: collectMonthAliasStructuredEdits(
-      monthAliasRows.map(row => ({
-        month: readRequiredFixedEventEditField(row, 'month'),
-        name: readRequiredFixedEventEditField(row, 'name'),
-        season: readFixedEventEditField(row, 'season'),
-      })),
-    ),
-    groups: groupRows.map(row => ({
-      id: String(row.dataset.id ?? '').trim(),
-      name: readRequiredFixedEventEditField(row, 'name'),
-      iconSvgFilename: readFixedEventEditField(row, 'iconSvgFilename'),
-      eventIdsText: readRequiredFixedEventEditField(row, 'eventIdsText'),
-    })),
-    events: eventRows.map(row => ({
-      id: String(row.dataset.id ?? '').trim(),
-      name: readFixedEventEditField(row, 'name'),
-      groupId: readFixedEventEditField(row, 'groupId'),
-      start: readFixedEventEditField(row, 'start'),
-      end: readFixedEventEditField(row, 'end'),
-      recurrenceIntervalYears: readFixedEventEditField(row, 'recurrenceIntervalYears'),
-      recurrenceLastYear: readFixedEventEditField(row, 'recurrenceLastYear'),
-      locationKeywordsText: readFixedEventEditField(row, 'locationKeywordsText'),
-      introEntryName: readFixedEventEditField(row, 'introEntryName'),
-      introSummaryText: readFixedEventEditField(row, 'introSummaryText'),
-      relatedMaterialIdsText: readFixedEventEditField(row, 'relatedMaterialIdsText'),
-      reminderEnabled: readFixedEventEditField(row, 'reminderEnabled'),
-      reminderPrepareDays: readFixedEventEditField(row, 'reminderPrepareDays'),
-      reminderOutputMode: readFixedEventEditField(row, 'reminderOutputMode'),
-      reminderInjectDepth: readFixedEventEditField(row, 'reminderInjectDepth'),
-      reminderMacroToken: readFixedEventEditField(row, 'reminderMacroToken'),
-      reminderInactiveText: readFixedEventEditField(row, 'reminderInactiveText'),
-      reminderActiveText: readFixedEventEditField(row, 'reminderActiveText'),
-    })),
-    stages: stageRows.map(row => ({
-      eventId: String(row.dataset.eventId ?? '').trim(),
-      id: String(row.dataset.id ?? '').trim(),
-      nextId: readFixedEventEditField(row, 'stageId'),
-      name: readRequiredFixedEventEditField(row, 'name'),
-      start: readRequiredFixedEventEditField(row, 'start'),
-      end: readRequiredFixedEventEditField(row, 'end'),
-      reminderEnabled: readFixedEventEditField(row, 'reminderEnabled'),
-      reminderPrepareDays: readFixedEventEditField(row, 'reminderPrepareDays'),
-      reminderOutputMode: readFixedEventEditField(row, 'reminderOutputMode'),
-      reminderInjectDepth: readFixedEventEditField(row, 'reminderInjectDepth'),
-      reminderMacroToken: readFixedEventEditField(row, 'reminderMacroToken'),
-      reminderInactiveText: readFixedEventEditField(row, 'reminderInactiveText'),
-      reminderActiveText: readFixedEventEditField(row, 'reminderActiveText'),
-    })),
-    materials: materialRows.map(row => ({
-      id: String(row.dataset.id ?? '').trim(),
-      title: readRequiredFixedEventEditField(row, 'title'),
-      eventIdsText: readRequiredFixedEventEditField(row, 'eventIdsText'),
-      summaryText: readFixedEventEditField(row, 'summaryText'),
-      fullTextWorldbookName: readFixedEventEditField(row, 'fullTextWorldbookName'),
-      fullTextEntryName: readFixedEventEditField(row, 'fullTextEntryName'),
-    })),
-  };
-}
-
-function readCurrentFixedEventIndexYamlWithStructuredEdits(
-  layer: HTMLElement,
-  model: FixedEventIndexEditorPreviewModel,
-): string {
-  const source = model.source;
-  const yamlInput = layer.querySelector<HTMLTextAreaElement>('[data-role="fixed-event-index-yaml"]');
-  const sourceYaml = String(yamlInput?.value ?? model.yamlPreview);
-  if (!source) {
-    return sourceYaml;
-  }
-  return applyFixedEventIndexStructuredEditsToYaml({
-    sourceYaml,
-    sourceInfo: {
-      entryName: source.entryName,
-      worldbookName: source.worldbookName,
-    },
-    ...collectFixedEventStructuredEdits(layer),
-  });
-}
-
-function syncFixedEventIndexStructuredEditorToYamlPreview(showMessage = false): boolean {
-  const model = uiState.fixedEventIndexEditorModel;
-  const layer = refs.root?.querySelector<HTMLElement>('[data-role="fixed-event-index-editor-layer"]');
-  if (!model?.source || !layer) {
-    return false;
-  }
-
-  try {
-    const nextYaml = readCurrentFixedEventIndexYamlWithStructuredEdits(layer, model);
-    const draft = parseFixedEventIndexDraft(nextYaml, {
-      entryName: model.source.entryName,
-      worldbookName: model.source.worldbookName,
-    });
-    const yamlInput = layer.querySelector<HTMLTextAreaElement>('[data-role="fixed-event-index-yaml"]');
-    if (yamlInput && yamlInput.value !== nextYaml) {
-      yamlInput.value = nextYaml;
-    }
-    uiState.fixedEventIndexEditorModel = {
-      ...model,
-      draft,
-      validation: validateFixedEventIndexDraft(draft),
-      yamlPreview: nextYaml,
-      saveMessage: showMessage ? '已同步到 YAML，尚未保存到世界书' : model.saveMessage,
-      saveState: showMessage ? 'warning' : model.saveState,
-    };
-    uiState.fixedEventIndexEditorDirty = true;
-    return true;
-  } catch (error) {
-    if (showMessage) {
-      uiState.fixedEventIndexEditorModel = {
-        ...model,
-        saveMessage: `同步到 YAML 失败：${error instanceof Error ? error.message : String(error)}`,
-        saveState: 'danger',
-      };
+async function handleFixedEventEditorBindingIntent(intent: FixedEventEditorBindingIntent): Promise<void> {
+  const session = getFixedEventEditorSession();
+  if (intent.type === 'rename-request') {
+    await session.dispatch({ type: 'apply-structured', edits: intent.edits });
+    showWidgetTextInput(buildFixedEventEditorRenameDecision(intent.input), async newId => {
+      await session.dispatch({ type: 'rename', input: { ...intent.input, newId } });
       renderShell();
-    } else {
-      console.warn(`[${SCRIPT_NAME}] 自动同步固定事件索引 YAML 失败`, error);
-    }
-    return false;
-  }
-}
-
-function readFixedEventIndexSelectionFromElement(element: HTMLElement): FixedEventIndexEditorSelection {
-  const section = String(element.dataset.section || 'events') as FixedEventIndexEditorSelection['section'];
-  const scope = String(element.dataset.scope || 'overview') as FixedEventIndexEditorSelection['scope'];
-  const folder = element.closest<HTMLElement>('[data-role="fixed-event-group-folder"]');
-  if (scope === 'group' && folder?.dataset.expanded === 'true') {
-    return {
-      section: 'events',
-      scope: 'overview',
-    };
-  }
-  const id = String(element.dataset.id || '').trim() || undefined;
-  const eventId = String(element.dataset.eventId || '').trim() || undefined;
-  const detailTab = String(element.dataset.detailTab || '').trim() as FixedEventIndexEditorSelection['detailTab'];
-  return {
-    section,
-    scope,
-    id,
-    eventId,
-    detailTab: detailTab || undefined,
-  };
-}
-
-function applyFixedEventIndexYamlToEditorModel(
-  nextYaml: string,
-  saveMessage: string,
-  dirty = true,
-  nextSelection?: FixedEventIndexEditorSelection | null,
-): void {
-  const model = uiState.fixedEventIndexEditorModel;
-  const source = model?.source;
-  if (!model || !source) {
+    });
     return;
   }
-  const draft = parseFixedEventIndexDraft(nextYaml, {
-    entryName: source.entryName,
-    worldbookName: source.worldbookName,
-  });
-  uiState.fixedEventIndexEditorModel = {
-    ...model,
-    draft,
-    validation: validateFixedEventIndexDraft(draft),
-    yamlPreview: nextYaml,
-    saveMessage,
-    saveState: 'warning',
-  };
-  if (nextSelection) {
-    uiState.fixedEventIndexEditorSelection = nextSelection;
-  } else if (!uiState.fixedEventIndexEditorSelection) {
-    uiState.fixedEventIndexEditorSelection = getDefaultFixedEventIndexEditorSelection(draft);
-  }
-  uiState.fixedEventIndexEditorDirty = dirty;
-}
 
-function applyFixedEventIndexStructuredEditor(): void {
-  if (syncFixedEventIndexStructuredEditorToYamlPreview(true)) {
-    renderShell();
-  }
-}
-
-function applyFixedEventIndexRowOperation(
-  operation: FixedEventEditorRowOperation,
-  row?: HTMLElement,
-): void {
-  const model = uiState.fixedEventIndexEditorModel;
-  const source = model?.source;
   const layer = refs.root?.querySelector<HTMLElement>('[data-role="fixed-event-index-editor-layer"]');
-  if (!model || !source || !layer) {
-    return;
+  const scrollSnapshot =
+    intent.render === 'selection' && layer ? readFixedEventIndexEditorScrollSnapshot(layer) : null;
+  for (const command of intent.commands) {
+    await session.dispatch(command);
   }
-
-  try {
-    const sourceYaml = readCurrentFixedEventIndexYamlWithStructuredEdits(layer, model);
-    const draft = parseFixedEventIndexDraft(sourceYaml, {
-      entryName: source.entryName,
-      worldbookName: source.worldbookName,
-    });
-    const action = buildFixedEventEditorRowAction({
-      draft,
-      operation,
-      row: {
-        scope: row?.dataset.scope,
-        id: row?.dataset.id,
-        eventId: row?.dataset.eventId,
-      },
-    });
-    const nextYaml = applyFixedEventIndexRowOperationsToYaml({
-      sourceYaml,
-      sourceInfo: {
-        entryName: source.entryName,
-        worldbookName: source.worldbookName,
-      },
-      ...action.operationInput,
-    });
-    applyFixedEventIndexYamlToEditorModel(nextYaml, action.message, true, action.nextSelection);
-  } catch (error) {
-    uiState.fixedEventIndexEditorModel = {
-      ...model,
-      saveMessage: `更新结构化行失败：${error instanceof Error ? error.message : String(error)}`,
-      saveState: 'danger',
-    };
+  if (intent.render === 'none') {
+    return;
   }
   renderShell();
-}
-
-function renameFixedEventIndexRowId(row: HTMLElement | undefined): void {
-  const model = uiState.fixedEventIndexEditorModel;
-  const scope = String(row?.dataset.scope ?? '') as FixedEventEditorRenameScope;
-  const oldId = String(row?.dataset.id ?? '').trim();
-  if (!model?.source || !oldId || (scope !== 'group' && scope !== 'event' && scope !== 'material')) {
-    return;
-  }
-
-  showWidgetTextInput(buildFixedEventEditorRenameDecision({ scope, oldId }), nextId => {
-    renameFixedEventIndexRowIdAfterInput({ scope, oldId, newId: nextId });
-  });
-}
-
-function renameFixedEventIndexRowIdAfterInput(args: {
-  scope: FixedEventEditorRenameScope;
-  oldId: string;
-  newId: string;
-}): void {
-  const model = uiState.fixedEventIndexEditorModel;
-  const source = model?.source;
-  const layer = refs.root?.querySelector<HTMLElement>('[data-role="fixed-event-index-editor-layer"]');
-  if (!model || !source || !layer) {
-    return;
-  }
-
-  const label = getFixedEventEditorRenameScopeLabel(args.scope);
-  try {
-    const sourceYaml = readCurrentFixedEventIndexYamlWithStructuredEdits(layer, model);
-    const nextYaml = renameFixedEventIndexRowIdInYaml({
-      sourceYaml,
-      sourceInfo: {
-        entryName: source.entryName,
-        worldbookName: source.worldbookName,
-      },
-      scope: args.scope,
-      oldId: args.oldId,
-      newId: args.newId,
+  if (scrollSnapshot && layer) {
+    restoreFixedEventIndexEditorScrollSnapshot(layer, { ...scrollSnapshot, detailTop: 0 }, callback => {
+      uiWindow.requestAnimationFrame(callback);
     });
-    const normalizedNextId = args.newId.trim();
-    const currentSelection = uiState.fixedEventIndexEditorSelection;
-    const nextSelection =
-      currentSelection?.scope === args.scope && currentSelection.id === args.oldId
-        ? { ...currentSelection, id: normalizedNextId }
-        : currentSelection;
-    applyFixedEventIndexYamlToEditorModel(
-      nextYaml,
-      `已重命名 ${label} id，相关引用已同步，尚未保存到世界书`,
-      true,
-      nextSelection,
-    );
-  } catch (error) {
-    uiState.fixedEventIndexEditorModel = {
-      ...model,
-      saveMessage: `重命名 id 失败：${error instanceof Error ? error.message : String(error)}`,
-      saveState: 'danger',
-    };
   }
-  renderShell();
-}
-
-function syncFixedEventIndexRecurrenceFields(layer: HTMLElement): void {
-  layer.querySelectorAll<HTMLInputElement>('[data-field="recurrenceIntervalYears"]').forEach(input => {
-    const wrapper = input
-      .closest<HTMLElement>('[data-role="fixed-event-core-fields"]')
-      ?.querySelector<HTMLElement>('[data-role="fixed-event-recurrence-last-year-field"]');
-    const lastYearInput = wrapper?.querySelector<HTMLInputElement>('[data-field="recurrenceLastYear"]');
-    const hasPeriod = input.value.trim().length > 0;
-    wrapper?.classList.toggle('is-hidden', !hasPeriod);
-    if (!hasPeriod && lastYearInput) {
-      lastYearInput.value = '';
-    }
-  });
 }
 
 function renderFixedEventIndexEditorDialog(): void {
@@ -1897,49 +1427,18 @@ function renderFixedEventIndexEditorDialog(): void {
   if (!layer) {
     return;
   }
-  if (!uiState.fixedEventIndexEditorOpen) {
+  const snapshot = fixedEventEditorSession?.getSnapshot();
+  if (!snapshot?.open || !snapshot.model) {
     syncDialogLayerOpen(layer, false);
     layer.innerHTML = '';
     return;
   }
 
-  layer.innerHTML = renderFixedEventIndexEditorPreview(
-    uiState.fixedEventIndexEditorModel ?? createFixedEventIndexEditorLoadingModel(),
-    uiState.fixedEventIndexEditorSelection,
-  );
+  layer.innerHTML = renderFixedEventIndexEditorPreview(snapshot.model, snapshot.selection);
   syncDialogLayerOpen(layer, true);
-  syncFixedEventIndexRecurrenceFields(layer);
-
+  syncFixedEventEditorRecurrenceFields(layer);
   bindFixedEventIndexEditorDialogEvents(layer, {
-    close: closeFixedEventIndexEditorDialog,
-    reload: openFixedEventIndexEditorDialog,
-    save: saveFixedEventIndexEditorDialog,
-    createTemplate: createEmptyFixedEventIndexTemplateDialog,
-    applyStructuredEdit: applyFixedEventIndexStructuredEditor,
-    selectPane: button => {
-      const scrollSnapshot = readFixedEventIndexEditorScrollSnapshot(layer);
-      syncFixedEventIndexStructuredEditorToYamlPreview(false);
-      uiState.fixedEventIndexEditorSelection = readFixedEventIndexSelectionFromElement(button);
-      renderShell();
-      restoreFixedEventIndexEditorScrollSnapshot(layer, { ...scrollSnapshot, detailTop: 0 }, callback => {
-        uiWindow.requestAnimationFrame(callback);
-      });
-    },
-    syncStructuredEditor: syncFixedEventIndexStructuredEditorToYamlPreview,
-    syncRecurrenceFields: syncFixedEventIndexRecurrenceFields,
-    updateYamlPreview: value => {
-      uiState.fixedEventIndexEditorDirty = true;
-      if (uiState.fixedEventIndexEditorModel) {
-        uiState.fixedEventIndexEditorModel = {
-          ...uiState.fixedEventIndexEditorModel,
-          yamlPreview: value,
-          saveMessage: 'YAML 已修改，尚未保存到世界书',
-          saveState: 'warning',
-        };
-      }
-    },
-    applyRowOperation: applyFixedEventIndexRowOperation,
-    renameRowId: renameFixedEventIndexRowId,
+    onIntent: handleFixedEventEditorBindingIntent,
   });
 }
 
@@ -3687,7 +3186,7 @@ async function dispatchWidgetAction(action: WidgetAction): Promise<void> {
       if (!isCalendarDeveloperModeEnabled()) {
         return;
       }
-      await openFixedEventIndexEditorDialog();
+      await getFixedEventEditorSession().dispatch({ type: 'open' });
       return;
     case 'mobile/open-agenda':
       state.selectedDateKey = '';
@@ -3754,6 +3253,7 @@ function destroy(reason?: string): void {
     return;
   }
   state.destroyed = true;
+  destroyFixedEventEditorSession();
   if (refs.ball) {
     $(refs.ball).off('.calendar-float');
   }
@@ -3825,6 +3325,7 @@ export async function bootstrapCalendarWidget(
   await dependencies.ensureProfileAddonsLoaded();
   lifecycle.throwIfStale();
   state.destroyed = false;
+  initializeFixedEventEditorSession();
   ensureIframe();
   ensureStyle();
   ensureRoot();
