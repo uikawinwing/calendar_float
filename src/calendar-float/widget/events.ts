@@ -1,77 +1,15 @@
 import type { WidgetRefs } from '../types';
+import type { WidgetActionDispatch } from './actions';
 import {
   parseAgendaSort,
   parseCalendarBucketType,
   parseSidebarTab,
-  type AgendaSortMode,
-  type CalendarBucketType,
-  type SidebarTab,
 } from './event-binding/parsers';
 
 export interface BindCalendarWidgetEventsOptions {
   refs: WidgetRefs;
-  hostDocument: Document;
   hostWindow: Window & typeof globalThis;
-  onToggleBall: () => void;
-  onBallDragStart: (clientX: number, clientY: number) => void;
-  onBallDragMove: (clientX: number, clientY: number) => void;
-  onBallDragEnd: () => void;
-  onClosePanel: () => void;
-  onReload: () => void | Promise<void>;
-  onTogglePanelFullscreen: () => void;
-  onToggleTheme: () => void;
-  onToggleFestivalScope: () => void;
-  onOpenTagColorPanel: () => void;
-  onCloseTagColorPanel: () => void;
-  onOpenFixedEventIndexEditor: () => void | Promise<void>;
-  onManagedWorldbookClick: () => void | Promise<void>;
-  onSwitchTab: (tab: SidebarTab) => void;
-  onOpenCreateForm: () => void;
-  onOpenMobileAgenda: () => void;
-  onCloseMobileSide: () => void;
-  onCancelForm: () => void;
-  onFillNowTime: () => void | Promise<void>;
-  onSaveForm: () => void | Promise<void>;
-  onTagSearchInput: (keyword: string) => void;
-  onToggleFormTag: (tag: string) => void;
-  onRemoveFormTag: (tag: string) => void;
-  onAddCustomTag: () => void;
-  onTagColorSearchInput: (keyword: string) => void;
-  onAddColorTag: () => void;
-  onSelectTagColor: (tag: string) => void;
-  onApplyTagColorPalette: (color: { background: string; text: string; border?: string }) => void;
-  onSaveTagColorHex: () => void;
-  onResetTagColor: () => void;
-  onPolicyTagSearchInput: (field: string, keyword: string) => void;
-  onTogglePolicyTag: (field: string, tag: string) => void;
-  onRemovePolicyTag: (field: string, tag: string) => void;
-  onAddPolicyTag: (field: string) => void;
-  onTogglePolicyTagList: (field: string) => void;
-  onPickDay: (dateKey: string) => void;
-  onMonthPrev: () => void;
-  onMonthNext: () => void;
-  onMonthToday: () => void;
-  onOpenBook: (bookId: string) => void;
-  onOpenBookPage: (pageIndex: number) => void;
-  onBookPrevPage: () => void;
-  onBookNextPage: () => void;
-  onQuickInputBookTrigger: (triggerText: string) => void;
-  onCloseBookReader: () => void;
-  onEditEvent: (eventId: string) => void;
-  onCompleteEvent: (eventId: string, eventType: CalendarBucketType) => void | Promise<void>;
-  onDeleteEvent: (eventId: string) => void | Promise<void>;
-  onRestoreEvent: (eventId: string) => void | Promise<void>;
-  onPurgeEvent: (eventId: string) => void | Promise<void>;
-  onSaveArchivePolicy: () => void | Promise<void>;
-  onPurgeAutoDeleteArchive: () => void | Promise<void>;
-  onAgendaFilterInput: (keyword: string) => void;
-  onAgendaToggleArchived: (checked: boolean) => void;
-  onAgendaSortChange: (sort: AgendaSortMode) => void;
-  onOpenAgendaItemDate: (dateKey: string) => void;
-  onPanelDragStart: (event: MouseEvent) => void;
-  onPanelDragMove: (event: MouseEvent) => void;
-  onPanelDragEnd: () => void;
-  onWindowResize: () => void;
+  dispatch: WidgetActionDispatch;
 }
 
 function getTouchClientPoint(event: JQuery.TouchEventBase): { clientX: number; clientY: number } | null {
@@ -161,7 +99,7 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
   $(hostWindow).off('.calendar-float-window');
 
   $(refs.ball).on('mousedown.calendar-float', event => {
-    options.onBallDragStart(event.clientX, event.clientY);
+    void options.dispatch({ type: 'layout/ball-drag-start', clientX: event.clientX, clientY: event.clientY });
     event.preventDefault();
   });
 
@@ -170,12 +108,12 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     if (!point) {
       return;
     }
-    options.onBallDragStart(point.clientX, point.clientY);
+    void options.dispatch({ type: 'layout/ball-drag-start', clientX: point.clientX, clientY: point.clientY });
     event.stopPropagation();
   });
 
   $(refs.ball).on('click.calendar-float', () => {
-    options.onToggleBall();
+    void options.dispatch({ type: 'panel/toggle' });
   });
 
   $(refs.root).on(
@@ -200,41 +138,41 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="close"]', () => {
-    options.onClosePanel();
+    void options.dispatch({ type: 'panel/close' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="reload"]', () => {
-    void options.onReload();
+    void options.dispatch({ type: 'panel/reload' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="toggle-panel-fullscreen"]', () => {
-    options.onTogglePanelFullscreen();
+    void options.dispatch({ type: 'panel/toggle-fullscreen' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="toggle-theme"]', () => {
-    options.onToggleTheme();
+    void options.dispatch({ type: 'theme/toggle' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="toggle-festival-scope"]', () => {
-    options.onToggleFestivalScope();
+    void options.dispatch({ type: 'festival/toggle-scope' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="open-tag-color-panel"]', () => {
-    options.onOpenTagColorPanel();
+    void options.dispatch({ type: 'tag-color/open' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="close-tag-color-panel"]', () => {
-    options.onCloseTagColorPanel();
+    void options.dispatch({ type: 'tag-color/close' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="open-mvu-settings"]', event => {
     (event.currentTarget as HTMLElement).closest<HTMLDetailsElement>('.th-tools-menu')?.removeAttribute('open');
-    void options.onManagedWorldbookClick();
+    void options.dispatch({ type: 'managed-worldbook/open' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="open-fixed-event-index-editor"]', event => {
     (event.currentTarget as HTMLElement).closest<HTMLDetailsElement>('.th-tools-menu')?.removeAttribute('open');
-    void options.onOpenFixedEventIndexEditor();
+    void options.dispatch({ type: 'fixed-event-editor/open' });
   });
 
   $(refs.root).on('click.calendar-float', '.th-tool-menu-item', event => {
@@ -247,15 +185,15 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
 
   $(refs.root).on('click.calendar-float', '[data-action="switch-tab"]', event => {
     const tab = parseSidebarTab(String((event.currentTarget as HTMLElement).getAttribute('data-tab') || 'detail'));
-    options.onSwitchTab(tab);
+    void options.dispatch({ type: 'sidebar/switch', tab });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="open-create-form"]', () => {
-    options.onOpenCreateForm();
+    void options.dispatch({ type: 'form/open-create' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="open-mobile-agenda"]', () => {
-    options.onOpenMobileAgenda();
+    void options.dispatch({ type: 'mobile/open-agenda' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="focus-agenda-filter"]', () => {
@@ -264,19 +202,19 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="close-mobile-side"]', () => {
-    options.onCloseMobileSide();
+    void options.dispatch({ type: 'mobile/close-side' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="cancel-form"]', () => {
-    options.onCancelForm();
+    void options.dispatch({ type: 'form/cancel' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="fill-now-time"]', () => {
-    void options.onFillNowTime();
+    void options.dispatch({ type: 'form/fill-now' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="save-form"]', () => {
-    void options.onSaveForm();
+    void options.dispatch({ type: 'form/save' });
   });
 
   $(refs.root).on('change.calendar-float', '[data-form-field="type"]', event => {
@@ -304,39 +242,45 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
   });
 
   $(refs.root).on('input.calendar-float', '[data-action="tag-search-input"]', event => {
-    options.onTagSearchInput(String((event.currentTarget as HTMLInputElement).value || ''));
+    void options.dispatch({
+      type: 'tag/search',
+      keyword: String((event.currentTarget as HTMLInputElement).value || ''),
+    });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="toggle-form-tag"]', event => {
     const tag = String((event.currentTarget as HTMLElement).getAttribute('data-tag-value') || '').trim();
     if (tag) {
-      options.onToggleFormTag(tag);
+      void options.dispatch({ type: 'tag/toggle-form', tag });
     }
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="remove-form-tag"]', event => {
     const tag = String((event.currentTarget as HTMLElement).getAttribute('data-tag-value') || '').trim();
     if (tag) {
-      options.onRemoveFormTag(tag);
+      void options.dispatch({ type: 'tag/remove-form', tag });
     }
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="add-custom-tag"]', () => {
-    options.onAddCustomTag();
+    void options.dispatch({ type: 'tag/add-custom' });
   });
 
   $(refs.root).on('input.calendar-float', '[data-action="tag-color-search-input"]', event => {
-    options.onTagColorSearchInput(String((event.currentTarget as HTMLInputElement).value || ''));
+    void options.dispatch({
+      type: 'tag-color/search',
+      keyword: String((event.currentTarget as HTMLInputElement).value || ''),
+    });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="add-color-tag"]', () => {
-    options.onAddColorTag();
+    void options.dispatch({ type: 'tag-color/add' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="select-tag-color"]', event => {
     const tag = String((event.currentTarget as HTMLElement).getAttribute('data-tag-value') || '').trim();
     if (tag) {
-      options.onSelectTagColor(tag);
+      void options.dispatch({ type: 'tag-color/select', tag });
     }
   });
 
@@ -346,23 +290,26 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     const text = String(button.getAttribute('data-text') || '').trim();
     const border = String(button.getAttribute('data-border') || '').trim();
     if (background && text) {
-      options.onApplyTagColorPalette({ background, text, ...(border ? { border } : {}) });
+      void options.dispatch({
+        type: 'tag-color/apply-palette',
+        color: { background, text, ...(border ? { border } : {}) },
+      });
     }
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="save-tag-color-hex"]', () => {
-    options.onSaveTagColorHex();
+    void options.dispatch({ type: 'tag-color/save-hex' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="reset-tag-color"]', () => {
-    options.onResetTagColor();
+    void options.dispatch({ type: 'tag-color/reset' });
   });
 
   $(refs.root).on('input.calendar-float', '[data-action="policy-tag-search-input"]', event => {
     const input = event.currentTarget as HTMLInputElement;
     const field = String(input.getAttribute('data-policy-tag-field') || '').trim();
     if (field) {
-      options.onPolicyTagSearchInput(field, String(input.value || ''));
+      void options.dispatch({ type: 'policy-tag/search', field, keyword: String(input.value || '') });
     }
   });
 
@@ -371,7 +318,7 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     const field = String(button.getAttribute('data-policy-tag-field') || '').trim();
     const tag = String(button.getAttribute('data-tag-value') || '').trim();
     if (field && tag) {
-      options.onTogglePolicyTag(field, tag);
+      void options.dispatch({ type: 'policy-tag/toggle', field, tag });
     }
   });
 
@@ -380,21 +327,21 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     const field = String(button.getAttribute('data-policy-tag-field') || '').trim();
     const tag = String(button.getAttribute('data-tag-value') || '').trim();
     if (field && tag) {
-      options.onRemovePolicyTag(field, tag);
+      void options.dispatch({ type: 'policy-tag/remove', field, tag });
     }
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="add-policy-tag"]', event => {
     const field = String((event.currentTarget as HTMLElement).getAttribute('data-policy-tag-field') || '').trim();
     if (field) {
-      options.onAddPolicyTag(field);
+      void options.dispatch({ type: 'policy-tag/add', field });
     }
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="toggle-policy-tag-list"]', event => {
     const field = String((event.currentTarget as HTMLElement).getAttribute('data-policy-tag-field') || '').trim();
     if (field) {
-      options.onTogglePolicyTagList(field);
+      void options.dispatch({ type: 'policy-tag/toggle-list', field });
     }
   });
 
@@ -403,19 +350,19 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     if (!dateKey) {
       return;
     }
-    options.onPickDay(dateKey);
+    void options.dispatch({ type: 'calendar/pick-day', dateKey });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="month-prev"]', () => {
-    options.onMonthPrev();
+    void options.dispatch({ type: 'calendar/month-prev' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="month-next"]', () => {
-    options.onMonthNext();
+    void options.dispatch({ type: 'calendar/month-next' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="month-today"]', () => {
-    options.onMonthToday();
+    void options.dispatch({ type: 'calendar/month-today' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="open-book"]', event => {
@@ -425,20 +372,20 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     if (!bookId) {
       return;
     }
-    options.onOpenBook(bookId);
+    void options.dispatch({ type: 'book/open', bookId });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="open-book-page"]', event => {
     const pageIndex = Number((event.currentTarget as HTMLElement).getAttribute('data-page-index') || '0');
-    options.onOpenBookPage(Number.isFinite(pageIndex) ? pageIndex : 0);
+    void options.dispatch({ type: 'book/open-page', pageIndex: Number.isFinite(pageIndex) ? pageIndex : 0 });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="book-prev-page"]', () => {
-    options.onBookPrevPage();
+    void options.dispatch({ type: 'book/prev-page' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="book-next-page"]', () => {
-    options.onBookNextPage();
+    void options.dispatch({ type: 'book/next-page' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="quick-input-book-trigger"]', event => {
@@ -446,11 +393,11 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     if (!triggerText) {
       return;
     }
-    options.onQuickInputBookTrigger(triggerText);
+    void options.dispatch({ type: 'book/quick-input', triggerText });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="close-book-reader"]', () => {
-    options.onCloseBookReader();
+    void options.dispatch({ type: 'book/close' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="edit-event"]', event => {
@@ -458,7 +405,7 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     if (!eventId) {
       return;
     }
-    options.onEditEvent(eventId);
+    void options.dispatch({ type: 'event/edit', eventId });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="complete-event"]', event => {
@@ -469,7 +416,7 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     const eventType = parseCalendarBucketType(
       String((event.currentTarget as HTMLElement).getAttribute('data-event-type') || '临时'),
     );
-    void options.onCompleteEvent(eventId, eventType);
+    void options.dispatch({ type: 'event/complete', eventId, eventType });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="delete-event"]', event => {
@@ -477,7 +424,7 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     if (!eventId) {
       return;
     }
-    void options.onDeleteEvent(eventId);
+    void options.dispatch({ type: 'event/delete', eventId });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="restore-event"]', event => {
@@ -485,7 +432,7 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     if (!eventId) {
       return;
     }
-    void options.onRestoreEvent(eventId);
+    void options.dispatch({ type: 'event/restore', eventId });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="purge-event"]', event => {
@@ -493,27 +440,36 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     if (!eventId) {
       return;
     }
-    void options.onPurgeEvent(eventId);
+    void options.dispatch({ type: 'event/purge', eventId });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="save-archive-policy"]', () => {
-    void options.onSaveArchivePolicy();
+    void options.dispatch({ type: 'archive/save-policy' });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="purge-auto-delete-archive"]', () => {
-    void options.onPurgeAutoDeleteArchive();
+    void options.dispatch({ type: 'archive/purge-auto-delete' });
   });
 
   $(refs.root).on('input.calendar-float', '[data-action="agenda-filter-input"]', event => {
-    options.onAgendaFilterInput(String((event.currentTarget as HTMLInputElement).value || ''));
+    void options.dispatch({
+      type: 'agenda/filter',
+      keyword: String((event.currentTarget as HTMLInputElement).value || ''),
+    });
   });
 
   $(refs.root).on('change.calendar-float', '[data-action="agenda-toggle-archived"]', event => {
-    options.onAgendaToggleArchived(Boolean((event.currentTarget as HTMLInputElement).checked));
+    void options.dispatch({
+      type: 'agenda/toggle-archived',
+      checked: Boolean((event.currentTarget as HTMLInputElement).checked),
+    });
   });
 
   $(refs.root).on('change.calendar-float', '[data-action="agenda-sort-select"]', event => {
-    options.onAgendaSortChange(parseAgendaSort(String((event.currentTarget as HTMLSelectElement).value || 'date-asc')));
+    void options.dispatch({
+      type: 'agenda/sort',
+      mode: parseAgendaSort(String((event.currentTarget as HTMLSelectElement).value || 'date-asc')),
+    });
   });
 
   $(refs.root).on('click.calendar-float', '[data-action="open-agenda-item-date"]', event => {
@@ -529,27 +485,27 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     if (!dateKey) {
       return;
     }
-    options.onOpenAgendaItemDate(dateKey);
+    void options.dispatch({ type: 'agenda/open-date', dateKey });
   });
 
   $(refs.root).on('mousedown.calendar-float', '[data-drag-handle="panel"]', event => {
-    options.onPanelDragStart(event as unknown as MouseEvent);
+    void options.dispatch({ type: 'layout/panel-drag-start', event: event as unknown as MouseEvent });
   });
 
   $(rootDocument).on('mousemove.calendar-float-panel-drag', event => {
-    options.onPanelDragMove(event as unknown as MouseEvent);
+    void options.dispatch({ type: 'layout/panel-drag-move', event: event as unknown as MouseEvent });
   });
 
   $(rootDocument).on('mouseup.calendar-float-panel-drag', () => {
-    options.onPanelDragEnd();
+    void options.dispatch({ type: 'layout/panel-drag-end' });
   });
 
   $(ballDocument).on('mousemove.calendar-float-ball-drag', event => {
-    options.onBallDragMove(event.clientX, event.clientY);
+    void options.dispatch({ type: 'layout/ball-drag-move', clientX: event.clientX, clientY: event.clientY });
   });
 
   $(ballDocument).on('mouseup.calendar-float-ball-drag', () => {
-    options.onBallDragEnd();
+    void options.dispatch({ type: 'layout/ball-drag-end' });
   });
 
   $(ballDocument).on('touchmove.calendar-float-ball-drag', event => {
@@ -557,11 +513,11 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     if (!point) {
       return;
     }
-    options.onBallDragMove(point.clientX, point.clientY);
+    void options.dispatch({ type: 'layout/ball-drag-move', clientX: point.clientX, clientY: point.clientY });
   });
 
   $(ballDocument).on('touchend.calendar-float-ball-drag touchcancel.calendar-float-ball-drag', () => {
-    options.onBallDragEnd();
+    void options.dispatch({ type: 'layout/ball-drag-end' });
   });
 
   $(rootDocument).on('mousedown.calendar-float-tools-menu touchstart.calendar-float-tools-menu', event => {
@@ -578,6 +534,6 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     refs.root?.querySelectorAll<HTMLDetailsElement>('.th-tools-menu[open]').forEach(menu => {
       menu.removeAttribute('open');
     });
-    options.onWindowResize();
+    void options.dispatch({ type: 'layout/window-resize' });
   });
 }
