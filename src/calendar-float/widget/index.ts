@@ -133,10 +133,12 @@ import {
 } from './managed-worldbook/notices';
 import {
   renderAgendaPanel as renderAgendaPanelExternal,
+  renderAgendaResults,
   renderArchivePanel as renderArchivePanelExternal,
   renderBookMainView as renderBookMainViewExternal,
   renderCalendarMonthView,
   renderDetailPanel as renderDetailPanelExternal,
+  type RenderAgendaOptions,
 } from './render';
 import type { AgendaSortMode, FestivalScopeMode, SidebarTab } from './event-binding/types';
 import { ensureCalendarWidgetStyle } from './style';
@@ -2604,14 +2606,27 @@ function getCurrentMonthAgendaGroups(dataset: CalendarDataset | null): DailyAgen
   return buildMonthAgenda(dataset, state.currentMonth);
 }
 
-function renderAgendaPanel(groups: DailyAgendaGroup[]): string {
-  return renderAgendaPanelExternal({
+function buildAgendaRenderOptions(groups: DailyAgendaGroup[]): RenderAgendaOptions {
+  return {
     groups,
     filterKeyword: state.filterKeyword,
     showArchived: state.showArchived,
     agendaSort: uiState.agendaSort,
     editingEventId: state.editingEventId,
-  });
+  };
+}
+
+function renderAgendaPanel(groups: DailyAgendaGroup[]): string {
+  return renderAgendaPanelExternal(buildAgendaRenderOptions(groups));
+}
+
+function renderAgendaResultsInPlace(): void {
+  const target = refs.root?.querySelector<HTMLElement>('[data-role="agenda-results"]');
+  const visibleDataset = getVisibleCalendarDataset();
+  if (!target || !visibleDataset) {
+    return;
+  }
+  target.innerHTML = renderAgendaResults(buildAgendaRenderOptions(getCurrentMonthAgendaGroups(visibleDataset)));
 }
 
 function renderDetailPanel(selectedLabel: string, selectedItems: DailyAgendaItem[]): string {
@@ -3608,6 +3623,10 @@ function bindEvents(): void {
     onPurgeAutoDeleteArchive: purgeAutoDeleteArchive,
     onAgendaFilterInput: (keyword: string) => {
       state.filterKeyword = keyword;
+      if (uiState.sidebarTab === 'detail' && !state.selectedDateKey) {
+        renderAgendaResultsInPlace();
+        return;
+      }
       renderShell();
     },
     onAgendaToggleArchived: (checked: boolean) => {
