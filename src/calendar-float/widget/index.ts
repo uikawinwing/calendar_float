@@ -100,17 +100,13 @@ import {
   buildManagedWorldbookSummaryLines,
   filterWorldbookPickerNames,
   getConnectivityButtonCopy,
-  type ManagedWorldbookDialogMode,
 } from './managed-worldbook/dialog-model';
 import {
-  buildExternalMoveFailureNotice,
-  buildExternalMoveSuccessNotice,
-  buildManagedWorldbookActionErrorNotice,
-  buildManagedWorldbookReinstallSuccessNotice,
-  buildManagedWorldbookUninstallSuccessNotice,
-  validateExternalMoveRequest,
-  type WidgetToastNotice,
-} from './managed-worldbook/notices';
+  createManagedWorldbookFlow,
+  type ManagedWorldbookFlow,
+  type ManagedWorldbookFlowCommand,
+} from './managed-worldbook/flow';
+import type { WidgetToastNotice } from './managed-worldbook/notices';
 import {
   renderAgendaPanel as renderAgendaPanelExternal,
   renderAgendaResults,
@@ -131,8 +127,6 @@ import {
   refreshCalendarManagedWorldbookSourceDiagnostics,
   uninstallCalendarManagedWorldbookEntries,
   CALENDAR_VARIABLE_LIST_ENTRY_DISPLAY_NAME,
-  type CalendarManagedWorldbookDiagnostics,
-  type CalendarWorldbookMoveCandidate,
 } from '../worldbook-manager';
 import { hydrateFixedEventIndexMonthAliasesFromRuntime } from './fixed-event-editor-host';
 
@@ -291,12 +285,6 @@ const uiState = {
   agendaSort: 'date-asc' as AgendaSortMode,
   festivalScopeMode: 'local' as FestivalScopeMode,
   mobileSideOpen: false,
-  managedWorldbookBusy: false,
-  managedWorldbookDialogOpen: false,
-  managedWorldbookDialogMode: null as ManagedWorldbookDialogMode | null,
-  managedWorldbookDialogDiagnostics: null as CalendarManagedWorldbookDiagnostics | null,
-  managedWorldbookMoveCandidates: [] as CalendarWorldbookMoveCandidate[],
-  managedWorldbookMoveWarnings: [] as string[],
   tagColorDialogOpen: false,
   selectedTagColorTag: '主线',
   tagColorFeedback: '',
@@ -307,6 +295,8 @@ const uiState = {
 
 let fixedEventEditorSession: FixedEventEditorSession | null = null;
 let fixedEventEditorSessionUnsubscribe: (() => void) | null = null;
+let managedWorldbookFlow: ManagedWorldbookFlow | null = null;
+let managedWorldbookFlowUnsubscribe: (() => void) | null = null;
 
 function shouldRenderFixedEventEditorSessionTransition(
   previous: Readonly<FixedEventEditorSessionState>,
@@ -358,6 +348,58 @@ function destroyFixedEventEditorSession(): void {
   fixedEventEditorSessionUnsubscribe?.();
   fixedEventEditorSessionUnsubscribe = null;
   fixedEventEditorSession = null;
+}
+
+function createProductionManagedWorldbookFlow(): ManagedWorldbookFlow {
+  return createManagedWorldbookFlow({
+    readDiagnostics: getCalendarManagedWorldbookDiagnostics,
+    refreshDiagnostics: async () => {
+      try {
+        await refreshCalendarManagedWorldbookRuntimeDiagnostics();
+        await refreshCalendarManagedWorldbookSourceDiagnostics();
+      } catch (error) {
+        console.warn(`[${SCRIPT_NAME}] 刷新世界书 runtime 状态失败`, error);
+        throw error;
+      }
+    },
+    listMoveCandidates: listCalendarWorldbookMoveCandidates,
+    listAvailableTargetNames: getAvailableCalendarWorldbooks,
+    reinstall: installCalendarManagedWorldbookEntries,
+    uninstall: uninstallCalendarManagedWorldbookEntries,
+    moveToExternal: installCalendarManagedEntriesToExternalWorldbook,
+  });
+}
+
+function initializeManagedWorldbookFlow(): ManagedWorldbookFlow {
+  managedWorldbookFlowUnsubscribe?.();
+  managedWorldbookFlow = createProductionManagedWorldbookFlow();
+  managedWorldbookFlowUnsubscribe = managedWorldbookFlow.subscribe(() => {
+    if (state.destroyed) {
+      return;
+    }
+    updateManagedWorldbookButton();
+    renderManagedWorldbookDialog();
+  });
+  return managedWorldbookFlow;
+}
+
+function getManagedWorldbookFlow(): ManagedWorldbookFlow {
+  return managedWorldbookFlow ?? initializeManagedWorldbookFlow();
+}
+
+function destroyManagedWorldbookFlow(): void {
+  managedWorldbookFlowUnsubscribe?.();
+  managedWorldbookFlowUnsubscribe = null;
+  const flow = managedWorldbookFlow;
+  managedWorldbookFlow = null;
+  void flow?.dispatch({ type: 'close' });
+}
+
+async function runManagedWorldbookCommand(command: ManagedWorldbookFlowCommand): Promise<void> {
+  const notice = await getManagedWorldbookFlow().dispatch(command);
+  if (notice && !state.destroyed) {
+    showWidgetNotice(notice);
+  }
 }
 
 function getTodayPoint(): DatePoint {
@@ -785,15 +827,16 @@ function updateManagedWorldbookButton(): void {
   if (!refs.root) {
     return;
   }
-  const diagnostics = getCalendarManagedWorldbookDiagnostics();
+  const snapshot = getManagedWorldbookFlow().getSnapshot();
+  const diagnostics = snapshot.diagnostics;
   const button = refs.root.querySelector<HTMLButtonElement>('[data-action="open-mvu-settings"]');
   refs.root.dataset.managedWorldbookConnectivity = diagnostics.connectivity;
   if (!button) {
     return;
   }
-  const copy = getConnectivityButtonCopy(diagnostics, { busy: uiState.managedWorldbookBusy });
+  const copy = getConnectivityButtonCopy(diagnostics, { busy: snapshot.busy });
   button.dataset.state = diagnostics.connectivity;
-  button.disabled = uiState.managedWorldbookBusy || diagnostics.connectivity === 'checking';
+  button.disabled = snapshot.busy || diagnostics.connectivity === 'checking';
   button.title = copy.title;
   button.setAttribute('aria-label', copy.title);
   const textNode = button.querySelector<HTMLElement>('.th-connectivity-text');
@@ -819,22 +862,9 @@ function syncDialogLayerOpen(layer: HTMLElement, open: boolean): void {
   }
 }
 
-function openManagedWorldbookDialog(
-  mode: ManagedWorldbookDialogMode,
-  diagnostics = getCalendarManagedWorldbookDiagnostics(),
-): void {
-  uiState.managedWorldbookDialogOpen = true;
-  uiState.managedWorldbookDialogMode = mode;
-  uiState.managedWorldbookDialogDiagnostics = diagnostics;
-  renderShell();
-}
-
 function closeManagedWorldbookDialog(): void {
-  uiState.managedWorldbookDialogOpen = false;
-  uiState.managedWorldbookDialogMode = null;
-  uiState.managedWorldbookDialogDiagnostics = null;
   uiState.mvuPathSettingsFeedback = '';
-  renderShell();
+  void getManagedWorldbookFlow().dispatch({ type: 'close' });
 }
 
 function closeWidgetConfirmDialog(): void {
@@ -1024,13 +1054,15 @@ function renderManagedWorldbookDialog(): void {
     return;
   }
 
-  if (!uiState.managedWorldbookDialogOpen || !uiState.managedWorldbookDialogMode) {
+  const snapshot = getManagedWorldbookFlow().getSnapshot();
+  const dialog = snapshot.dialog;
+  if (!dialog) {
     syncDialogLayerOpen(layer, false);
     layer.innerHTML = '';
     return;
   }
 
-  const diagnostics = uiState.managedWorldbookDialogDiagnostics ?? getCalendarManagedWorldbookDiagnostics();
+  const diagnostics = snapshot.diagnostics;
   const summaryHtml = buildManagedWorldbookSummaryLines(diagnostics)
     .map(line => `<li class="th-managed-worldbook-dialog-summary-item">${escapeHtml(line)}</li>`)
     .join('');
@@ -1062,7 +1094,7 @@ function renderManagedWorldbookDialog(): void {
     '<button type="button" class="th-btn th-managed-worldbook-dialog-btn th-mvu-close-btn" data-action="managed-worldbook-dialog-return">关闭</button>',
   ].join('');
 
-  if (uiState.managedWorldbookDialogMode === 'confirm-uninstall') {
+  if (dialog.mode === 'confirm-uninstall') {
     title = '确认卸载';
     description = '确定要卸载吗？只会删除月历脚本托管的两条基础规则，不会删除节庆、读物或正文来源。';
     bodyHtml = '';
@@ -1072,7 +1104,7 @@ function renderManagedWorldbookDialog(): void {
       '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-dialog-return">取消</button>',
       '</div>',
     ].join('');
-  } else if (uiState.managedWorldbookDialogMode === 'confirm-reinstall') {
+  } else if (dialog.mode === 'confirm-reinstall') {
     title = '确认重装';
     description = `会重置两条基础规则：月历变量更新规则、${CALENDAR_VARIABLE_LIST_ENTRY_DISPLAY_NAME}。确定要继续吗？`;
     bodyHtml = '';
@@ -1082,9 +1114,9 @@ function renderManagedWorldbookDialog(): void {
       '<button type="button" class="th-btn th-managed-worldbook-dialog-btn" data-action="managed-worldbook-dialog-return">取消</button>',
       '</div>',
     ].join('');
-  } else if (uiState.managedWorldbookDialogMode === 'export-external') {
+  } else if (dialog.mode === 'export-external') {
     const diagnosticsWorldbookName = String(diagnostics.worldbookName || '').trim();
-    const availableNames = getAvailableCalendarWorldbooks()
+    const availableNames = dialog.availableTargetNames
       .map(name => String(name || '').trim())
       .filter(Boolean);
     const suggestedName = availableNames.find(name => name !== diagnosticsWorldbookName) ?? `${SCRIPT_NAME}-基础规则`;
@@ -1096,8 +1128,8 @@ function renderManagedWorldbookDialog(): void {
           )
           .join('')
       : '<div class="th-worldbook-picker-empty">没有读到可复用的世界书；可以直接在上方输入新名称创建。</div>';
-    const moveCandidateHtml = uiState.managedWorldbookMoveCandidates.length
-      ? uiState.managedWorldbookMoveCandidates
+    const moveCandidateHtml = dialog.moveCandidates.length
+      ? dialog.moveCandidates
           .map(
             candidate => `
               <label class="th-worldbook-move-item">
@@ -1111,7 +1143,7 @@ function renderManagedWorldbookDialog(): void {
           )
           .join('')
       : '<div class="th-worldbook-picker-empty">没有找到可搬运的索引或正文条目；仍可只搬运基础规则。</div>';
-    const warningHtml = uiState.managedWorldbookMoveWarnings.length
+    const warningHtml = dialog.moveWarnings.length
       ? '<div class="th-worldbook-picker-meta">有来源读取提示，已写入控制台，不在这里展开整本世界书。</div>'
       : '';
     title = '搬运到其他世界书';
@@ -1174,19 +1206,19 @@ function renderManagedWorldbookDialog(): void {
   bindClick('.th-managed-worldbook-dialog-backdrop', closeManagedWorldbookDialog);
   bindClick('[data-action="managed-worldbook-dialog-return"]', closeManagedWorldbookDialog);
   bindClick('[data-action="managed-worldbook-menu-uninstall"]', () => {
-    openManagedWorldbookDialog('confirm-uninstall', diagnostics);
+    void runManagedWorldbookCommand({ type: 'request-uninstall' });
   });
   bindClick('[data-action="managed-worldbook-menu-reinstall"]', () => {
-    openManagedWorldbookDialog('confirm-reinstall', diagnostics);
+    void runManagedWorldbookCommand({ type: 'request-reinstall' });
   });
   bindClick('[data-action="managed-worldbook-menu-export-external"]', () => {
-    void openExternalWorldbookMoveDialog(diagnostics);
+    void runManagedWorldbookCommand({ type: 'request-external-move' });
   });
   bindClick('[data-action="managed-worldbook-confirm-uninstall"]', () => {
-    void confirmManagedWorldbookUninstall();
+    void runManagedWorldbookCommand({ type: 'confirm-uninstall' });
   });
   bindClick('[data-action="managed-worldbook-confirm-reinstall"]', () => {
-    void confirmManagedWorldbookReinstall();
+    void runManagedWorldbookCommand({ type: 'confirm-reinstall' });
   });
   bindClick('[data-action="managed-worldbook-confirm-export-external"]', () => {
     void confirmExternalManagedWorldbookInstall(layer);
@@ -2411,9 +2443,7 @@ function setOpen(open: boolean): void {
   state.open = open;
   if (!open) {
     uiState.mobileSideOpen = false;
-    uiState.managedWorldbookDialogOpen = false;
-    uiState.managedWorldbookDialogMode = null;
-    uiState.managedWorldbookDialogDiagnostics = null;
+    void getManagedWorldbookFlow().dispatch({ type: 'close' });
     uiState.tagColorDialogOpen = false;
     uiState.mvuPathSettingsFeedback = '';
   }
@@ -2634,45 +2664,6 @@ async function fillNowTime(): Promise<void> {
   }
 }
 
-async function handleManagedWorldbookClick(): Promise<void> {
-  try {
-    await refreshCalendarManagedWorldbookRuntimeDiagnostics();
-    await refreshCalendarManagedWorldbookSourceDiagnostics();
-  } catch (error) {
-    console.warn(`[${SCRIPT_NAME}] 刷新世界书 runtime 状态失败`, error);
-  }
-  const diagnostics = getCalendarManagedWorldbookDiagnostics();
-  console.info(`[${SCRIPT_NAME}] 用户点击 managed worldbook connectivity 按钮`, diagnostics);
-  if (uiState.managedWorldbookBusy) {
-    return;
-  }
-
-  openManagedWorldbookDialog('menu', diagnostics);
-}
-
-async function openExternalWorldbookMoveDialog(diagnostics: CalendarManagedWorldbookDiagnostics): Promise<void> {
-  if (uiState.managedWorldbookBusy) {
-    return;
-  }
-
-  uiState.managedWorldbookBusy = true;
-  renderShell();
-  try {
-    const result = await listCalendarWorldbookMoveCandidates();
-    uiState.managedWorldbookMoveCandidates = result.candidates;
-    uiState.managedWorldbookMoveWarnings = result.warnings;
-    openManagedWorldbookDialog('export-external', diagnostics);
-  } catch (error) {
-    console.warn(`[${SCRIPT_NAME}] 读取可搬运 worldbook 条目失败`, error);
-    uiState.managedWorldbookMoveCandidates = [];
-    uiState.managedWorldbookMoveWarnings = [error instanceof Error ? error.message : String(error)];
-    openManagedWorldbookDialog('export-external', diagnostics);
-  } finally {
-    uiState.managedWorldbookBusy = false;
-    renderShell();
-  }
-}
-
 function readExternalWorldbookTargetName(layer: HTMLElement): string {
   return String(
     layer.querySelector<HTMLInputElement>('[data-role="managed-worldbook-export-target"]')?.value || '',
@@ -2730,99 +2721,12 @@ function setExternalWorldbookMoveCandidateChecks(layer: HTMLElement, checked: bo
 }
 
 async function confirmExternalManagedWorldbookInstall(layer: HTMLElement): Promise<void> {
-  if (uiState.managedWorldbookBusy) {
-    return;
-  }
-
-  const validation = validateExternalMoveRequest({
+  await runManagedWorldbookCommand({
+    type: 'confirm-external-move',
     targetName: readExternalWorldbookTargetName(layer),
     candidateIds: readExternalWorldbookMoveCandidateIds(layer),
+    removeFromSource: shouldRemoveExternalWorldbookMoveSources(layer),
   });
-  if (!validation.ok) {
-    showWidgetNotice(validation.notice);
-    return;
-  }
-
-  const targetName = validation.targetName;
-  const candidateIds = validation.candidateIds ?? [];
-  const removeFromSource = shouldRemoveExternalWorldbookMoveSources(layer);
-  uiState.managedWorldbookDialogOpen = false;
-  uiState.managedWorldbookDialogMode = null;
-  uiState.managedWorldbookDialogDiagnostics = null;
-  uiState.managedWorldbookBusy = true;
-  renderShell();
-  try {
-    const result = await installCalendarManagedEntriesToExternalWorldbook(targetName, {
-      ...(candidateIds.length > 0 ? { candidateIds } : {}),
-      removeFromSource,
-    });
-    console.info(`[${SCRIPT_NAME}] 已搬运世界书条目`, result);
-    showWidgetNotice(
-      buildExternalMoveSuccessNotice({
-        worldbookName: result.name,
-        movedCount: result.movedCount ?? candidateIds.length,
-        removedSourceCount: result.removedSourceCount ?? 0,
-        removeFromSource,
-      }),
-    );
-  } catch (error) {
-    console.warn(`[${SCRIPT_NAME}] 搬运世界书条目失败`, error);
-    showWidgetNotice(buildExternalMoveFailureNotice(error));
-  } finally {
-    uiState.managedWorldbookBusy = false;
-    renderShell();
-  }
-}
-
-async function confirmManagedWorldbookUninstall(): Promise<void> {
-  if (uiState.managedWorldbookBusy) {
-    return;
-  }
-
-  uiState.managedWorldbookDialogOpen = false;
-  uiState.managedWorldbookDialogMode = null;
-  uiState.managedWorldbookDialogDiagnostics = null;
-  uiState.managedWorldbookBusy = true;
-  renderShell();
-  try {
-    const result = await uninstallCalendarManagedWorldbookEntries();
-    console.info(`[${SCRIPT_NAME}] 一键卸载世界书基础规则成功`, result);
-    showWidgetNotice(
-      buildManagedWorldbookUninstallSuccessNotice({
-        worldbookName: result.worldbookName,
-        removedCount: result.removedCount,
-      }),
-    );
-  } catch (error) {
-    console.warn(`[${SCRIPT_NAME}] 一键卸载世界书基础规则失败`, error);
-    showWidgetNotice(buildManagedWorldbookActionErrorNotice('卸载基础规则失败', error));
-  } finally {
-    uiState.managedWorldbookBusy = false;
-    renderShell();
-  }
-}
-
-async function confirmManagedWorldbookReinstall(): Promise<void> {
-  if (uiState.managedWorldbookBusy) {
-    return;
-  }
-
-  uiState.managedWorldbookDialogOpen = false;
-  uiState.managedWorldbookDialogMode = null;
-  uiState.managedWorldbookDialogDiagnostics = null;
-  uiState.managedWorldbookBusy = true;
-  renderShell();
-  try {
-    const result = await installCalendarManagedWorldbookEntries();
-    console.info(`[${SCRIPT_NAME}] 手动重装世界书基础规则成功`, result);
-    showWidgetNotice(buildManagedWorldbookReinstallSuccessNotice({ worldbookName: result.name }));
-  } catch (error) {
-    console.warn(`[${SCRIPT_NAME}] 手动重装世界书基础规则失败`, error);
-    showWidgetNotice(buildManagedWorldbookActionErrorNotice('重装基础规则失败', error));
-  } finally {
-    uiState.managedWorldbookBusy = false;
-    renderShell();
-  }
 }
 
 function resetPanelPosition(): void {
@@ -3180,7 +3084,7 @@ async function dispatchWidgetAction(action: WidgetAction): Promise<void> {
       if (!isCalendarDeveloperModeEnabled()) {
         return;
       }
-      await handleManagedWorldbookClick();
+      await runManagedWorldbookCommand({ type: 'open' });
       return;
     case 'fixed-event-editor/open':
       if (!isCalendarDeveloperModeEnabled()) {
@@ -3254,6 +3158,7 @@ function destroy(reason?: string): void {
   }
   state.destroyed = true;
   destroyFixedEventEditorSession();
+  destroyManagedWorldbookFlow();
   if (refs.ball) {
     $(refs.ball).off('.calendar-float');
   }
@@ -3326,6 +3231,7 @@ export async function bootstrapCalendarWidget(
   lifecycle.throwIfStale();
   state.destroyed = false;
   initializeFixedEventEditorSession();
+  initializeManagedWorldbookFlow();
   ensureIframe();
   ensureStyle();
   ensureRoot();

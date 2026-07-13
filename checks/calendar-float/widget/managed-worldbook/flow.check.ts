@@ -1,3 +1,8 @@
+// eslint-disable-next-line import-x/no-nodejs-modules -- source boundary check runs under ts-node.
+import { readFileSync } from 'node:fs';
+// eslint-disable-next-line import-x/no-nodejs-modules -- source boundary check runs under ts-node.
+import { resolve } from 'node:path';
+
 import { createManagedWorldbookFlow } from '../../../../src/calendar-float/widget/managed-worldbook/flow';
 import type { CalendarManagedWorldbookDiagnostics } from '../../../../src/calendar-float/worldbook-manager';
 
@@ -450,6 +455,25 @@ async function testCloseDuringWriteSuppressesStaleNoticeAndDiagnostics(): Promis
   assert(flow.getSnapshot().diagnostics.worldbookName === '写入前', 'stale write 不应覆盖 diagnostics');
 }
 
+function testWidgetHostDelegatesManagedWorldbookOwnership(): void {
+  const source = readFileSync(resolve(__dirname, '../../../../src/calendar-float/widget/index.ts'), 'utf8');
+  const forbiddenOwners = [
+    'managedWorldbookBusy',
+    'managedWorldbookDialogOpen',
+    'managedWorldbookDialogMode',
+    'managedWorldbookDialogDiagnostics',
+    'managedWorldbookMoveCandidates',
+    'managedWorldbookMoveWarnings',
+    'openExternalWorldbookMoveDialog',
+    'confirmManagedWorldbookUninstall',
+    'confirmManagedWorldbookReinstall',
+  ];
+  const hits = forbiddenOwners.filter(token => source.includes(token));
+  assert(hits.length === 0, `widget host 不应继续拥有 managed flow 状态/编排：${hits.join(', ')}`);
+  assert(source.includes('createManagedWorldbookFlow'), 'widget host 应组装 production flow adapter');
+  assert(source.includes('.subscribe('), 'widget host 应订阅 busy/dialog 中间 snapshot');
+}
+
 async function main(): Promise<void> {
   testInitialSnapshotIsClosedAndDeeplyIsolated();
   await testOpenAndRefreshPublishMenuDiagnostics();
@@ -464,6 +488,7 @@ async function main(): Promise<void> {
   await testStaleAsyncResultsCannotResurrectPresentation();
   await testCloseDuringCandidateLoadOnlyCleansBusy();
   await testCloseDuringWriteSuppressesStaleNoticeAndDiagnostics();
+  testWidgetHostDelegatesManagedWorldbookOwnership();
   console.log('managed-worldbook/flow.check.ts OK');
 }
 

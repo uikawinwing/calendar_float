@@ -1,3 +1,5 @@
+import { klona } from 'klona';
+
 import type {
   CalendarManagedWorldbookDiagnostics,
   CalendarWorldbookMoveCandidate,
@@ -68,7 +70,7 @@ export interface ManagedWorldbookFlow {
   subscribe(listener: (snapshot: ManagedWorldbookFlowState) => void): () => void;
 }
 
-function cloneDiagnostics(diagnostics: CalendarManagedWorldbookDiagnostics): CalendarManagedWorldbookDiagnostics {
+function cloneDiagnostics(diagnostics: Readonly<CalendarManagedWorldbookDiagnostics>): CalendarManagedWorldbookDiagnostics {
   return {
     ...diagnostics,
     runtimeContentWorldbookNames: [...diagnostics.runtimeContentWorldbookNames],
@@ -77,13 +79,7 @@ function cloneDiagnostics(diagnostics: CalendarManagedWorldbookDiagnostics): Cal
 }
 
 function cloneCandidate(candidate: CalendarWorldbookMoveCandidate): CalendarWorldbookMoveCandidate {
-  return {
-    ...candidate,
-    entry: {
-      ...candidate.entry,
-      extra: candidate.entry.extra ? { ...candidate.entry.extra } : candidate.entry.extra,
-    },
-  };
+  return klona(candidate);
 }
 
 function errorMessage(error: unknown): string {
@@ -116,7 +112,7 @@ export function createManagedWorldbookFlow(adapter: ManagedWorldbookFlowAdapter)
 
   const getSnapshot = (): ManagedWorldbookFlowState => ({
     busy: state.busy,
-    diagnostics: cloneDiagnostics(state.diagnostics as CalendarManagedWorldbookDiagnostics),
+    diagnostics: cloneDiagnostics(state.diagnostics),
     dialog: cloneDialog(state.dialog),
   });
 
