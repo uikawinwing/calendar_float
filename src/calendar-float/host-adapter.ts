@@ -164,6 +164,19 @@ export async function bootstrapCalendarFloatHostAdapter(
   }
 
   registeredToHost = true;
+  try {
+    lifecycle.throwIfStale();
+  } catch (error) {
+    if (typeof host.unregisterModule === 'function') {
+      try {
+        host.unregisterModule(MODULE_KEY);
+      } catch (_) {
+        // Cancellation cleanup is best effort and must preserve the original cancellation.
+      }
+    }
+    registeredToHost = false;
+    throw error;
+  }
   hostWindow[ADAPTER_INSTANCE_KEY] = { destroy };
   await dependencies.waitForWidgetApi(hostWindow);
   lifecycle.throwIfStale();

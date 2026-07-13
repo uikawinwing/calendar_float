@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import {
   CalendarFloatLifecycleCancelledError,
   beginCalendarFloatLifecycle,
+  completeCalendarFloatLifecycleInitialization,
   invalidateCalendarFloatLifecycle,
   isCalendarFloatLifecycleCancelledError,
 } from '../../src/calendar-float/lifecycle';
@@ -106,6 +107,27 @@ function testGenerationTokenSemantics(): void {
   throw new Error('stale token 的 throwIfStale 不应静默返回');
 }
 
+async function testProfileAwaitGateCancelsSilentlyButKeepsRealErrors(): Promise<void> {
+  const profileLoad = createDeferred<void>();
+  const lifecycle = beginCalendarFloatLifecycle();
+  const completion = completeCalendarFloatLifecycleInitialization(lifecycle, () => profileLoad.promise);
+  invalidateCalendarFloatLifecycle();
+  profileLoad.resolve();
+  assert((await completion) === false, 'profile await 期间 stale 应静默返回 false');
+
+  const profileError = new Error('真实 profile 初始化错误');
+  const currentLifecycle = beginCalendarFloatLifecycle();
+  try {
+    await completeCalendarFloatLifecycleInitialization(currentLifecycle, async () => {
+      throw profileError;
+    });
+  } catch (error) {
+    assert(error === profileError, '真实 profile 初始化错误必须原样抛出');
+    return;
+  }
+  throw new Error('真实 profile 初始化错误不应被静默吞掉');
+}
+
 async function testDelayedWidgetCannotReviveAfterInvalidation(): Promise<void> {
   const { fakeWindow, getCreateCount, getTimerCount } = installFakeWindow();
   const { bootstrapCalendarWidget } = await import('../../src/calendar-float/widget');
@@ -146,6 +168,38 @@ async function testDelayedHostCannotRegisterAfterInvalidation(): Promise<void> {
   await assertCancelled(bootstrap, 'host await 后 stale adapter 应取消');
   assert(registerCount === 0, 'stale adapter 不得 registerModule');
   assert(!fakeWindow.__CalendarFloatHostAdapter__, 'stale adapter 不得发布 global');
+}
+
+async function testSynchronousInvalidationDuringRegistrationRollsBackHostModule(): Promise<void> {
+  const { fakeWindow } = installFakeWindow();
+  const { bootstrapCalendarFloatHostAdapter } = await import('../../src/calendar-float/host-adapter');
+  let registerCount = 0;
+  let unregisterCount = 0;
+  let waitForWidgetCount = 0;
+  const lifecycle = beginCalendarFloatLifecycle();
+  const bootstrap = bootstrapCalendarFloatHostAdapter(lifecycle, {
+    waitForHost: async () => ({
+      registerModule() {
+        registerCount += 1;
+        invalidateCalendarFloatLifecycle();
+        return { ok: true };
+      },
+      unregisterModule() {
+        unregisterCount += 1;
+        return { ok: true };
+      },
+    }),
+    waitForWidgetApi: async () => {
+      waitForWidgetCount += 1;
+      return null;
+    },
+  });
+
+  await assertCancelled(bootstrap, 'registerModule 同步失效后应保持 cancellation 语义');
+  assert(registerCount === 1, '应该只尝试注册一次');
+  assert(unregisterCount === 1, '已成功注册但 stale 时应立即注销一次');
+  assert(waitForWidgetCount === 0, 'stale 注册不得继续等待 widget');
+  assert(!fakeWindow.__CalendarFloatHostAdapter__, 'stale 注册不得发布 adapter global');
 }
 
 async function testRegisteredHostIsTornDownWhileWaitingForWidget(): Promise<void> {
@@ -198,31 +252,24 @@ async function testRegisteredHostIsTornDownWhileWaitingForWidget(): Promise<void
 function testEntrypointGuardsProfileAwaitAndInvalidatesFirst(): void {
   const source = readFileSync(resolve(__dirname, '../../src/calendar-float/index.ts'), 'utf8');
   const beginIndex = source.indexOf('beginCalendarFloatLifecycle()');
-  const profileIndex = source.indexOf('await initializeCalendarProfile()');
-  const guardIndex = source.indexOf('lifecycle.throwIfStale()', profileIndex);
-  const scannerIndex = source.indexOf('bootstrapCalendarRuntimeWorldbookScanner()', profileIndex);
-  assert(beginIndex >= 0 && beginIndex < profileIndex, 'init 应在 profile await 前 begin lifecycle');
-  assert(guardIndex > profileIndex && guardIndex < scannerIndex, 'init 应在 profile await 后、启动 scanner 前 guard');
+  const profileGateIndex = source.indexOf('await completeCalendarFloatLifecycleInitialization(');
+  const scannerIndex = source.indexOf('bootstrapCalendarRuntimeWorldbookScanner()', profileGateIndex);
+  assert(beginIndex >= 0 && beginIndex < profileGateIndex, 'init 应在 profile await gate 前 begin lifecycle');
+  assert(profileGateIndex < scannerIndex, 'init 应在 profile await gate 完成后才启动 scanner');
 
   const cleanupIndex = source.indexOf('function cleanup()');
   const cleanupBody = source.slice(cleanupIndex, source.indexOf('\n}', cleanupIndex));
   const invalidateIndex = cleanupBody.indexOf('invalidateCalendarFloatLifecycle()');
   const teardownIndex = cleanupBody.indexOf('teardownCalendarMvuRemovalArchive()');
   assert(invalidateIndex >= 0 && invalidateIndex < teardownIndex, 'cleanup 必须先 invalidate 再 teardown');
-
-  const initBody = source.slice(source.indexOf('async function init()'), cleanupIndex);
-  assert(
-    /catch \(error\)[\s\S]*isCalendarFloatLifecycleCancelledError\(error\)[\s\S]*return;[\s\S]*throw error;/.test(
-      initBody,
-    ),
-    'init 应静默结束 cancellation，但继续抛出真实 profile 初始化错误',
-  );
 }
 
 async function main(): Promise<void> {
   testGenerationTokenSemantics();
+  await testProfileAwaitGateCancelsSilentlyButKeepsRealErrors();
   await testDelayedWidgetCannotReviveAfterInvalidation();
   await testDelayedHostCannotRegisterAfterInvalidation();
+  await testSynchronousInvalidationDuringRegistrationRollsBackHostModule();
   await testRegisteredHostIsTornDownWhileWaitingForWidget();
   testEntrypointGuardsProfileAwaitAndInvalidatesFirst();
   console.log('lifecycle.check.ts OK');

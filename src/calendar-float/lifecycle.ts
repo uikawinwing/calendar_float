@@ -30,6 +30,22 @@ export function invalidateCalendarFloatLifecycle(): void {
   currentGeneration += 1;
 }
 
+export async function completeCalendarFloatLifecycleInitialization(
+  lifecycle: CalendarFloatLifecycleToken,
+  initialize: () => Promise<void>,
+): Promise<boolean> {
+  try {
+    await initialize();
+    lifecycle.throwIfStale();
+    return true;
+  } catch (error) {
+    if (isCalendarFloatLifecycleCancelledError(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 export function isCalendarFloatLifecycleCancelledError(
   error: unknown,
 ): error is CalendarFloatLifecycleCancelledError {

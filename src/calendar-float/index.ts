@@ -2,6 +2,7 @@ import { SCRIPT_NAME } from './constants';
 import { bootstrapCalendarFloatHostAdapter, teardownCalendarFloatHostAdapter } from './host-adapter';
 import {
   beginCalendarFloatLifecycle,
+  completeCalendarFloatLifecycleInitialization,
   invalidateCalendarFloatLifecycle,
   isCalendarFloatLifecycleCancelledError,
 } from './lifecycle';
@@ -98,14 +99,8 @@ async function refreshManagedWorldbookDiagnosticsAndNotifyMissingRules(): Promis
 async function init(): Promise<void> {
   const lifecycle = beginCalendarFloatLifecycle();
   console.info(`[${SCRIPT_NAME}] 开始初始化`);
-  try {
-    await initializeCalendarProfile();
-    lifecycle.throwIfStale();
-  } catch (error) {
-    if (isCalendarFloatLifecycleCancelledError(error)) {
-      return;
-    }
-    throw error;
+  if (!(await completeCalendarFloatLifecycleInitialization(lifecycle, initializeCalendarProfile))) {
+    return;
   }
   void ensureCalendarLatestMessageVariableStore().catch(error => {
     console.warn(`[${SCRIPT_NAME}] 初始化最新消息变量失败`, error);
