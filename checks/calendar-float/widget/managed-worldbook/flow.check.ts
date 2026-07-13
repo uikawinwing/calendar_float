@@ -404,6 +404,79 @@ async function testStaleAsyncResultsCannotResurrectPresentation(): Promise<void>
   assert(flow.getSnapshot().diagnostics.worldbookName === '新一轮', '旧 open 迟到不能覆盖新 diagnostics');
 }
 
+async function testConcurrentRefreshCannotConsumePendingOpenIntent(): Promise<void> {
+  const runOrder = async (resolveRefreshFirst: boolean) => {
+    const openDeferred = deferred<void>();
+    const refreshDeferred = deferred<void>();
+    const queue = [
+      { deferred: openDeferred, name: '较早 open diagnostics' },
+      { deferred: refreshDeferred, name: '较新 refresh diagnostics' },
+    ];
+    let diagnostics = createDiagnostics('初始');
+    const flow = createManagedWorldbookFlow({
+      readDiagnostics: () => diagnostics,
+      refreshDiagnostics: async () => {
+        const current = queue.shift()!;
+        await current.deferred.promise;
+        diagnostics = createDiagnostics(current.name);
+      },
+      listMoveCandidates: async () => ({ candidates: [], warnings: [] }),
+      listAvailableTargetNames: () => [],
+      reinstall: async () => ({ name: '命定之诗', created: false, updated: true }),
+      uninstall: async () => ({ worldbookName: '命定之诗', removedCount: 2 }),
+      moveToExternal: async () => ({ name: '外部世界书', created: true, updated: true }),
+    });
+
+    const opening = flow.dispatch({ type: 'open' });
+    const refreshing = flow.dispatch({ type: 'refresh' });
+    if (resolveRefreshFirst) {
+      refreshDeferred.resolve();
+      await refreshing;
+      assert(flow.getSnapshot().dialog === null, 'open 尚未 settle 前 refresh 不应凭空打开 dialog');
+      openDeferred.resolve();
+    } else {
+      openDeferred.resolve();
+      await opening;
+      assert(flow.getSnapshot().dialog?.mode === 'menu', '较早 open settle 时应兑现 menu intent');
+      refreshDeferred.resolve();
+    }
+    await Promise.all([opening, refreshing]);
+    const snapshot = flow.getSnapshot();
+    assert(snapshot.dialog?.mode === 'menu', '并发 refresh 不能吞掉 pending open presentation');
+    assert(snapshot.diagnostics.worldbookName === '较新 refresh diagnostics', '较新的 refresh command 应拥有最终 diagnostics');
+  };
+
+  await runOrder(true);
+  await runOrder(false);
+}
+
+async function testCloseInvalidatesConcurrentOpenAndRefresh(): Promise<void> {
+  const openDeferred = deferred<void>();
+  const refreshDeferred = deferred<void>();
+  const queue = [openDeferred, refreshDeferred];
+  let diagnostics = createDiagnostics('关闭前');
+  const flow = createManagedWorldbookFlow({
+    readDiagnostics: () => diagnostics,
+    refreshDiagnostics: async () => {
+      await queue.shift()!.promise;
+      diagnostics = createDiagnostics('迟到 diagnostics');
+    },
+    listMoveCandidates: async () => ({ candidates: [], warnings: [] }),
+    listAvailableTargetNames: () => [],
+    reinstall: async () => ({ name: '命定之诗', created: false, updated: true }),
+    uninstall: async () => ({ worldbookName: '命定之诗', removedCount: 2 }),
+    moveToExternal: async () => ({ name: '外部世界书', created: true, updated: true }),
+  });
+  const opening = flow.dispatch({ type: 'open' });
+  const refreshing = flow.dispatch({ type: 'refresh' });
+  void flow.dispatch({ type: 'close' });
+  openDeferred.resolve();
+  refreshDeferred.resolve();
+  await Promise.all([opening, refreshing]);
+  assert(flow.getSnapshot().dialog === null, 'close 应 invalidate pending open intent');
+  assert(flow.getSnapshot().diagnostics.worldbookName === '关闭前', 'close 后迟到 refresh 不应覆盖 diagnostics');
+}
+
 async function testCloseDuringCandidateLoadOnlyCleansBusy(): Promise<void> {
   const pendingCandidates = deferred<{ candidates: [typeof candidate]; warnings: string[] }>();
   const flow = createManagedWorldbookFlow({
@@ -455,6 +528,66 @@ async function testCloseDuringWriteSuppressesStaleNoticeAndDiagnostics(): Promis
   assert(flow.getSnapshot().diagnostics.worldbookName === '写入前', 'stale write 不应覆盖 diagnostics');
 }
 
+async function testWriteCleanupSurvivesDiagnosticsReadFailure(): Promise<void> {
+  const createAdapter = () => {
+    let throwOnRead = false;
+    return {
+      failNextRead: () => {
+        throwOnRead = true;
+      },
+      adapter: {
+        readDiagnostics: () => {
+          if (throwOnRead) {
+            throw new Error('diagnostics read failed');
+          }
+          return createDiagnostics('最后有效快照');
+        },
+        refreshDiagnostics: async () => undefined,
+        listMoveCandidates: async () => ({ candidates: [candidate], warnings: [] }),
+        listAvailableTargetNames: () => [],
+        reinstall: async () => ({ name: '命定之诗', created: false, updated: true }),
+        uninstall: async () => ({ worldbookName: '命定之诗', removedCount: 2 }),
+        moveToExternal: async () => ({ name: '外部世界书', created: true, updated: true, movedCount: 1 }),
+      },
+    };
+  };
+
+  const moveFake = createAdapter();
+  const moveFlow = createManagedWorldbookFlow(moveFake.adapter);
+  await moveFlow.dispatch({ type: 'open' });
+  await moveFlow.dispatch({ type: 'request-external-move' });
+  moveFake.failNextRead();
+  const moveNotice = await moveFlow.dispatch({
+    type: 'confirm-external-move',
+    targetName: '外部世界书',
+    candidateIds: [candidate.id],
+    removeFromSource: false,
+  });
+  assert(moveNotice?.level === 'success', 'move diagnostics 读取失败不应吞掉已构造 notice');
+  assert(moveFlow.getSnapshot().busy === false, 'move diagnostics 读取失败仍必须清 busy');
+  assert(moveFlow.getSnapshot().diagnostics.worldbookName === '最后有效快照', 'move 应保留最后有效 diagnostics');
+
+  const uninstallFake = createAdapter();
+  const uninstallFlow = createManagedWorldbookFlow(uninstallFake.adapter);
+  await uninstallFlow.dispatch({ type: 'open' });
+  await uninstallFlow.dispatch({ type: 'request-uninstall' });
+  uninstallFake.failNextRead();
+  const uninstallNotice = await uninstallFlow.dispatch({ type: 'confirm-uninstall' });
+  assert(uninstallNotice?.level === 'success', 'uninstall diagnostics 读取失败不应吞 notice');
+  assert(uninstallFlow.getSnapshot().busy === false, 'uninstall diagnostics 读取失败仍必须清 busy');
+  assert(uninstallFlow.getSnapshot().diagnostics.worldbookName === '最后有效快照', 'uninstall 应保留旧 diagnostics');
+
+  const reinstallFake = createAdapter();
+  const reinstallFlow = createManagedWorldbookFlow(reinstallFake.adapter);
+  await reinstallFlow.dispatch({ type: 'open' });
+  await reinstallFlow.dispatch({ type: 'request-reinstall' });
+  reinstallFake.failNextRead();
+  const reinstallNotice = await reinstallFlow.dispatch({ type: 'confirm-reinstall' });
+  assert(reinstallNotice?.level === 'success', 'reinstall diagnostics 读取失败不应吞 notice');
+  assert(reinstallFlow.getSnapshot().busy === false, 'reinstall diagnostics 读取失败仍必须清 busy');
+  assert(reinstallFlow.getSnapshot().diagnostics.worldbookName === '最后有效快照', 'reinstall 应保留旧 diagnostics');
+}
+
 function testWidgetHostDelegatesManagedWorldbookOwnership(): void {
   const source = readFileSync(resolve(__dirname, '../../../../src/calendar-float/widget/index.ts'), 'utf8');
   const forbiddenOwners = [
@@ -486,8 +619,11 @@ async function main(): Promise<void> {
   await testExternalMoveFailureReturnsRawErrorNotice();
   await testMaintenanceEffectsUseConfirmationAndReturnNotices();
   await testStaleAsyncResultsCannotResurrectPresentation();
+  await testConcurrentRefreshCannotConsumePendingOpenIntent();
+  await testCloseInvalidatesConcurrentOpenAndRefresh();
   await testCloseDuringCandidateLoadOnlyCleansBusy();
   await testCloseDuringWriteSuppressesStaleNoticeAndDiagnostics();
+  await testWriteCleanupSurvivesDiagnosticsReadFailure();
   testWidgetHostDelegatesManagedWorldbookOwnership();
   console.log('managed-worldbook/flow.check.ts OK');
 }

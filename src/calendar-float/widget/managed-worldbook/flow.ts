@@ -120,6 +120,14 @@ export function createManagedWorldbookFlow(adapter: ManagedWorldbookFlowAdapter)
     listeners.forEach(listener => listener(getSnapshot()));
   };
 
+  const readLatestDiagnostics = (): CalendarManagedWorldbookDiagnostics => {
+    try {
+      return cloneDiagnostics(adapter.readDiagnostics());
+    } catch {
+      return cloneDiagnostics(state.diagnostics);
+    }
+  };
+
   const dispatch = async (command: ManagedWorldbookFlowCommand): Promise<WidgetToastNotice | null> => {
     if (command.type === 'close') {
       presentationEpoch += 1;
@@ -141,13 +149,16 @@ export function createManagedWorldbookFlow(adapter: ManagedWorldbookFlowAdapter)
       } catch {
         // Refresh is best effort. The current diagnostics still need to be shown.
       }
-      if (epoch !== presentationEpoch || operationId !== presentationOperationId) {
+      const isCurrentPresentation = epoch === presentationEpoch;
+      const ownsDiagnostics = isCurrentPresentation && operationId === presentationOperationId;
+      const presentsOpen = opensDialog && isCurrentPresentation;
+      if (!ownsDiagnostics && !presentsOpen) {
         return null;
       }
       state = {
         ...state,
-        diagnostics: cloneDiagnostics(adapter.readDiagnostics()),
-        dialog: opensDialog ? { mode: 'menu' } : state.dialog,
+        ...(ownsDiagnostics ? { diagnostics: readLatestDiagnostics() } : {}),
+        ...(presentsOpen ? { dialog: { mode: 'menu' as const } } : {}),
       };
       publish();
       return null;
@@ -256,7 +267,7 @@ export function createManagedWorldbookFlow(adapter: ManagedWorldbookFlowAdapter)
       state = {
         ...state,
         busy: false,
-        ...(isCurrentPresentation ? { diagnostics: cloneDiagnostics(adapter.readDiagnostics()) } : {}),
+        ...(isCurrentPresentation ? { diagnostics: readLatestDiagnostics() } : {}),
       };
       publish();
       return isCurrentPresentation ? notice : null;
@@ -302,7 +313,7 @@ export function createManagedWorldbookFlow(adapter: ManagedWorldbookFlowAdapter)
       state = {
         ...state,
         busy: false,
-        ...(isCurrentPresentation ? { diagnostics: cloneDiagnostics(adapter.readDiagnostics()) } : {}),
+        ...(isCurrentPresentation ? { diagnostics: readLatestDiagnostics() } : {}),
       };
       publish();
       return isCurrentPresentation ? notice : null;
