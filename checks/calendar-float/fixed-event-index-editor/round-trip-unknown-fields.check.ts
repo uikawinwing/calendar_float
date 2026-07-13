@@ -1,6 +1,9 @@
 import { parse as parseYaml } from 'yaml';
 import {
+  applyFixedEventIndexRowOperationsToYaml,
+  applyFixedEventIndexStructuredEditsToYaml,
   parseFixedEventIndexDraft,
+  renameFixedEventIndexRowIdInYaml,
   serializeFixedEventIndexDraft,
 } from '../../../src/calendar-float/fixed-event-index-editor';
 
@@ -34,12 +37,45 @@ const input = `
       自定义全文字段: keep-fulltext
 `;
 
-const output = parseYaml(serializeFixedEventIndexDraft(parseFixedEventIndexDraft(input, SOURCE))) as any;
-const event = output.固定事件[0];
-const material = output.补充资料[0];
+function assertSentinels(outputYaml: string, operation: string): void {
+  const output = parseYaml(outputYaml) as any;
+  const event = output.固定事件[0];
+  const material = output.补充资料[0];
 
-if (event.周期.自定义周期字段 !== 'keep-recurrence') throw new Error('周期未知字段丢失');
-if (event.提醒.开启自定义提醒.自定义提醒字段 !== 'keep-reminder') throw new Error('提醒未知字段丢失');
-if (event.次要关键字1.自定义关键字字段 !== 'keep-keyword') throw new Error('次要关键字未知字段丢失');
-if (material.全文.自定义全文字段 !== 'keep-fulltext') throw new Error('全文未知字段丢失');
+  if (event.周期.自定义周期字段 !== 'keep-recurrence') throw new Error(`${operation}: 周期未知字段丢失`);
+  if (event.提醒.开启自定义提醒.自定义提醒字段 !== 'keep-reminder') {
+    throw new Error(`${operation}: 提醒未知字段丢失`);
+  }
+  if (event.次要关键字1.自定义关键字字段 !== 'keep-keyword') {
+    throw new Error(`${operation}: 次要关键字未知字段丢失`);
+  }
+  if (material.全文.自定义全文字段 !== 'keep-fulltext') throw new Error(`${operation}: 全文未知字段丢失`);
+}
+
+assertSentinels(serializeFixedEventIndexDraft(parseFixedEventIndexDraft(input, SOURCE)), 'parse -> serialize');
+
+const structured = applyFixedEventIndexStructuredEditsToYaml({
+  sourceYaml: input,
+  sourceInfo: SOURCE,
+  groups: [],
+  events: [],
+  materials: [],
+});
+assertSentinels(structured, 'structured edit');
+
+const rowOperation = applyFixedEventIndexRowOperationsToYaml({
+  sourceYaml: input,
+  sourceInfo: SOURCE,
+  addGroups: [{ id: 'group_new', name: '新分组', eventIds: [] }],
+});
+assertSentinels(rowOperation, 'row operation');
+
+const renamed = renameFixedEventIndexRowIdInYaml({
+  sourceYaml: input,
+  sourceInfo: SOURCE,
+  scope: 'event',
+  oldId: 'event_1',
+  newId: 'event_renamed',
+});
+assertSentinels(renamed, 'rename');
 console.log('round-trip-unknown-fields.check.ts OK');
