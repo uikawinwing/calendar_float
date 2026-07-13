@@ -34,9 +34,15 @@ export {
   type CalendarRuntimeWorldbookSummary,
 } from './move-candidates';
 
+export interface CalendarRuntimeWorldbookEntriesResult {
+  来源: ResolvedCalendarWorldbookSource[];
+  条目: CalendarWorldbookSourceEntry[];
+  警告: string[];
+}
+
 export async function readCalendarRuntimeWorldbookEntries(
   sourceConfig: CalendarSourceConfig = readCalendarSourceConfig(),
-): Promise<{ 来源: ResolvedCalendarWorldbookSource[]; 条目: CalendarWorldbookSourceEntry[]; 警告: string[] }> {
+): Promise<CalendarRuntimeWorldbookEntriesResult> {
   const 来源 = resolveCalendarRuntimeWorldbookSources(sourceConfig);
   const warnings: string[] = [];
   const entries: CalendarWorldbookSourceEntry[] = [];
@@ -139,7 +145,14 @@ export async function readCalendarRuntimeIndexSourceEntry(): Promise<CalendarRun
 }
 
 export async function readCalendarRuntimeIndex(): Promise<CalendarWorldbookIndexReadResult> {
-  const { 来源, 条目, 警告 } = await readCalendarRuntimeWorldbookEntries();
+  const loaded = await readCalendarRuntimeWorldbookEntries();
+  return buildCalendarRuntimeIndexResultFromEntries(loaded);
+}
+
+export function buildCalendarRuntimeIndexResultFromEntries(
+  loaded: CalendarRuntimeWorldbookEntriesResult,
+): CalendarWorldbookIndexReadResult {
+  const { 来源, 条目, 警告 } = loaded;
   const indexEntryMatches = listCalendarRuntimeIndexEntryMatches(条目);
   const indexEntry = indexEntryMatches[0] ?? null;
   if (!indexEntry) {
@@ -233,25 +246,33 @@ export async function readCalendarRuntimeTextLibrary(
   }
 
   const { 条目, 警告 } = await readCalendarRuntimeWorldbookEntries();
-  const matchedEntry = findCalendarRuntimeEntryByReference(条目, reference);
+  return readCalendarRuntimeTextLibraryFromEntries(条目, reference, 警告);
+}
+
+export function readCalendarRuntimeTextLibraryFromEntries(
+  entries: CalendarWorldbookSourceEntry[],
+  reference: CalendarTextLibraryReference,
+  warnings: string[],
+): CalendarWorldbookTextLibraryReadResult {
+  const matchedEntry = findCalendarRuntimeEntryByReference(entries, reference);
   if (!matchedEntry) {
     return {
       文本库: {},
       来源: reference,
       命中条目名: null,
       警告: [
-        ...警告,
+        ...warnings,
         `未找到文本库条目「${reference.条目名}」${reference.世界书 ? `（世界书：${reference.世界书}）` : ''}`,
       ],
     };
   }
 
-  const parsed = 解析Yaml文本<unknown>(matchedEntry.条目.content, `文本库条目「${matchedEntry.条目.name}」`, 警告);
+  const parsed = 解析Yaml文本<unknown>(matchedEntry.条目.content, `文本库条目「${matchedEntry.条目.name}」`, warnings);
 
   return {
     文本库: parsed ? 提取文本库映射(parsed) : {},
     来源: reference,
     命中条目名: matchedEntry.条目.name,
-    警告,
+    警告: warnings,
   };
 }
