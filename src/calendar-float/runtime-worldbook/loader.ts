@@ -152,7 +152,8 @@ export async function readCalendarRuntimeIndex(): Promise<CalendarWorldbookIndex
 export function buildCalendarRuntimeIndexResultFromEntries(
   loaded: CalendarRuntimeWorldbookEntriesResult,
 ): CalendarWorldbookIndexReadResult {
-  const { 来源, 条目, 警告 } = loaded;
+  const { 来源, 条目 } = loaded;
+  const 警告 = [...loaded.警告];
   const indexEntryMatches = listCalendarRuntimeIndexEntryMatches(条目);
   const indexEntry = indexEntryMatches[0] ?? null;
   if (!indexEntry) {
@@ -267,12 +268,17 @@ export function readCalendarRuntimeTextLibraryFromEntries(
     };
   }
 
-  const parsed = 解析Yaml文本<unknown>(matchedEntry.条目.content, `文本库条目「${matchedEntry.条目.name}」`, warnings);
+  const resultWarnings = [...warnings];
+  const parsed = 解析Yaml文本<unknown>(
+    matchedEntry.条目.content,
+    `文本库条目「${matchedEntry.条目.name}」`,
+    resultWarnings,
+  );
 
   return {
     文本库: parsed ? 提取文本库映射(parsed) : {},
     来源: reference,
     命中条目名: matchedEntry.条目.name,
-    警告: warnings,
+    警告: resultWarnings,
   };
 }

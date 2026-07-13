@@ -36,9 +36,9 @@ export async function loadCalendarRuntimeWorldbookSnapshot(
     sources: loaded.来源,
     entries: loaded.条目,
     indexResult,
-    warnings: loaded.警告,
+    warnings: [...loaded.警告],
     readTextLibrary(reference) {
-      const key = `${reference.世界书 ?? ''}::${reference.条目名}`;
+      const key = JSON.stringify([reference.世界书?.trim() ?? '', reference.条目名.trim()]);
       const cached = textLibraryCache.get(key);
       if (cached) {
         return cached;
