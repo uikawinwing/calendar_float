@@ -283,6 +283,7 @@ function buildRecurrenceEdit(edit: FixedEventStructuredEdit, event: FixedEventDr
   return {
     intervalYears,
     lastYear,
+    unknownFields: event.recurrence?.unknownFields ?? {},
   };
 }
 
@@ -446,6 +447,7 @@ function createEventDraft(addition: FixedEventRowAddition, usedIds: Set<string>)
       keywords: [],
       userKeywords: [],
       hasUnsupportedAdvancedLogic: false,
+      customTextUnknownFields: {},
       unknownFields: {},
     },
     relatedMaterialIds: [],
@@ -469,6 +471,7 @@ function createMaterialDraft(addition: FixedEventMaterialRowAddition, usedIds: S
     summaryText: normalizeOptionalText(addition.summaryText),
     fullTextWorldbookName: normalizeOptionalText(addition.fullTextWorldbookName),
     fullTextEntryName: normalizeOptionalText(addition.fullTextEntryName),
+    fullTextUnknownFields: {},
     messageKeywords: [],
     userKeywords: [],
     secondaryKeywordGroups: [],
@@ -492,6 +495,7 @@ function createStageDraft(addition: FixedEventStageRowAddition, usedIds: Set<str
       keywords: [],
       userKeywords: [],
       hasUnsupportedAdvancedLogic: false,
+      customTextUnknownFields: {},
       unknownFields: {},
     },
     unknownFields: {},
