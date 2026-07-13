@@ -69,6 +69,10 @@ const rowOperation = applyFixedEventIndexRowOperationsToYaml({
   addGroups: [{ id: 'group_new', name: '新分组', eventIds: [] }],
 });
 assertSentinels(rowOperation, 'row operation');
+const addedGroup = parseFixedEventIndexDraft(rowOperation, SOURCE).groups.find(group => group.id === 'group_new');
+if (!addedGroup) throw new Error('row operation: 未新增 group_new');
+if (addedGroup.name !== '新分组') throw new Error('row operation: group_new 名称不正确');
+if (addedGroup.eventIds.length !== 0) throw new Error('row operation: group_new 事件列表不正确');
 
 const renamed = renameFixedEventIndexRowIdInYaml({
   sourceYaml: input,
@@ -78,4 +82,7 @@ const renamed = renameFixedEventIndexRowIdInYaml({
   newId: 'event_renamed',
 });
 assertSentinels(renamed, 'rename');
+const renamedEventIds = (parseYaml(renamed) as any).固定事件.map((event: any) => event.id);
+if (renamedEventIds.includes('event_1')) throw new Error('rename: 旧 event_1 仍然存在');
+if (!renamedEventIds.includes('event_renamed')) throw new Error('rename: 未生成 event_renamed');
 console.log('round-trip-unknown-fields.check.ts OK');
