@@ -693,10 +693,6 @@ function getEditingRecord() {
   );
 }
 
-function buildFormEditingNotice(): string {
-  return '';
-}
-
 function syncStateAnchors(): void {
   if (state.dataset?.nowDate) {
     state.currentMonth = {
@@ -2246,7 +2242,7 @@ function renderFormSection(): void {
   const defaultStart = state.selectedDateKey
     ? formatSelectedDateForForm(state.selectedDateKey)
     : latestWorldTime.nowText || state.dataset.nowText || '';
-  refs.formPanel.innerHTML = `${buildFormEditingNotice()}${renderFormHtml({
+  refs.formPanel.innerHTML = renderFormHtml({
     nowText: latestWorldTime.nowText || state.dataset.nowText || fallbackDateLabel(state.selectedDateKey),
     titleCandidates: state.dataset.suggestions.titleCandidates,
     idCandidates: state.dataset.suggestions.idCandidates,
@@ -2270,7 +2266,7 @@ function renderFormSection(): void {
           visibility: '玩家与LLM',
         },
     editing: Boolean(editing),
-  })}`;
+  });
 }
 
 function scrollActiveBookPageTabIntoView(): void {
@@ -3213,7 +3209,7 @@ function setExternalHostMode(enabled: boolean): void {
   syncIframePointerEvents();
 }
 
-export interface CalendarWidgetBootstrapDependencies {
+interface CalendarWidgetBootstrapDependencies {
   ensureProfileAddonsLoaded(): Promise<void>;
 }
 
