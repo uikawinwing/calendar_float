@@ -58,8 +58,14 @@ export function hasActiveEventId(buckets: ActiveCalendarBuckets, id: string): bo
   return Boolean(buckets.临时[id] || buckets.重复[id]);
 }
 
-export async function ensureCalendarLatestMessageVariableStore(): Promise<boolean> {
+export async function ensureCalendarLatestMessageVariableStore(isCurrent: () => boolean = () => true): Promise<boolean> {
+  if (!isCurrent()) {
+    return false;
+  }
   const isMvuReady = await ensureMvuReady();
+  if (!isCurrent()) {
+    return false;
+  }
   const target = getLatestMessageVariableTarget();
   if (!target) {
     return false;
@@ -91,8 +97,17 @@ export async function readActiveBuckets(): Promise<ActiveCalendarBuckets> {
   };
 }
 
-export async function replaceActiveBuckets(nextBuckets: ActiveCalendarBuckets): Promise<void> {
+export async function replaceActiveBuckets(
+  nextBuckets: ActiveCalendarBuckets,
+  isCurrent: () => boolean = () => true,
+): Promise<void> {
+  if (!isCurrent()) {
+    return;
+  }
   const isMvuReady = await ensureMvuReady();
+  if (!isCurrent()) {
+    return;
+  }
   const target = getLatestMessageVariableTarget();
   if (!target) {
     warnMessageVariableUnavailable('当前聊天没有可写入的消息楼层，暂时跳过月历事件写入');

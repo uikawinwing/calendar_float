@@ -28,7 +28,7 @@
 - `profile/`：通用月历 / 命定之诗 profile 检测、路径配置、日期设置和 profile 专属视觉 preset
 - `runtime-dataset/`：把世界书索引、主动事件、归档事件、节庆和读物组装成 UI 使用的 `CalendarDataset`；单次 load 传递 operation-scoped worldbook snapshot
 - `runtime-trigger-evaluator/`：runtime 命中判定、日期窗口、关键词、提醒和内容解析
-- `runtime-worldbook/`：世界书索引来源发现、YAML 读取、schema 归一化、正文解析、runtime defaults、月份别名、scanner 输入上下文和 bootstrap；snapshot 不跨 operation 复用，scanner 对 generation 采用 single-flight 与 teardown invalidation
+- `runtime-worldbook/`：世界书索引来源发现、YAML 读取、schema 归一化、正文解析、runtime defaults、月份别名、scanner 输入上下文和 bootstrap；snapshot 不跨 operation 复用，scanner 在同一 generation 内 single-flight，teardown 后新 generation 不等待旧任务
 - `storage/`：聊天变量、消息变量、归档策略、世界书来源配置、事件颜色和标签建议
 - `widget/`：悬浮月历 UI、事件绑定、渲染和样式，见 `widget/structure.md`
 - `worldbook-manager/`：脚本托管的基础设施世界书条目安装、重装、卸载、诊断和搬运
