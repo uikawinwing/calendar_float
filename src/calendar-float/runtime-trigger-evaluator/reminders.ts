@@ -1,8 +1,8 @@
 import _ from 'lodash';
 import {
   getRelativeDayDistance,
-  isPointInsideRange,
 } from '../date';
+import { resolveFestivalDateRange } from '../festival-date-range';
 import { resolveCalendarRuntimeNodeText } from '../runtime-worldbook/resolver';
 import type {
   CalendarRuntimeContentNode,
@@ -14,7 +14,6 @@ import type { CalendarRuntimeWorldbookSnapshot } from '../runtime-worldbook/snap
 import { readCurrentWorldTime } from '../storage';
 import type { DatePoint } from '../types';
 import { evaluateCalendarRuntimeTrigger } from './conditions';
-import { 解析节庆日期范围 } from './date-window';
 import { 规范化文本 } from './text';
 import type {
   CalendarRuntimeReminderResolveResult,
@@ -31,22 +30,25 @@ export function buildCalendarFestivalWindow(
   },
   reminderDays = 0,
 ): CalendarRuntimeFestivalWindowResult | null {
-  const range = 解析节庆日期范围(festival, now);
-  if (!range) {
+  const resolved = resolveFestivalDateRange({
+    start: festival.开始,
+    end: festival.结束,
+    recurrence: festival.周期 ? { intervalYears: festival.周期.每隔年, lastYear: festival.周期.上次年份 } : undefined,
+    now,
+    prepareDays: reminderDays,
+  });
+  if (!resolved) {
     return null;
   }
 
-  const 提前天数 = Math.max(0, Number(reminderDays || 0));
-  const 距离开始天数 = getRelativeDayDistance(now, range.开始);
-  const 是否进行中 = isPointInsideRange(now, { start: range.开始, end: range.结束 });
-  const 是否即将开始 = 提前天数 > 0 && 距离开始天数 > 0 && 距离开始天数 <= 提前天数;
+  const 距离开始天数 = getRelativeDayDistance(now, resolved.range.start);
 
   return {
-    开始: range.开始,
-    结束: range.结束,
+    开始: resolved.range.start,
+    结束: resolved.range.end,
     距离开始天数,
-    是否进行中,
-    是否在提醒窗口: 是否进行中 || 是否即将开始,
+    是否进行中: resolved.state === 'active',
+    是否在提醒窗口: resolved.state !== 'outside',
   };
 }
 
