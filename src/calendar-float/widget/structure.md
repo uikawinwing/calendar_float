@@ -22,6 +22,8 @@ Host 禁止重新拥有：
 - editor/managed flow 已拥有的确认、错误和结果文案决策；
 - 60 个 `onX` callback options 或绕过 typed action 的第二条主事件通道。
 
+Host 不是业务状态仓库。它可以持有真实 DOM ref、render coordination 和 browser lifecycle；能在纯 session、flow、dataset 或 policy 模块表达的状态与顺序，不得回流到 `uiState`。
+
 DOM 元素、jQuery、toastr 和 Tavern Helper globals 留在 host adapter，不能传入纯 session/flow 模块。
 
 ## 三个深模块
@@ -38,6 +40,7 @@ DOM 元素、jQuery、toastr 和 Tavern Helper globals 留在 host adapter，不
 - `fixed-event-editor-bindings.ts` 只采集 DOM 字段并发出 DOM-free intent，同时处理 recurrence、selection 和 scroll 所需的 DOM 细节。
 - `fixed-event-editor-host.ts` 保留 loading model 与运行时月份别名回填 policy；`fixed-event-editor-scroll.ts` 保留 scroll snapshot。
 - `index.ts` 只组装 load/save/confirm adapter、订阅 snapshot、渲染 panel 和绑定 DOM。
+- unsupported nested YAML fields 由 parse/serialize round-trip 保留；structured edit 只能改变已拥有的字段，不能把未知子树洗掉。
 
 ### 托管世界书：`managed-worldbook/flow.ts`
 
