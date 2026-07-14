@@ -47,7 +47,9 @@ function serializeReminder(reminder: FixedEventReminderDraft): Record<string, un
     reminder.userKeywords.length === 0 &&
     reminder.prepareDays === undefined &&
     reminder.inactiveText === undefined &&
-    reminder.activeText === undefined
+    reminder.activeText === undefined &&
+    Object.keys(reminder.customTextUnknownFields).length === 0 &&
+    Object.keys(reminder.unknownFields).length === 0
   ) {
     return undefined;
   }
@@ -61,8 +63,13 @@ function serializeReminder(reminder: FixedEventReminderDraft): Record<string, un
     addIfDefined(output, '注入深度', reminder.injectDepth);
   }
   addIfDefined(output, '宏触发词', reminder.macroToken);
-  if (reminder.inactiveText !== undefined || reminder.activeText !== undefined) {
+  if (
+    Object.keys(reminder.customTextUnknownFields).length > 0 ||
+    reminder.inactiveText !== undefined ||
+    reminder.activeText !== undefined
+  ) {
     output.开启自定义提醒 = {
+      ...reminder.customTextUnknownFields,
       未开始: reminder.inactiveText ?? false,
       进行中: reminder.activeText ?? false,
     };
@@ -209,6 +216,7 @@ function serializeEvent(event: FixedEventDraft): Record<string, unknown> {
   output.结束 = event.end || event.start;
   if (event.recurrence) {
     output.周期 = {
+      ...event.recurrence.unknownFields,
       每隔年: event.recurrence.intervalYears,
       上次年份: event.recurrence.lastYear,
     };
@@ -239,6 +247,7 @@ function serializeEvent(event: FixedEventDraft): Record<string, unknown> {
   }
   event.triggerGroups.secondaryKeywordGroups.forEach((group, index) => {
     output[`次要关键字${index + 1}`] = {
+      ...group.unknownFields,
       逻辑: group.logic,
       关键字: group.keywords,
     };
@@ -255,8 +264,13 @@ function serializeMaterial(material: FixedEventMaterialDraft): Record<string, un
   }
   output.关联事件 = material.eventIds;
   addIfDefined(output, '摘要', material.summaryText);
-  if (material.fullTextEntryName || material.fullTextWorldbookName) {
+  if (
+    Object.keys(material.fullTextUnknownFields).length > 0 ||
+    material.fullTextEntryName ||
+    material.fullTextWorldbookName
+  ) {
     output.全文 = {
+      ...material.fullTextUnknownFields,
       ...(material.fullTextWorldbookName ? { 世界书: material.fullTextWorldbookName } : {}),
       ...(material.fullTextEntryName ? { 条目名: material.fullTextEntryName } : {}),
     };
@@ -269,6 +283,7 @@ function serializeMaterial(material: FixedEventMaterialDraft): Record<string, un
   }
   material.secondaryKeywordGroups.forEach((group, index) => {
     output[`次要关键字${index + 1}`] = {
+      ...group.unknownFields,
       逻辑: group.logic,
       关键字: group.keywords,
     };

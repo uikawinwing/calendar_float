@@ -130,6 +130,7 @@ export interface FixedEventStageDraft {
 export interface FixedEventRecurrenceDraft {
   intervalYears: number;
   lastYear: number;
+  unknownFields: Record<string, unknown>;
 }
 
 export interface FixedEventContentRefDraft {
@@ -154,6 +155,7 @@ export interface FixedEventReminderDraft {
   keywords: string[];
   userKeywords: string[];
   hasUnsupportedAdvancedLogic: boolean;
+  customTextUnknownFields: Record<string, unknown>;
   unknownFields: Record<string, unknown>;
 }
 
@@ -165,6 +167,7 @@ export interface FixedEventMaterialDraft {
   summaryText?: string;
   fullTextEntryName?: string;
   fullTextWorldbookName?: string;
+  fullTextUnknownFields: Record<string, unknown>;
   messageKeywords: string[];
   userKeywords: string[];
   secondaryKeywordGroups: FixedEventKeywordGroupDraft[];
@@ -181,6 +184,7 @@ export interface FixedEventTriggerGroupsDraft {
 export interface FixedEventKeywordGroupDraft {
   logic: FixedEventKeywordGroupLogic;
   keywords: string[];
+  unknownFields: Record<string, unknown>;
 }
 
 export interface FixedEventIndexValidationResult {

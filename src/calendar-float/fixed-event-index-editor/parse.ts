@@ -109,6 +109,7 @@ function parseKeywordGroups(source: Record<string, unknown>): FixedEventKeywordG
     groups.push({
       logic: logic === '与全部' || logic === '非任意' ? logic : '与任意',
       keywords,
+      unknownFields: pickUnknownFields(value, ['逻辑', 'logic', '关键字', 'keywords']),
     });
   });
   return groups;
@@ -218,9 +219,10 @@ function parseContentRef(source: unknown): FixedEventContentRefDraft {
 
 function parseReminder(source: unknown): FixedEventReminderDraft {
   const item = isRecord(source) ? source : {};
-  const custom = readObject(item, ['开启自定义提醒', '自定义提醒', '自定义正文']) ?? item;
-  const inactiveRaw = readField(custom, ['未开始']);
-  const activeRaw = readField(custom, ['进行中']);
+  const custom = readObject(item, ['开启自定义提醒', '自定义提醒', '自定义正文']);
+  const customTextSource = custom ?? item;
+  const inactiveRaw = readField(customTextSource, ['未开始']);
+  const activeRaw = readField(customTextSource, ['进行中']);
   const outputMode = toText(readField(item, ['注入方式', 'mode', 'output_mode', 'outputMode']));
   return {
     enabled: readField(item, ['启用', 'enabled']) === false ? false : true,
@@ -233,6 +235,7 @@ function parseReminder(source: unknown): FixedEventReminderDraft {
     keywords: toTextList(readField(item, ['关键字', '消息关键词', 'keywords'])),
     userKeywords: toTextList(readField(item, ['用户消息包含', 'user_keywords', 'userKeywords'])),
     hasUnsupportedAdvancedLogic: readField(item, ['完整逻辑', 'logic_tree', 'logicTree']) !== undefined,
+    customTextUnknownFields: custom ? pickUnknownFields(custom, ['未开始', '进行中']) : {},
     unknownFields: pickUnknownFields(item, [
       '启用',
       'enabled',
@@ -275,7 +278,8 @@ function parseMaterial(source: Record<string, unknown>, parentEventId?: string):
   if (!id && !title) {
     return null;
   }
-  const fullText = readObject(source, ['全文', 'fullText']) ?? source;
+  const fullTextSource = readObject(source, ['全文', 'fullText']);
+  const fullText = fullTextSource ?? source;
   const eventIds = toTextList(readField(source, ['关联事件', 'eventIds', 'event_ids']));
   if (parentEventId) {
     eventIds.push(parentEventId);
@@ -289,6 +293,17 @@ function parseMaterial(source: Record<string, unknown>, parentEventId?: string):
     fullTextEntryName:
       toText(readField(fullText, ['条目名', '世界书条目名称', 'entryname', 'entryName'])) || undefined,
     fullTextWorldbookName: toText(readField(fullText, ['世界书', 'worldbook', 'worldbookName'])) || undefined,
+    fullTextUnknownFields: fullTextSource
+      ? pickUnknownFields(fullTextSource, [
+          '条目名',
+          '世界书条目名称',
+          'entryname',
+          'entryName',
+          '世界书',
+          'worldbook',
+          'worldbookName',
+        ])
+      : {},
     messageKeywords: toTextList(readField(source, ['关键字', '消息关键词', 'keywords'])),
     userKeywords: toTextList(readField(source, ['用户消息包含', 'user_keywords', 'userKeywords'])),
     secondaryKeywordGroups: parseKeywordGroups(source),
@@ -565,7 +580,27 @@ function parseEvent(source: Record<string, unknown>, materials: FixedEventMateri
     groupId: toText(readField(source, ['分组', 'group', 'groupId', 'group_id'])) || undefined,
     start,
     end,
-    recurrence: intervalYears !== undefined && lastYear !== undefined ? { intervalYears, lastYear } : undefined,
+    recurrence:
+      intervalYears !== undefined && lastYear !== undefined
+        ? {
+            intervalYears,
+            lastYear,
+            unknownFields:
+              recurrenceSource === source
+                ? {}
+                : pickUnknownFields(recurrenceSource, [
+                    '每隔年',
+                    '每X年',
+                    '间隔年数',
+                    'intervalYears',
+                    'interval_years',
+                    '上次年份',
+                    '上次举办年份',
+                    'lastYear',
+                    'last_year',
+                  ]),
+          }
+        : undefined,
     locationKeywords: toTextList(readField(source, ['地点关键词', '地点', 'location_keywords', 'locationKeywords', 'locations'])),
     stages: parseStages(source),
     intro: parseContentRef(readField(source, ['介绍', 'event', 'intro'])),
