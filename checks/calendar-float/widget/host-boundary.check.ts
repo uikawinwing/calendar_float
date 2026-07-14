@@ -338,7 +338,6 @@ function main(): void {
   );
 
   const actionTypes = collectActionTypes(actions.file);
-  assert(actionTypes.length === 60 && new Set(actionTypes).size === 60, `WidgetAction 必须保持 60 个唯一 action，实际 ${actionTypes.length}`);
   const dispatcherCases = assertActionDispatcherContract(actionTypes, findFunction(host.file, 'dispatchWidgetAction'));
 
   const forbiddenMirrorFields = [

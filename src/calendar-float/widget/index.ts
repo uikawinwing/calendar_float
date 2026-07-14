@@ -22,6 +22,7 @@ import { getActiveCalendarProfile, isCalendarAddonEnabled } from '../profile';
 import { loadCalendarDatasetFromRuntimeWorldbook } from '../runtime-ui-dataset';
 import { getCalendarWorldLocationPath, getCalendarWorldTimePath } from '../runtime-worldbook/config';
 import { buildSelectedDayDetail, fallbackDateLabel } from './day-detail';
+import { createDatasetRefreshQueue, type DatasetRefreshRunContext } from './dataset-refresh-queue';
 import { renderFormHtml } from './form-render';
 import { getContrastRatio, isValidHexColor, TAG_COLOR_PALETTE } from './helpers/color';
 import { createRenderMarkdownContent, escapeHtml } from './helpers/markdown';
@@ -255,6 +256,7 @@ const state: WidgetState = {
 };
 
 let monthAliases: CalendarMonthAliasRecord[] = [];
+let initialDatasetRefreshRetryIds: number[] = [];
 
 const BALL_POSITION_VAR_KEY = 'calendar_float_ball_position';
 const BALL_DEFAULT_SIZE = 60;
@@ -2109,6 +2111,27 @@ function renderBookMainView(bookId: string): string {
   });
 }
 
+function openCalendarBook(bookId: string): boolean {
+  const normalizedBookId = String(bookId || '').trim();
+  if (!normalizedBookId) {
+    return false;
+  }
+
+  const hasBook =
+    Boolean(state.dataset?.books[normalizedBookId]) ||
+    (isElliaAddonEnabled() && Boolean(elliaAddon?.isElliaBetaTicketBookId(normalizedBookId)));
+  if (!hasBook) {
+    return false;
+  }
+
+  uiState.openedBookId = normalizedBookId;
+  uiState.openedBookPageIndex = 0;
+  switchSidebarTab('detail');
+  setOpen(true);
+  revealSidebarOnMobile();
+  return true;
+}
+
 function quickInputBookTrigger(triggerText: string): void {
   const text = String(triggerText || '').trim();
   if (!text) {
@@ -2423,16 +2446,34 @@ function renderShell(): void {
   applyPanelPosition();
 }
 
-async function refreshDataset(): Promise<void> {
-  await ensureCalendarLatestMessageVariableStore();
+async function refreshDatasetNow(context: DatasetRefreshRunContext): Promise<void> {
+  if (state.destroyed || !context.isCurrent()) {
+    return;
+  }
+  await ensureCalendarLatestMessageVariableStore(context.isCurrent);
+  if (state.destroyed || !context.isCurrent()) {
+    return;
+  }
   const dataset = await loadCalendarDatasetFromRuntimeWorldbook();
-  await syncArchiveOnActiveRemoval(dataset.nowText || '');
+  if (state.destroyed || !context.isCurrent()) {
+    return;
+  }
+  await syncArchiveOnActiveRemoval(dataset.nowText || '', context.isCurrent);
+  if (state.destroyed || !context.isCurrent()) {
+    return;
+  }
   monthAliases = dataset.monthAliases ?? [];
   state.dataset = dataset;
   state.reminder = buildReminderState(dataset);
   syncStateAnchors();
   syncKnownTagsVariable(dataset);
   renderShell();
+}
+
+const datasetRefreshQueue = createDatasetRefreshQueue(refreshDatasetNow);
+
+async function refreshDataset(): Promise<void> {
+  return datasetRefreshQueue.request();
 }
 
 function setOpen(open: boolean): void {
@@ -2945,16 +2986,7 @@ async function dispatchWidgetAction(action: WidgetAction): Promise<void> {
       revealSidebarOnMobile();
       return;
     case 'book/open':
-      if (
-        !state.dataset?.books[action.bookId] &&
-        !(isElliaAddonEnabled() && Boolean(elliaAddon?.isElliaBetaTicketBookId(action.bookId)))
-      ) {
-        return;
-      }
-      uiState.openedBookId = action.bookId;
-      uiState.openedBookPageIndex = 0;
-      switchSidebarTab('detail');
-      renderShell();
+      openCalendarBook(action.bookId);
       return;
     case 'book/open-page':
       uiState.openedBookPageIndex = Math.max(0, action.pageIndex);
@@ -3155,6 +3187,8 @@ function destroy(reason?: string): void {
   state.destroyed = true;
   destroyFixedEventEditorSession();
   destroyManagedWorldbookFlow();
+  datasetRefreshQueue.invalidate();
+  clearInitialDatasetRefreshRetries();
   if (refs.ball) {
     $(refs.ball).off('.calendar-float');
   }
@@ -3192,14 +3226,22 @@ async function reload(): Promise<void> {
   await refreshDataset();
 }
 
+function clearInitialDatasetRefreshRetries(): void {
+  initialDatasetRefreshRetryIds.forEach(timeoutId => {
+    uiWindow.clearTimeout(timeoutId);
+  });
+  initialDatasetRefreshRetryIds = [];
+}
+
 function scheduleInitialDatasetRefreshRetries(): void {
-  [600, 1800].forEach(delay => {
+  clearInitialDatasetRefreshRetries();
+  initialDatasetRefreshRetryIds = [600, 1800].map(delay =>
     uiWindow.setTimeout(() => {
       if (!state.destroyed) {
         void refreshDataset();
       }
-    }, delay);
-  });
+    }, delay)
+  );
 }
 
 function setExternalHostMode(enabled: boolean): void {
@@ -3225,6 +3267,7 @@ export async function bootstrapCalendarWidget(
   hostWindow[INSTANCE_KEY]?.destroy('reload');
   await dependencies.ensureProfileAddonsLoaded();
   lifecycle.throwIfStale();
+  datasetRefreshQueue.invalidate();
   state.destroyed = false;
   initializeFixedEventEditorSession();
   initializeManagedWorldbookFlow();
@@ -3240,6 +3283,7 @@ export async function bootstrapCalendarWidget(
   hostWindow[INSTANCE_KEY] = {
     destroy,
     open: () => setOpen(true),
+    openBook: openCalendarBook,
     close: () => setOpen(false),
     reload,
     setExternalHostMode,

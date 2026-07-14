@@ -20,7 +20,7 @@ Host 禁止重新拥有：
 - parse、serialize、validate、structured edit、row operation、rename 等 YAML 变换；
 - managed-worldbook 的 busy/dialog/diagnostics/candidates/warnings 镜像状态或 effect ordering；
 - editor/managed flow 已拥有的确认、错误和结果文案决策；
-- 60 个 `onX` callback options 或绕过 typed action 的第二条主事件通道。
+- 逐 action 的 `onX` callback options 或绕过 typed action 的第二条主事件通道。
 
 Host 不是业务状态仓库。它可以持有真实 DOM ref、render coordination 和 browser lifecycle；能在纯 session、flow、dataset 或 policy 模块表达的状态与顺序，不得回流到 `uiState`。
 
@@ -51,6 +51,7 @@ DOM 元素、jQuery、toastr 和 Tavern Helper globals 留在 host adapter，不
 ## 其余文件职责
 
 - `date-actions.ts`：日期 key 解析和世界时间格式化。
+- `dataset-refresh-queue.ts`：同一 widget generation 内合并 refresh；invalidate 后旧任务不得阻塞或提交到新实例。
 - `dialog-policy.ts`：通用 confirmation 决策。
 - `event-action-policy.ts`：保存、删除、归档、颜色等交互决策。
 - `event-binding/types.ts`、`event-binding/parsers.ts`：共享 mode 与 DOM attribute parser。

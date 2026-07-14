@@ -24,6 +24,7 @@ interface FloatingHostApi {
 
 interface CalendarFloatWidgetApi {
   open: () => void;
+  openBook?: (bookId: string) => boolean;
   close: () => void;
   reload: () => Promise<void> | void;
   destroy: (reason?: string) => void;

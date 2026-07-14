@@ -152,17 +152,23 @@ export async function removeActiveEventWithPolicy(params: {
   return policyAction === 'delete' ? 'deleted' : 'archived';
 }
 
-export async function syncArchiveOnActiveRemoval(completedAt?: string): Promise<{
+export async function syncArchiveOnActiveRemoval(
+  completedAt?: string,
+  isCurrent: () => boolean = () => true,
+): Promise<{
   archived: number;
   skipped: number;
   deleted: number;
   restored: number;
 }> {
-  if (!getLatestMessageVariableTarget()) {
+  if (!isCurrent() || !getLatestMessageVariableTarget()) {
     return { archived: 0, skipped: 0, deleted: 0, restored: 0 };
   }
 
   const buckets = await readActiveBuckets();
+  if (!isCurrent()) {
+    return { archived: 0, skipped: 0, deleted: 0, restored: 0 };
+  }
   const archive = readArchiveStore();
   const previous = archive.lastActiveSnapshot;
   let archived = 0;
@@ -212,9 +218,15 @@ export async function syncArchiveOnActiveRemoval(completedAt?: string): Promise<
   });
 
   if (restored > 0) {
-    await replaceActiveBuckets(buckets);
+    await replaceActiveBuckets(buckets, isCurrent);
+    if (!isCurrent()) {
+      return { archived: 0, skipped: 0, deleted: 0, restored: 0 };
+    }
   }
 
+  if (!isCurrent()) {
+    return { archived: 0, skipped: 0, deleted: 0, restored: 0 };
+  }
   archive.lastActiveSnapshot = cloneBucketsSnapshot(buckets);
   replaceArchiveStore(archive);
   return { archived, skipped, deleted, restored };

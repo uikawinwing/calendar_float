@@ -169,6 +169,7 @@ declare global {
     CalendarFloatWidget?: {
       destroy: (reason?: string) => void;
       open: () => void;
+      openBook?: (bookId: string) => boolean;
       close: () => void;
       reload: () => Promise<void> | void;
       setExternalHostMode?: (enabled: boolean) => void;
