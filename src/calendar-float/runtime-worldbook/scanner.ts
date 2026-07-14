@@ -15,8 +15,8 @@ import {
   resolveCalendarFestivalStageReminder,
   type CalendarRuntimeTriggerContext,
 } from '../runtime-trigger-evaluator';
-import { readCalendarRuntimeIndex } from './loader';
 import { normalizeCalendarMonthAliasList } from './month-alias';
+import { loadCalendarRuntimeWorldbookSnapshot, type CalendarRuntimeWorldbookSnapshot } from './snapshot';
 import type { CalendarRuntimeContentNode, CalendarRuntimeIndex } from './types';
 import { readCurrentWorldTime } from '../storage';
 
@@ -34,6 +34,10 @@ let generationHookBound = false;
 let chatChangedHookBound = false;
 let generationHookStop: (() => void) | null = null;
 let chatChangedHookStop: (() => void) | null = null;
+let scanInFlight: Promise<void> | null = null;
+let scanInFlightGeneration: number | null = null;
+let scanQueued = false;
+let scanGeneration = 0;
 
 export interface CalendarRuntimeScanResult {
   命中关键字: string[];
@@ -85,13 +89,14 @@ async function 扫描节庆介绍与全文(
   index: CalendarRuntimeIndex,
   context: CalendarRuntimeTriggerContext,
   result: CalendarRuntimeScanResult,
+  snapshot: CalendarRuntimeWorldbookSnapshot,
 ): Promise<void> {
   for (const festival of index.节庆 ?? []) {
     if (festival.启用 === false) {
       continue;
     }
 
-    const intro = await resolveCalendarContentNode(festival.介绍, context);
+    const intro = await resolveCalendarContentNode(festival.介绍, context, { snapshot });
     if (intro.命中) {
       追加节点关键字(result.命中关键字, festival.介绍);
     }
@@ -102,7 +107,7 @@ async function 扫描节庆介绍与全文(
     if (book.启用 === false) {
       continue;
     }
-    const fulltext = await resolveCalendarContentNode(book.全文, context);
+    const fulltext = await resolveCalendarContentNode(book.全文, context, { snapshot });
     if (fulltext.命中) {
       追加节点关键字(result.命中关键字, book.全文);
     }
@@ -114,13 +119,14 @@ async function 扫描节庆提醒(
   index: CalendarRuntimeIndex,
   context: CalendarRuntimeTriggerContext,
   result: CalendarRuntimeScanResult,
+  snapshot: CalendarRuntimeWorldbookSnapshot,
 ): Promise<void> {
   for (const festival of index.节庆 ?? []) {
     if (festival.启用 === false) {
       continue;
     }
 
-    const reminder = await resolveCalendarFestivalReminder(festival, context);
+    const reminder = await resolveCalendarFestivalReminder(festival, context, snapshot);
     if (reminder.状态 === '未开始' || reminder.状态 === '进行中') {
       追加节点关键字(result.命中关键字, festival.提醒);
       if (festival.提醒?.输出?.模式 !== 'silent_scan') {
@@ -134,7 +140,7 @@ async function 扫描节庆提醒(
     result.警告.push(...reminder.警告.map(message => `[节庆提醒:${festival.名称}] ${message}`));
 
     for (const stage of festival.阶段 ?? []) {
-      const stageReminder = await resolveCalendarFestivalStageReminder(festival, stage, context);
+      const stageReminder = await resolveCalendarFestivalStageReminder(festival, stage, context, snapshot);
       if (stageReminder.状态 === '未开始' || stageReminder.状态 === '进行中') {
         追加节点关键字(result.命中关键字, stage.提醒);
         if (stage.提醒?.输出?.模式 !== 'silent_scan') {
@@ -189,13 +195,13 @@ function clearRuntimePrompts(): void {
 }
 
 function handleGenerationAfterCommands(): void {
-  void applyCalendarRuntimeWorldbookScan().catch(error => {
+  void requestCalendarRuntimeWorldbookScan().catch(error => {
     console.warn(`[${SCRIPT_NAME}] runtime worldbook generation scan 失败`, error);
   });
 }
 
 function handleChatChanged(): void {
-  void applyCalendarRuntimeWorldbookScan().catch(error => {
+  void requestCalendarRuntimeWorldbookScan().catch(error => {
     console.warn(`[${SCRIPT_NAME}] runtime worldbook chat scan 失败`, error);
   });
 }
@@ -285,8 +291,11 @@ function writeRuntimeScanVariables(result: CalendarRuntimeScanResult): void {
   );
 }
 
-export async function scanCalendarRuntimeWorldbook(): Promise<CalendarRuntimeScanResult> {
-  const indexResult = await readCalendarRuntimeIndex();
+export async function scanCalendarRuntimeWorldbook(
+  snapshot?: CalendarRuntimeWorldbookSnapshot,
+): Promise<CalendarRuntimeScanResult> {
+  const runtimeSnapshot = snapshot ?? (await loadCalendarRuntimeWorldbookSnapshot());
+  const indexResult = runtimeSnapshot.indexResult;
   const index: CalendarRuntimeIndex | null = indexResult.索引;
   const result: CalendarRuntimeScanResult = {
     命中关键字: [],
@@ -301,8 +310,8 @@ export async function scanCalendarRuntimeWorldbook(): Promise<CalendarRuntimeSca
   }
 
   const context = 读取触发上下文(index);
-  await 扫描节庆介绍与全文(index, context, result);
-  await 扫描节庆提醒(index, context, result);
+  await 扫描节庆介绍与全文(index, context, result, runtimeSnapshot);
+  await 扫描节庆提醒(index, context, result, runtimeSnapshot);
   result.命中关键字 = 取唯一文本(result.命中关键字);
   result.提醒未开始文本 = 取唯一文本(result.提醒未开始文本);
   result.提醒进行中文本 = 取唯一文本(result.提醒进行中文本);
@@ -310,8 +319,7 @@ export async function scanCalendarRuntimeWorldbook(): Promise<CalendarRuntimeSca
   return result;
 }
 
-export async function applyCalendarRuntimeWorldbookScan(): Promise<void> {
-  const result = await scanCalendarRuntimeWorldbook();
+async function publishCalendarRuntimeWorldbookScan(result: CalendarRuntimeScanResult): Promise<void> {
   writeRuntimeScanVariables(result);
 
   const scanContent = buildRuntimeScanPromptContent(result.命中关键字);
@@ -337,6 +345,75 @@ export async function applyCalendarRuntimeWorldbookScan(): Promise<void> {
   }
 }
 
+async function runCalendarRuntimeWorldbookScan(generation: number): Promise<void> {
+  try {
+    const snapshot = await loadCalendarRuntimeWorldbookSnapshot();
+    const result = await scanCalendarRuntimeWorldbook(snapshot);
+    if (generation !== scanGeneration) {
+      return;
+    }
+    await publishCalendarRuntimeWorldbookScan(result);
+  } catch (error) {
+    if (generation !== scanGeneration) {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function drainCalendarRuntimeScanQueue(generation: number, rerunAfterFirstScan = false): Promise<void> {
+  let rerunRequested = rerunAfterFirstScan;
+  while (generation === scanGeneration) {
+    scanQueued = false;
+    await runCalendarRuntimeWorldbookScan(generation);
+    if (generation !== scanGeneration) {
+      return;
+    }
+    if (!rerunRequested && !scanQueued) {
+      return;
+    }
+    rerunRequested = false;
+  }
+}
+
+function startCalendarRuntimeScan(
+  generation: number,
+  predecessor: Promise<void> | null = null,
+): Promise<void> {
+  const operation = predecessor
+    ? predecessor.then(
+        () => drainCalendarRuntimeScanQueue(generation, scanQueued),
+        () => drainCalendarRuntimeScanQueue(generation, scanQueued),
+      )
+    : drainCalendarRuntimeScanQueue(generation);
+  const trackedPromise = operation.finally(() => {
+    if (scanInFlight !== trackedPromise) {
+      return;
+    }
+    scanInFlight = null;
+    scanInFlightGeneration = null;
+    scanQueued = false;
+  });
+  scanInFlight = trackedPromise;
+  scanInFlightGeneration = generation;
+  return trackedPromise;
+}
+
+export function requestCalendarRuntimeWorldbookScan(): Promise<void> {
+  if (scanInFlight) {
+    if (scanInFlightGeneration !== scanGeneration) {
+      return startCalendarRuntimeScan(scanGeneration, scanInFlight);
+    }
+    scanQueued = true;
+    return scanInFlight;
+  }
+  return startCalendarRuntimeScan(scanGeneration);
+}
+
+export function applyCalendarRuntimeWorldbookScan(): Promise<void> {
+  return requestCalendarRuntimeWorldbookScan();
+}
+
 function bindGenerationHook(): void {
   if (generationHookBound) {
     return;
@@ -357,7 +434,7 @@ export function bootstrapCalendarRuntimeWorldbookScanner(): void {
   globalThis.CalendarFloatRuntimeWorldbookScanner?.destroy();
   bindGenerationHook();
   bindChatChangedHook();
-  void applyCalendarRuntimeWorldbookScan().catch(error => {
+  void requestCalendarRuntimeWorldbookScan().catch(error => {
     console.warn(`[${SCRIPT_NAME}] 初始化 runtime worldbook scanner 失败`, error);
   });
   globalThis.CalendarFloatRuntimeWorldbookScanner = {
@@ -366,6 +443,8 @@ export function bootstrapCalendarRuntimeWorldbookScanner(): void {
 }
 
 export function teardownCalendarRuntimeWorldbookScanner(): void {
+  scanGeneration += 1;
+  scanQueued = false;
   generationHookStop?.();
   chatChangedHookStop?.();
   generationHookStop = null;

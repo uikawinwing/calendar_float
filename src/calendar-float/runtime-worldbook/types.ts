@@ -9,6 +9,14 @@ export type CalendarRuntimeReminderState = '未开始' | '进行中';
 export type CalendarRuntimeInjectionPosition = 'none' | 'in_chat';
 export type CalendarRuntimeOutputMode = 'silent_scan' | 'injectprompt';
 
+export interface CalendarRuntimeDiagnostic {
+  level: 'info' | 'warning' | 'error';
+  code: string;
+  message: string;
+  worldbookName?: string;
+  entryName?: string;
+}
+
 export interface CalendarWorldbookReference {
   条目名: string;
   世界书?: string;
@@ -189,6 +197,7 @@ export interface CalendarWorldbookIndexReadResult {
   命中世界书名: string | null;
   命中条目名: string | null;
   警告: string[];
+  诊断?: CalendarRuntimeDiagnostic[];
 }
 
 export interface CalendarWorldbookTextLibraryReadResult {
@@ -196,4 +205,5 @@ export interface CalendarWorldbookTextLibraryReadResult {
   来源: CalendarTextLibraryReference | null;
   命中条目名: string | null;
   警告: string[];
+  诊断?: CalendarRuntimeDiagnostic[];
 }

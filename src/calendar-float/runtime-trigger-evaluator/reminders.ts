@@ -10,6 +10,7 @@ import type {
   CalendarRuntimeFestivalStageEntry,
   CalendarRuntimeFestivalEntry,
 } from '../runtime-worldbook/types';
+import type { CalendarRuntimeWorldbookSnapshot } from '../runtime-worldbook/snapshot';
 import { readCurrentWorldTime } from '../storage';
 import type { DatePoint } from '../types';
 import { evaluateCalendarRuntimeTrigger } from './conditions';
@@ -96,6 +97,7 @@ function buildDefaultReminderText(
 export async function resolveCalendarFestivalReminder(
   festival: CalendarRuntimeFestivalEntry,
   context: CalendarRuntimeTriggerContext,
+  snapshot?: CalendarRuntimeWorldbookSnapshot,
 ): Promise<CalendarRuntimeReminderResolveResult> {
   const now = context.当前日期 ?? readCurrentWorldTime().point ?? null;
   if (!now) {
@@ -143,7 +145,7 @@ export async function resolveCalendarFestivalReminder(
     };
   }
 
-  const resolved = await resolveCalendarRuntimeNodeText({ node: festival.提醒 });
+  const resolved = await resolveCalendarRuntimeNodeText({ node: festival.提醒, snapshot });
   return {
     正文: resolved.正文 || fallback.正文,
     状态: fallback.状态,
@@ -157,6 +159,7 @@ export async function resolveCalendarFestivalStageReminder(
   festival: CalendarRuntimeFestivalEntry,
   stage: CalendarRuntimeFestivalStageEntry,
   context: CalendarRuntimeTriggerContext,
+  snapshot?: CalendarRuntimeWorldbookSnapshot,
 ): Promise<CalendarRuntimeReminderResolveResult> {
   if (stage.启用 === false || !stage.提醒) {
     return {
@@ -179,5 +182,6 @@ export async function resolveCalendarFestivalStageReminder(
       提醒: stage.提醒,
     },
     context,
+    snapshot,
   );
 }

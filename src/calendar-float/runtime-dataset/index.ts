@@ -2,7 +2,10 @@
  * 负责：把 runtime worldbook 索引与正文解析结果，组装成 UI 直接使用的 CalendarDataset。
  * 不负责：实际触发 scan，也不负责 worldbook backend 基础设施安装。
  */
-import { readCalendarRuntimeIndex, resolveCalendarRuntimeWorldbookSources } from '../runtime-worldbook';
+import {
+  loadCalendarRuntimeWorldbookSnapshot,
+  type CalendarRuntimeWorldbookSnapshot,
+} from '../runtime-worldbook/snapshot';
 import { normalizeCalendarMonthAliasList } from '../runtime-worldbook/month-alias';
 import {
   buildSuggestionSet,
@@ -16,10 +19,13 @@ import { mapActiveCalendarEvent, mapArchivedCalendarEvent } from './active-event
 import { buildRuntimeBookRecord } from './books';
 import { buildRuntimeFestivalRecord } from './festivals';
 
-export async function loadCalendarDatasetFromRuntimeWorldbook(): Promise<CalendarDataset> {
-  const activeBuckets = await readActiveBuckets();
+export async function loadCalendarDatasetFromRuntimeWorldbook(
+  snapshot?: CalendarRuntimeWorldbookSnapshot,
+): Promise<CalendarDataset> {
   const archive = readArchiveStore();
-  const runtimeIndex = await readCalendarRuntimeIndex();
+  const runtimeSnapshot = snapshot ?? (await loadCalendarRuntimeWorldbookSnapshot(archive.sources));
+  const activeBuckets = await readActiveBuckets();
+  const runtimeIndex = runtimeSnapshot.indexResult;
   const monthAliases = normalizeCalendarMonthAliasList(runtimeIndex.索引?.月份别名);
   const worldTime = readCurrentWorldTime(undefined, monthAliases);
   const currentLocationText = readCurrentWorldLocation();
@@ -29,11 +35,15 @@ export async function loadCalendarDatasetFromRuntimeWorldbook(): Promise<Calenda
     day: new Date().getDate(),
   };
 
-  const runtimeSources = resolveCalendarRuntimeWorldbookSources(archive.sources);
+  const runtimeSources = runtimeSnapshot.sources;
   const runtimeFestivals = await Promise.all(
-    (runtimeIndex.索引?.节庆 ?? []).map(item => buildRuntimeFestivalRecord(item, now, archive.policy.tagColors)),
+    (runtimeIndex.索引?.节庆 ?? []).map(item =>
+      buildRuntimeFestivalRecord(item, now, archive.policy.tagColors, runtimeSnapshot),
+    ),
   );
-  const runtimeBooks = await Promise.all((runtimeIndex.索引?.书籍 ?? []).map(item => buildRuntimeBookRecord(item, now)));
+  const runtimeBooks = await Promise.all(
+    (runtimeIndex.索引?.书籍 ?? []).map(item => buildRuntimeBookRecord(item, now, runtimeSnapshot)),
+  );
 
   const activeEvents = [
     ...Object.entries(activeBuckets.临时).map(([id, raw]) => mapActiveCalendarEvent('临时', id, raw, now, monthAliases)),
@@ -56,6 +66,6 @@ export async function loadCalendarDatasetFromRuntimeWorldbook(): Promise<Calenda
     monthAliases,
     sourceConfig: archive.sources,
     worldbookSources: runtimeSources,
-    sourceWarnings: runtimeIndex.警告,
+    sourceWarnings: [...runtimeIndex.警告],
   };
 }
