@@ -291,6 +291,16 @@ export async function readCalendarRuntimeTextLibrary(
   return readCalendarRuntimeTextLibraryFromEntries(条目, reference, 警告, 诊断 ?? []);
 }
 
+function filterTextLibrarySourceDiagnostics(
+  diagnostics: CalendarRuntimeDiagnostic[],
+  worldbookName: string | null | undefined,
+): CalendarRuntimeDiagnostic[] {
+  const normalizedWorldbookName = 规范化名称(worldbookName);
+  return diagnostics.filter(
+    item => !item.worldbookName || (normalizedWorldbookName && 规范化名称(item.worldbookName) === normalizedWorldbookName),
+  );
+}
+
 export function readCalendarRuntimeTextLibraryFromEntries(
   entries: CalendarWorldbookSourceEntry[],
   reference: CalendarTextLibraryReference,
@@ -302,6 +312,11 @@ export function readCalendarRuntimeTextLibraryFromEntries(
   })),
 ): CalendarWorldbookTextLibraryReadResult {
   const matchedEntry = findCalendarRuntimeEntryByReference(entries, reference);
+  const relevantDiagnostics = filterTextLibrarySourceDiagnostics(
+    diagnostics,
+    matchedEntry?.世界书名 ?? reference.世界书,
+  );
+  const relevantWarnings = relevantDiagnostics.filter(item => item.level !== 'info').map(item => item.message);
   if (!matchedEntry) {
     const message = `未找到文本库条目「${reference.条目名}」${reference.世界书 ? `（世界书：${reference.世界书}）` : ''}`;
     return {
@@ -309,18 +324,18 @@ export function readCalendarRuntimeTextLibraryFromEntries(
       来源: reference,
       命中条目名: null,
       警告: [
-        ...warnings,
+        ...relevantWarnings,
         message,
       ],
       诊断: [
-        ...diagnostics,
+        ...relevantDiagnostics,
         { level: 'warning', code: 'runtime_worldbook_text_library_not_found', message, worldbookName: reference.世界书 },
       ],
     };
   }
 
-  const resultWarnings = [...warnings];
-  const resultDiagnostics = [...diagnostics];
+  const resultWarnings = [...relevantWarnings];
+  const resultDiagnostics = [...relevantDiagnostics];
   const warningCountBeforeParse = resultWarnings.length;
   const parsed = 解析Yaml文本<unknown>(
     matchedEntry.条目.content,

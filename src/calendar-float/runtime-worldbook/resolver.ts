@@ -33,6 +33,16 @@ function 提取正文(entrySource: CalendarWorldbookSourceEntry | null): string 
   return String(entrySource?.条目.content ?? '').trim();
 }
 
+function 筛选相关来源诊断(
+  diagnostics: CalendarRuntimeDiagnostic[],
+  worldbookName: string | null | undefined,
+): CalendarRuntimeDiagnostic[] {
+  const normalizedWorldbookName = 规范化名称(worldbookName);
+  return diagnostics.filter(
+    item => !item.worldbookName || (normalizedWorldbookName && 规范化名称(item.worldbookName) === normalizedWorldbookName),
+  );
+}
+
 export function resolveCalendarRuntimeEntryContentByReference(
   entries: CalendarWorldbookSourceEntry[],
   reference: CalendarWorldbookReference | null | undefined,
@@ -48,7 +58,8 @@ export function resolveCalendarRuntimeEntryContentByReference(
   }
 
   const matched = findCalendarRuntimeEntryByReference(entries, reference);
-  const sourceWarnings = sourceDiagnostics.filter(item => item.level !== 'info').map(item => item.message);
+  const relevantDiagnostics = 筛选相关来源诊断(sourceDiagnostics, matched?.世界书名 ?? reference.世界书);
+  const sourceWarnings = relevantDiagnostics.filter(item => item.level !== 'info').map(item => item.message);
   if (!matched) {
     const message = `未找到正文条目「${reference.条目名}」${reference.世界书 ? `（世界书：${reference.世界书}）` : ''}`;
     return {
@@ -56,7 +67,7 @@ export function resolveCalendarRuntimeEntryContentByReference(
       来源条目名: null,
       警告: [...sourceWarnings, message],
       诊断: [
-        ...sourceDiagnostics,
+        ...relevantDiagnostics,
         { level: 'warning', code: 'runtime_worldbook_entry_not_found', message, worldbookName: reference.世界书 },
       ],
     };
@@ -69,9 +80,9 @@ export function resolveCalendarRuntimeEntryContentByReference(
     来源条目名: matched.条目.name,
     警告: body ? sourceWarnings : [...sourceWarnings, emptyMessage],
     诊断: body
-      ? [...sourceDiagnostics]
+      ? [...relevantDiagnostics]
       : [
-          ...sourceDiagnostics,
+          ...relevantDiagnostics,
           {
             level: 'warning',
             code: 'runtime_worldbook_entry_empty',

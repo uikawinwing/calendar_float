@@ -153,6 +153,14 @@ async function testSourceDiagnosticsPreserveErrorsAcrossOrdinaryAndTextLibraryRe
           name: '[fixed_event_index]',
           content: '固定事件: []\n补充资料: []',
         },
+        {
+          name: '[正常正文]',
+          content: '这是正常正文',
+        },
+        {
+          name: '[正常文本库]',
+          content: '正文: 这是正常文本库正文',
+        },
       ];
     }
     if (name === '损坏世界书') {
@@ -175,6 +183,19 @@ async function testSourceDiagnosticsPreserveErrorsAcrossOrdinaryAndTextLibraryRe
     assert(!snapshot.warnings.some(item => item.includes('已读取「索引世界书」')), '成功 source read 不应进入 public warnings');
 
     const expectedError = '读取 worldbook「损坏世界书」失败：原始读取错误';
+    const healthyEntry = await resolveCalendarRuntimeNodeText({
+      node: {
+        id: 'healthy-entry',
+        名称: '正常正文',
+        条目: { 世界书: '索引世界书', 条目名: '[正常正文]' },
+      },
+      snapshot,
+    });
+    const healthyTextLibrary = snapshot.readTextLibrary({
+      世界书: '索引世界书',
+      条目名: '[正常文本库]',
+      键: '正文',
+    });
     const ordinary = await resolveCalendarRuntimeNodeText({
       node: {
         id: 'ordinary-error',
@@ -189,6 +210,10 @@ async function testSourceDiagnosticsPreserveErrorsAcrossOrdinaryAndTextLibraryRe
       键: '正文',
     });
 
+    assert(healthyEntry.正文 === '这是正常正文', '正常正文应该成功解析');
+    assert(!healthyEntry.警告.includes(expectedError), '无关世界书读取错误不得附加到成功正文');
+    assert(healthyTextLibrary.文本库.正文 === '这是正常文本库正文', '正常文本库应该成功解析');
+    assert(!healthyTextLibrary.警告.includes(expectedError), '无关世界书读取错误不得附加到成功文本库');
     assert(ordinary.警告.includes(expectedError), '普通条目解析应保留原 worldbook 名与 error message');
     assert(textLibrary.警告.includes(expectedError), '文本库解析应保留原 worldbook 名与 error message');
     assert(
@@ -230,6 +255,65 @@ async function testConcurrentRequestsCollapseIntoOneQueuedFreshRerun(): Promise<
   }
 }
 
+async function testQueuedRequestRerunsAfterCurrentScanRejects(): Promise<void> {
+  const host = installScannerHost(Promise.resolve([]));
+  const runtimeHost = globalThis as any;
+  let sourceDiscoveryCalls = 0;
+  try {
+    runtimeHost.getCharWorldbookNames = () => {
+      sourceDiscoveryCalls += 1;
+      if (sourceDiscoveryCalls === 1) {
+        throw new Error('第一次来源发现失败');
+      }
+      return { primary: '队列世界书', additional: [] };
+    };
+    const first = requestCalendarRuntimeWorldbookScan();
+    const queued = requestCalendarRuntimeWorldbookScan();
+
+    await Promise.all([first, queued]);
+
+    assert(sourceDiscoveryCalls === 2, '首轮失败后仍应重新发现来源并执行 queued rerun');
+    assert(host.state.worldbookCalls === 1, '失败 scan 不应读取世界书，queued rerun 应读取一次');
+    assert(host.state.variableWrites === 1, '只有成功的 queued rerun 应发布结果');
+  } finally {
+    host.restore();
+  }
+}
+
+async function testRequestInCurrentErrorSettlementGapStartsFreshScan(): Promise<void> {
+  const host = installScannerHost(Promise.resolve([]));
+  const runtimeHost = globalThis as any;
+  let sourceDiscoveryCalls = 0;
+  try {
+    runtimeHost.getCharWorldbookNames = () => {
+      sourceDiscoveryCalls += 1;
+      if (sourceDiscoveryCalls === 1) {
+        throw new Error('当前 scan 来源发现失败');
+      }
+      return { primary: '队列世界书', additional: [] };
+    };
+
+    const failedRequest = requestCalendarRuntimeWorldbookScan();
+    const failedOutcome = failedRequest.catch(() => undefined);
+    let recoveryRequest!: Promise<void>;
+    await Promise.resolve().then(() =>
+      Promise.resolve().then(() =>
+        Promise.resolve().then(() => {
+          recoveryRequest = requestCalendarRuntimeWorldbookScan();
+        }),
+      ),
+    );
+    await failedOutcome;
+
+    assert(recoveryRequest !== failedRequest, 'settlement gap 中的新 scan 必须获得 fresh Promise');
+    await recoveryRequest;
+    assert(sourceDiscoveryCalls === 2, 'settlement gap 中的新 request 应重新执行来源发现');
+    assert(host.state.variableWrites === 1, '只有 fresh scan 应发布一次结果');
+  } finally {
+    host.restore();
+  }
+}
+
 async function testTeardownInvalidatesInFlightScanBeforeSideEffects(): Promise<void> {
   const firstRead = deferred<WorldbookEntry[]>();
   const host = installScannerHost(firstRead.promise);
@@ -258,7 +342,7 @@ async function testTeardownInvalidatesInFlightScanBeforeSideEffects(): Promise<v
   }
 }
 
-async function testNewGenerationRequestWaitsForStaleInFlightScanAndStillRuns(): Promise<void> {
+async function testNewGenerationRequestDoesNotWaitForStaleHungScan(): Promise<void> {
   const firstRead = deferred<WorldbookEntry[]>();
   const secondRead = deferred<WorldbookEntry[]>();
   const host = installScannerHost(firstRead.promise, secondRead.promise);
@@ -274,13 +358,9 @@ async function testNewGenerationRequestWaitsForStaleInFlightScanAndStillRuns(): 
     });
 
     assert(freshRequest !== staleRequest, '新 generation request 必须返回覆盖 fresh scan 的新 Promise');
-    assert(host.state.worldbookCalls === 1, '旧 scan 未结束前不得并发启动新 generation scan');
+    await waitFor(() => host.state.worldbookCalls === 2, '新 generation 不应等待旧 generation 的死 Promise');
 
-    firstRead.resolve([]);
-    await staleRequest;
-    await waitFor(() => host.state.worldbookCalls === 2, '旧 Promise settle 后应该启动 fresh scan');
-
-    assert(host.state.maxActiveScans === 1, '跨 generation 的 scan 最大并发仍应为 1');
+    assert(host.state.maxActiveScans === 2, '只有跨 generation 失效切换时才允许短暂并发');
     assert(!freshSettled, 'fresh request Promise 必须等待 fresh scan 完成');
     assert(host.state.variableWrites === 0, '旧 generation scan 不得发布副作用');
 
@@ -291,7 +371,7 @@ async function testNewGenerationRequestWaitsForStaleInFlightScanAndStillRuns(): 
     assert(host.state.variableWrites === 1, '只有 fresh generation 应发布一次结果');
     assert(host.state.promptInjections === 0, '空结果不应注入 prompt');
     console.log(
-      `generation handoff OK: samePromise=${freshRequest === staleRequest}, maxActive=${host.state.maxActiveScans}, scans=${host.state.worldbookCalls}, writes=${host.state.variableWrites}`,
+      `generation handoff OK: independentPromise=${freshRequest !== staleRequest}, maxActive=${host.state.maxActiveScans}, scans=${host.state.worldbookCalls}, writes=${host.state.variableWrites}`,
     );
   } finally {
     host.restore();
@@ -334,8 +414,10 @@ async function testStaleGenerationErrorIsSilentButCurrentErrorStillRejects(): Pr
 
 async function main(): Promise<void> {
   await testConcurrentRequestsCollapseIntoOneQueuedFreshRerun();
+  await testQueuedRequestRerunsAfterCurrentScanRejects();
+  await testRequestInCurrentErrorSettlementGapStartsFreshScan();
   await testTeardownInvalidatesInFlightScanBeforeSideEffects();
-  await testNewGenerationRequestWaitsForStaleInFlightScanAndStillRuns();
+  await testNewGenerationRequestDoesNotWaitForStaleHungScan();
   await testStaleGenerationErrorIsSilentButCurrentErrorStillRejects();
   await testSuccessfulReadIsInfoDiagnosticAndNotScannerWarning();
   await testSourceDiagnosticsPreserveErrorsAcrossOrdinaryAndTextLibraryResolution();
