@@ -1,4 +1,5 @@
 import { INSTANCE_KEY, SCRIPT_NAME } from './constants';
+import type { CalendarFloatLifecycleToken } from './lifecycle';
 
 const HOST_GLOBAL_KEY = '__mdpoemFloatingHost__';
 const ADAPTER_INSTANCE_KEY = '__CalendarFloatHostAdapter__';
@@ -33,20 +34,20 @@ interface CalendarFloatHostAdapterInstance {
   destroy: (options?: { unregister?: boolean; silent?: boolean }) => void;
 }
 
-type HostWindow = Window &
+export type CalendarHostWindow = Window &
   typeof globalThis & {
     [HOST_GLOBAL_KEY]?: FloatingHostApi;
     [ADAPTER_INSTANCE_KEY]?: CalendarFloatHostAdapterInstance;
     [INSTANCE_KEY]?: CalendarFloatWidgetApi;
   };
 
-function getHostWindow(): HostWindow {
+function getHostWindow(): CalendarHostWindow {
   try {
     return window.parent && window.parent !== window && window.parent.document
-      ? (window.parent as HostWindow)
-      : (window as HostWindow);
+      ? (window.parent as CalendarHostWindow)
+      : (window as CalendarHostWindow);
   } catch (_) {
-    return window as HostWindow;
+    return window as CalendarHostWindow;
   }
 }
 
@@ -59,7 +60,11 @@ function showAdapterLog(level: 'info' | 'warn', message: string, error?: unknown
   logger(`[${SCRIPT_NAME}] ${message}`);
 }
 
-async function waitForHost(hostWindow: HostWindow, retries = 12, interval = 80): Promise<FloatingHostApi | null> {
+async function waitForHost(
+  hostWindow: CalendarHostWindow,
+  retries = 12,
+  interval = 80,
+): Promise<FloatingHostApi | null> {
   for (let attempt = 0; attempt < retries; attempt += 1) {
     const host = hostWindow[HOST_GLOBAL_KEY];
     if (host && typeof host.registerModule === 'function') {
@@ -71,7 +76,11 @@ async function waitForHost(hostWindow: HostWindow, retries = 12, interval = 80):
   return host && typeof host.registerModule === 'function' ? host : null;
 }
 
-async function waitForWidgetApi(hostWindow: HostWindow, retries = 25, interval = 80): Promise<CalendarFloatWidgetApi | null> {
+async function waitForWidgetApi(
+  hostWindow: CalendarHostWindow,
+  retries = 25,
+  interval = 80,
+): Promise<CalendarFloatWidgetApi | null> {
   for (let attempt = 0; attempt < retries; attempt += 1) {
     const widget = hostWindow[INSTANCE_KEY];
     if (widget && typeof widget.setExternalHostMode === 'function') {
@@ -83,11 +92,26 @@ async function waitForWidgetApi(hostWindow: HostWindow, retries = 25, interval =
   return widget && typeof widget.setExternalHostMode === 'function' ? widget : null;
 }
 
-export async function bootstrapCalendarFloatHostAdapter(): Promise<void> {
+export interface CalendarHostAdapterBootstrapDependencies {
+  waitForHost(hostWindow: CalendarHostWindow): Promise<FloatingHostApi | null>;
+  waitForWidgetApi(hostWindow: CalendarHostWindow): Promise<CalendarFloatWidgetApi | null>;
+}
+
+const DEFAULT_BOOTSTRAP_DEPENDENCIES: CalendarHostAdapterBootstrapDependencies = {
+  waitForHost,
+  waitForWidgetApi,
+};
+
+export async function bootstrapCalendarFloatHostAdapter(
+  lifecycle: CalendarFloatLifecycleToken,
+  dependencies: CalendarHostAdapterBootstrapDependencies = DEFAULT_BOOTSTRAP_DEPENDENCIES,
+): Promise<void> {
+  lifecycle.throwIfStale();
   const hostWindow = getHostWindow();
   hostWindow[ADAPTER_INSTANCE_KEY]?.destroy({ unregister: true, silent: true });
 
-  const host = await waitForHost(hostWindow);
+  const host = await dependencies.waitForHost(hostWindow);
+  lifecycle.throwIfStale();
   if (!host || typeof host.registerModule !== 'function') {
     return;
   }
@@ -140,8 +164,22 @@ export async function bootstrapCalendarFloatHostAdapter(): Promise<void> {
   }
 
   registeredToHost = true;
+  try {
+    lifecycle.throwIfStale();
+  } catch (error) {
+    if (typeof host.unregisterModule === 'function') {
+      try {
+        host.unregisterModule(MODULE_KEY);
+      } catch (_) {
+        // Cancellation cleanup is best effort and must preserve the original cancellation.
+      }
+    }
+    registeredToHost = false;
+    throw error;
+  }
   hostWindow[ADAPTER_INSTANCE_KEY] = { destroy };
-  await waitForWidgetApi(hostWindow);
+  await dependencies.waitForWidgetApi(hostWindow);
+  lifecycle.throwIfStale();
   if (destroyed) {
     return;
   }

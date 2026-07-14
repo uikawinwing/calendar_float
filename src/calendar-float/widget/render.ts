@@ -504,15 +504,45 @@ function getFilteredAgendaGroups(options: {
   );
 }
 
-export function renderAgendaPanel(options: {
+export interface RenderAgendaOptions {
   groups: DailyAgendaGroup[];
   filterKeyword: string;
   showArchived: boolean;
   agendaSort: AgendaSortMode;
   editingEventId: string | null;
-}): string {
+}
+
+export function renderAgendaResults(options: RenderAgendaOptions): string {
   const { groups, filterKeyword, showArchived, agendaSort, editingEventId } = options;
   const filteredGroups = getFilteredAgendaGroups({ groups, filterKeyword, showArchived, agendaSort });
+  return filteredGroups.length
+    ? filteredGroups
+        .map(group => {
+          const items = group.items
+            .map(item => {
+              const tags = item.tags.length
+                ? `<div class="th-item-tags">${item.tags.map(tag => `<span>${escapeWidgetHtml(tag)}</span>`).join('')}</div>`
+                : '';
+              const actionButtons = buildItemActionButtons(item);
+              const classes = ['th-agenda-item', `is-${item.source}`];
+              if (isEditingItem(item.id, editingEventId)) {
+                classes.push('is-editing');
+              }
+              return `<article class="${classes.join(' ')}${buildCustomColorAttrs(item.color)} data-action="open-agenda-item-date" data-date-key="${escapeWidgetHtml(item.dateKey)}"><div class="th-item-top">${buildItemTitleHtml(item, editingEventId)}${actionButtons}</div>${item.stageTitle ? `<div class="th-item-stage">${escapeWidgetHtml(item.stageTitle)}</div>` : ''}${buildItemPeriodMeta(item, 'th-item-time')}${buildItemClockMeta(item, 'th-item-time')}<div class="th-item-summary">${escapeWidgetHtml(item.summary || '（无详情）')}</div>${tags}</article>`;
+            })
+            .join('');
+          const shouldHideSingleMonthTitle = filteredGroups.length === 1 && /\d+月事件$/.test(group.label);
+          const groupTitle = shouldHideSingleMonthTitle
+            ? ''
+            : `<div class="th-agenda-date">${escapeWidgetHtml(group.label)}</div>`;
+          return `<section class="th-agenda-group">${groupTitle}${items}</section>`;
+        })
+        .join('')
+    : '<div class="th-empty">当前筛选条件下没有匹配事件。</div>';
+}
+
+export function renderAgendaPanel(options: RenderAgendaOptions): string {
+  const { filterKeyword, showArchived, agendaSort } = options;
   return `
     <section class="th-agenda-toolbar">
       <div class="th-agenda-toolbar-row">
@@ -529,33 +559,8 @@ export function renderAgendaPanel(options: {
         </select>
       </div>
     </section>
-    <section class="th-agenda-groups">
-      ${
-        filteredGroups.length
-          ? filteredGroups
-              .map(group => {
-                const items = group.items
-                  .map(item => {
-                    const tags = item.tags.length
-                      ? `<div class="th-item-tags">${item.tags.map(tag => `<span>${escapeWidgetHtml(tag)}</span>`).join('')}</div>`
-                      : '';
-                    const actionButtons = buildItemActionButtons(item);
-                    const classes = ['th-agenda-item', `is-${item.source}`];
-                    if (isEditingItem(item.id, editingEventId)) {
-                      classes.push('is-editing');
-                    }
-                    return `<article class="${classes.join(' ')}${buildCustomColorAttrs(item.color)} data-action="open-agenda-item-date" data-date-key="${escapeWidgetHtml(item.dateKey)}"><div class="th-item-top">${buildItemTitleHtml(item, editingEventId)}${actionButtons}</div>${item.stageTitle ? `<div class="th-item-stage">${escapeWidgetHtml(item.stageTitle)}</div>` : ''}${buildItemPeriodMeta(item, 'th-item-time')}${buildItemClockMeta(item, 'th-item-time')}<div class="th-item-summary">${escapeWidgetHtml(item.summary || '（无详情）')}</div>${tags}</article>`;
-                  })
-                  .join('');
-                const shouldHideSingleMonthTitle = filteredGroups.length === 1 && /\d+月事件$/.test(group.label);
-                const groupTitle = shouldHideSingleMonthTitle
-                  ? ''
-                  : `<div class="th-agenda-date">${escapeWidgetHtml(group.label)}</div>`;
-                return `<section class="th-agenda-group">${groupTitle}${items}</section>`;
-              })
-              .join('')
-          : '<div class="th-empty">当前筛选条件下没有匹配事件。</div>'
-      }
+    <section class="th-agenda-groups" data-role="agenda-results">
+      ${renderAgendaResults(options)}
     </section>
   `;
 }

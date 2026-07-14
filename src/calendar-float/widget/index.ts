@@ -10,6 +10,7 @@ import {
 import { INSTANCE_KEY, MESSAGE_KNOWN_TAGS_PATH, ROOT_ID, SCRIPT_NAME, STYLE_ID } from '../constants';
 import { addDays, compareDatePoint, extractClockTimeText, formatDateKey } from '../date';
 import { buildFestivalTagPreviewMarker } from '../festival-visual';
+import type { CalendarFloatLifecycleToken } from '../lifecycle';
 import {
   applyFixedEventIndexRowOperationsToYaml,
   applyFixedEventIndexStructuredEditsToYaml,
@@ -79,6 +80,7 @@ import type {
   WidgetRefs,
   WidgetState,
 } from '../types';
+import type { WidgetAction } from './actions';
 import { bindCalendarWidgetEvents } from './events';
 import { formatWorldTimeForPoint, parseDateKeyPoint } from './date-actions';
 import { shouldShowCalendarDeveloperTools } from './developer-mode';
@@ -132,10 +134,12 @@ import {
 } from './managed-worldbook/notices';
 import {
   renderAgendaPanel as renderAgendaPanelExternal,
+  renderAgendaResults,
   renderArchivePanel as renderArchivePanelExternal,
   renderBookMainView as renderBookMainViewExternal,
   renderCalendarMonthView,
   renderDetailPanel as renderDetailPanelExternal,
+  type RenderAgendaOptions,
 } from './render';
 import type { AgendaSortMode, FestivalScopeMode, SidebarTab } from './event-binding/types';
 import { ensureCalendarWidgetStyle } from './style';
@@ -2603,14 +2607,27 @@ function getCurrentMonthAgendaGroups(dataset: CalendarDataset | null): DailyAgen
   return buildMonthAgenda(dataset, state.currentMonth);
 }
 
-function renderAgendaPanel(groups: DailyAgendaGroup[]): string {
-  return renderAgendaPanelExternal({
+function buildAgendaRenderOptions(groups: DailyAgendaGroup[]): RenderAgendaOptions {
+  return {
     groups,
     filterKeyword: state.filterKeyword,
     showArchived: state.showArchived,
     agendaSort: uiState.agendaSort,
     editingEventId: state.editingEventId,
-  });
+  };
+}
+
+function renderAgendaPanel(groups: DailyAgendaGroup[]): string {
+  return renderAgendaPanelExternal(buildAgendaRenderOptions(groups));
+}
+
+function renderAgendaResultsInPlace(): void {
+  const target = refs.root?.querySelector<HTMLElement>('[data-role="agenda-results"]');
+  const visibleDataset = getVisibleCalendarDataset();
+  if (!target || !visibleDataset) {
+    return;
+  }
+  target.innerHTML = renderAgendaResults(buildAgendaRenderOptions(getCurrentMonthAgendaGroups(visibleDataset)));
 }
 
 function renderDetailPanel(selectedLabel: string, selectedItems: DailyAgendaItem[]): string {
@@ -3420,12 +3437,9 @@ function handleBallDragEnd(): void {
   }
 }
 
-function bindEvents(): void {
-  bindCalendarWidgetEvents({
-    refs,
-    hostDocument: uiDocument,
-    hostWindow: hostWindow,
-    onToggleBall: () => {
+async function dispatchWidgetAction(action: WidgetAction): Promise<void> {
+  switch (action.type) {
+    case 'panel/toggle':
       if (uiState.ballSuppressNextClick) {
         uiState.ballSuppressNextClick = false;
         return;
@@ -3436,95 +3450,38 @@ function bindEvents(): void {
         switchSidebarTab('detail');
       }
       setOpen(!state.open);
-    },
-    onBallDragStart: handleBallDragStart,
-    onBallDragMove: handleBallDragMove,
-    onBallDragEnd: handleBallDragEnd,
-    onClosePanel: () => {
+      return;
+    case 'panel/close':
       uiState.openedBookId = null;
       uiState.openedBookPageIndex = 0;
       switchSidebarTab('detail');
       renderShell();
       setOpen(false);
-    },
-    onReload: refreshDataset,
-    onTogglePanelFullscreen: () => {
+      return;
+    case 'panel/reload':
+      await refreshDataset();
+      return;
+    case 'panel/toggle-fullscreen':
       setPanelFullscreen(!uiState.panelFullscreen);
-    },
-    onToggleTheme: toggleTheme,
-    onToggleFestivalScope: () => {
+      return;
+    case 'theme/toggle':
+      toggleTheme();
+      return;
+    case 'festival/toggle-scope':
       uiState.festivalScopeMode =
         uiState.festivalScopeMode === 'all' ? 'local' : uiState.festivalScopeMode === 'local' ? 'none' : 'all';
       renderShell();
-    },
-    onOpenTagColorPanel: openTagColorDialog,
-    onCloseTagColorPanel: closeTagColorDialog,
-    onOpenFixedEventIndexEditor: () => {
-      if (!isCalendarDeveloperModeEnabled()) {
-        return;
-      }
-      void openFixedEventIndexEditorDialog();
-    },
-    onManagedWorldbookClick: () => {
-      if (!isCalendarDeveloperModeEnabled()) {
-        return;
-      }
-      void handleManagedWorldbookClick();
-    },
-    onSwitchTab: switchSidebarTab,
-    onOpenCreateForm: startCreateForm,
-    onOpenMobileAgenda: () => {
-      state.selectedDateKey = '';
-      state.editingEventId = null;
-      state.formMode = 'create';
-      uiState.openedBookId = null;
-      uiState.openedBookPageIndex = 0;
-      switchSidebarTab('detail');
-      renderShell();
-      revealSidebarOnMobile();
-    },
-    onCloseMobileSide: hideSidebarOnMobile,
-    onCancelForm: () => {
-      state.editingEventId = null;
-      state.formMode = 'create';
-      switchSidebarTab('detail');
-    },
-    onFillNowTime: fillNowTime,
-    onSaveForm: saveForm,
-    onTagSearchInput: filterFormTagOptions,
-    onToggleFormTag: toggleFormTag,
-    onRemoveFormTag: (tag: string) => {
-      writeFormTags(readFormTags().filter(item => item !== tag));
-    },
-    onAddCustomTag: addCustomFormTag,
-    onTagColorSearchInput: filterTagColorOptions,
-    onAddColorTag: addTagFromColorDialog,
-    onSelectTagColor: selectTagColor,
-    onApplyTagColorPalette: (color: CalendarEventColorStyle) => {
-      void saveTagColor(color);
-    },
-    onSaveTagColorHex: saveTagColorHex,
-    onResetTagColor: resetSelectedTagColor,
-    onPolicyTagSearchInput: filterPolicyTagOptions,
-    onTogglePolicyTag: togglePolicyTag,
-    onRemovePolicyTag: (field: string, tag: string) => {
-      writePolicyTags(
-        field,
-        readPolicyTags(field).filter(item => item !== tag),
-      );
-    },
-    onAddPolicyTag: addPolicyTag,
-    onTogglePolicyTagList: togglePolicyTagList,
-    onPickDay: (dateKey: string) => {
-      state.selectedDateKey = dateKey;
+      return;
+    case 'calendar/pick-day':
+      state.selectedDateKey = action.dateKey;
       state.editingEventId = null;
       state.formMode = 'create';
       uiState.openedBookId = null;
       switchSidebarTab('detail');
       renderShell();
       revealSidebarOnMobile();
-    },
-    onMonthPrev: () => {
+      return;
+    case 'calendar/month-prev':
       state.currentMonth = {
         year: state.currentMonth.month === 1 ? state.currentMonth.year - 1 : state.currentMonth.year,
         month: state.currentMonth.month === 1 ? 12 : state.currentMonth.month - 1,
@@ -3534,8 +3491,8 @@ function bindEvents(): void {
       uiState.openedBookId = null;
       switchSidebarTab('detail');
       renderShell();
-    },
-    onMonthNext: () => {
+      return;
+    case 'calendar/month-next':
       state.currentMonth = {
         year: state.currentMonth.month === 12 ? state.currentMonth.year + 1 : state.currentMonth.year,
         month: state.currentMonth.month === 12 ? 1 : state.currentMonth.month + 1,
@@ -3545,8 +3502,8 @@ function bindEvents(): void {
       uiState.openedBookId = null;
       switchSidebarTab('detail');
       renderShell();
-    },
-    onMonthToday: () => {
+      return;
+    case 'calendar/month-today':
       if (state.dataset?.nowDate) {
         state.currentMonth = {
           year: state.dataset.nowDate.year,
@@ -3558,67 +3515,28 @@ function bindEvents(): void {
         switchSidebarTab('detail');
       }
       renderShell();
-    },
-    onOpenBook: (bookId: string) => {
-      const book = state.dataset?.books[bookId];
-      if (!book && !(isElliaAddonEnabled() && Boolean(elliaAddon?.isElliaBetaTicketBookId(bookId)))) {
+      return;
+    case 'sidebar/switch':
+      switchSidebarTab(action.tab);
+      return;
+    case 'agenda/filter':
+      state.filterKeyword = action.keyword;
+      if (uiState.sidebarTab === 'detail' && !state.selectedDateKey) {
+        renderAgendaResultsInPlace();
         return;
       }
-      uiState.openedBookId = bookId;
-      uiState.openedBookPageIndex = 0;
-      switchSidebarTab('detail');
       renderShell();
-    },
-    onCloseBookReader: () => {
-      uiState.openedBookId = null;
-      uiState.openedBookPageIndex = 0;
+      return;
+    case 'agenda/toggle-archived':
+      state.showArchived = action.checked;
       renderShell();
-    },
-    onOpenBookPage: (pageIndex: number) => {
-      uiState.openedBookPageIndex = Math.max(0, pageIndex);
+      return;
+    case 'agenda/sort':
+      uiState.agendaSort = action.mode;
       renderShell();
-    },
-    onBookPrevPage: () => {
-      uiState.openedBookPageIndex = Math.max(0, uiState.openedBookPageIndex - 1);
-      renderShell();
-    },
-    onBookNextPage: () => {
-      uiState.openedBookPageIndex += 1;
-      renderShell();
-    },
-    onQuickInputBookTrigger: quickInputBookTrigger,
-    onEditEvent: startEditForm,
-    onCompleteEvent: async (eventId: string, eventType: '临时' | '重复') => {
-      const result = await archiveCompletedEvent({
-        id: eventId,
-        type: eventType,
-        completedAt: state.dataset?.nowText || '',
-      });
-      if (result === 'protected') {
-        showDecisionNotice(buildFavoriteProtectedNotice('complete'));
-        return;
-      }
-      await refreshDataset();
-    },
-    onDeleteEvent: deleteEvent,
-    onRestoreEvent: (eventId: string) => restoreArchivedEvent(eventId).then(refreshDataset),
-    onPurgeEvent: purgeArchived,
-    onSaveArchivePolicy: saveArchivePolicy,
-    onPurgeAutoDeleteArchive: purgeAutoDeleteArchive,
-    onAgendaFilterInput: (keyword: string) => {
-      state.filterKeyword = keyword;
-      renderShell();
-    },
-    onAgendaToggleArchived: (checked: boolean) => {
-      state.showArchived = checked;
-      renderShell();
-    },
-    onAgendaSortChange: (sort: AgendaSortMode) => {
-      uiState.agendaSort = sort;
-      renderShell();
-    },
-    onOpenAgendaItemDate: (dateKey: string) => {
-      state.selectedDateKey = dateKey;
+      return;
+    case 'agenda/open-date':
+      state.selectedDateKey = action.dateKey;
       state.editingEventId = null;
       state.formMode = 'create';
       uiState.openedBookId = null;
@@ -3626,11 +3544,183 @@ function bindEvents(): void {
       switchSidebarTab('detail');
       renderShell();
       revealSidebarOnMobile();
-    },
-    onPanelDragStart: handlePanelDragStart,
-    onPanelDragMove: handlePanelDragMove,
-    onPanelDragEnd: handlePanelDragEnd,
-    onWindowResize: () => {
+      return;
+    case 'book/open':
+      if (
+        !state.dataset?.books[action.bookId] &&
+        !(isElliaAddonEnabled() && Boolean(elliaAddon?.isElliaBetaTicketBookId(action.bookId)))
+      ) {
+        return;
+      }
+      uiState.openedBookId = action.bookId;
+      uiState.openedBookPageIndex = 0;
+      switchSidebarTab('detail');
+      renderShell();
+      return;
+    case 'book/open-page':
+      uiState.openedBookPageIndex = Math.max(0, action.pageIndex);
+      renderShell();
+      return;
+    case 'book/prev-page':
+      uiState.openedBookPageIndex = Math.max(0, uiState.openedBookPageIndex - 1);
+      renderShell();
+      return;
+    case 'book/next-page':
+      uiState.openedBookPageIndex += 1;
+      renderShell();
+      return;
+    case 'book/quick-input':
+      quickInputBookTrigger(action.triggerText);
+      return;
+    case 'book/close':
+      uiState.openedBookId = null;
+      uiState.openedBookPageIndex = 0;
+      renderShell();
+      return;
+    case 'form/open-create':
+      startCreateForm();
+      return;
+    case 'form/cancel':
+      state.editingEventId = null;
+      state.formMode = 'create';
+      switchSidebarTab('detail');
+      return;
+    case 'form/fill-now':
+      await fillNowTime();
+      return;
+    case 'form/save':
+      await saveForm();
+      return;
+    case 'event/edit':
+      startEditForm(action.eventId);
+      return;
+    case 'event/complete': {
+      const result = await archiveCompletedEvent({
+        id: action.eventId,
+        type: action.eventType,
+        completedAt: state.dataset?.nowText || '',
+      });
+      if (result === 'protected') {
+        showDecisionNotice(buildFavoriteProtectedNotice('complete'));
+        return;
+      }
+      await refreshDataset();
+      return;
+    }
+    case 'event/delete':
+      await deleteEvent(action.eventId);
+      return;
+    case 'event/restore':
+      await restoreArchivedEvent(action.eventId);
+      await refreshDataset();
+      return;
+    case 'event/purge':
+      await purgeArchived(action.eventId);
+      return;
+    case 'archive/save-policy':
+      await saveArchivePolicy();
+      return;
+    case 'archive/purge-auto-delete':
+      await purgeAutoDeleteArchive();
+      return;
+    case 'tag/search':
+      filterFormTagOptions(action.keyword);
+      return;
+    case 'tag/toggle-form':
+      toggleFormTag(action.tag);
+      return;
+    case 'tag/remove-form':
+      writeFormTags(readFormTags().filter(item => item !== action.tag));
+      return;
+    case 'tag/add-custom':
+      addCustomFormTag();
+      return;
+    case 'tag-color/open':
+      openTagColorDialog();
+      return;
+    case 'tag-color/close':
+      closeTagColorDialog();
+      return;
+    case 'tag-color/search':
+      filterTagColorOptions(action.keyword);
+      return;
+    case 'tag-color/add':
+      addTagFromColorDialog();
+      return;
+    case 'tag-color/select':
+      selectTagColor(action.tag);
+      return;
+    case 'tag-color/apply-palette':
+      await saveTagColor(action.color);
+      return;
+    case 'tag-color/save-hex':
+      saveTagColorHex();
+      return;
+    case 'tag-color/reset':
+      resetSelectedTagColor();
+      return;
+    case 'policy-tag/search':
+      filterPolicyTagOptions(action.field, action.keyword);
+      return;
+    case 'policy-tag/toggle':
+      togglePolicyTag(action.field, action.tag);
+      return;
+    case 'policy-tag/remove':
+      writePolicyTags(
+        action.field,
+        readPolicyTags(action.field).filter(item => item !== action.tag),
+      );
+      return;
+    case 'policy-tag/add':
+      addPolicyTag(action.field);
+      return;
+    case 'policy-tag/toggle-list':
+      togglePolicyTagList(action.field);
+      return;
+    case 'managed-worldbook/open':
+      if (!isCalendarDeveloperModeEnabled()) {
+        return;
+      }
+      await handleManagedWorldbookClick();
+      return;
+    case 'fixed-event-editor/open':
+      if (!isCalendarDeveloperModeEnabled()) {
+        return;
+      }
+      await openFixedEventIndexEditorDialog();
+      return;
+    case 'mobile/open-agenda':
+      state.selectedDateKey = '';
+      state.editingEventId = null;
+      state.formMode = 'create';
+      uiState.openedBookId = null;
+      uiState.openedBookPageIndex = 0;
+      switchSidebarTab('detail');
+      renderShell();
+      revealSidebarOnMobile();
+      return;
+    case 'mobile/close-side':
+      hideSidebarOnMobile();
+      return;
+    case 'layout/panel-drag-start':
+      handlePanelDragStart(action.event);
+      return;
+    case 'layout/panel-drag-move':
+      handlePanelDragMove(action.event);
+      return;
+    case 'layout/panel-drag-end':
+      handlePanelDragEnd();
+      return;
+    case 'layout/ball-drag-start':
+      handleBallDragStart(action.clientX, action.clientY);
+      return;
+    case 'layout/ball-drag-move':
+      handleBallDragMove(action.clientX, action.clientY);
+      return;
+    case 'layout/ball-drag-end':
+      handleBallDragEnd();
+      return;
+    case 'layout/window-resize':
       applyBallPosition();
       if (!isDesktopMode()) {
         uiState.panelLeft = null;
@@ -3643,7 +3733,19 @@ function bindEvents(): void {
         return;
       }
       renderShell();
-    },
+      return;
+    default: {
+      const exhaustiveCheck: never = action;
+      throw new Error(`Unhandled widget action: ${JSON.stringify(exhaustiveCheck)}`);
+    }
+  }
+}
+
+function bindEvents(): void {
+  bindCalendarWidgetEvents({
+    refs,
+    hostWindow,
+    dispatch: dispatchWidgetAction,
   });
 }
 
@@ -3706,9 +3808,22 @@ function setExternalHostMode(enabled: boolean): void {
   syncIframePointerEvents();
 }
 
-export async function bootstrapCalendarWidget(): Promise<void> {
+export interface CalendarWidgetBootstrapDependencies {
+  ensureProfileAddonsLoaded(): Promise<void>;
+}
+
+const DEFAULT_BOOTSTRAP_DEPENDENCIES: CalendarWidgetBootstrapDependencies = {
+  ensureProfileAddonsLoaded,
+};
+
+export async function bootstrapCalendarWidget(
+  lifecycle: CalendarFloatLifecycleToken,
+  dependencies: CalendarWidgetBootstrapDependencies = DEFAULT_BOOTSTRAP_DEPENDENCIES,
+): Promise<void> {
+  lifecycle.throwIfStale();
   hostWindow[INSTANCE_KEY]?.destroy('reload');
-  await ensureProfileAddonsLoaded();
+  await dependencies.ensureProfileAddonsLoaded();
+  lifecycle.throwIfStale();
   state.destroyed = false;
   ensureIframe();
   ensureStyle();
