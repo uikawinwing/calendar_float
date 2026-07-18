@@ -7,6 +7,7 @@ import {
   type CalendarRuntimeWorldbookSnapshot,
 } from '../runtime-worldbook/snapshot';
 import { normalizeCalendarMonthAliasList } from '../runtime-worldbook/month-alias';
+import { isCalendarEventVisibleToPlayer } from '../event-visibility';
 import {
   buildSuggestionSet,
   readActiveBuckets,
@@ -46,12 +47,16 @@ export async function loadCalendarDatasetFromRuntimeWorldbook(
   );
 
   const activeEvents = [
-    ...Object.entries(activeBuckets.临时).map(([id, raw]) => mapActiveCalendarEvent('临时', id, raw, now, monthAliases)),
-    ...Object.entries(activeBuckets.重复).map(([id, raw]) => mapActiveCalendarEvent('重复', id, raw, now, monthAliases)),
+    ...Object.entries(activeBuckets.临时)
+      .filter(([, raw]) => isCalendarEventVisibleToPlayer(raw))
+      .map(([id, raw]) => mapActiveCalendarEvent('临时', id, raw, now, monthAliases)),
+    ...Object.entries(activeBuckets.重复)
+      .filter(([, raw]) => isCalendarEventVisibleToPlayer(raw))
+      .map(([id, raw]) => mapActiveCalendarEvent('重复', id, raw, now, monthAliases)),
   ];
-  const archivedEvents = Object.entries(archive.completed).map(([id, raw]) =>
-    mapArchivedCalendarEvent(id, raw, now, monthAliases),
-  );
+  const archivedEvents = Object.entries(archive.completed)
+    .filter(([, raw]) => isCalendarEventVisibleToPlayer(raw))
+    .map(([id, raw]) => mapArchivedCalendarEvent(id, raw, now, monthAliases));
 
   return {
     nowText: worldTime.text,

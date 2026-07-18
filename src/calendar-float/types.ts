@@ -15,7 +15,7 @@ export type CalendarSourceKind =
 export type CalendarNarrativeEventType = '日程' | '事件' | '回忆';
 export type CalendarPostAction = '历史' | '自动清理' | '归档' | '转回忆';
 export type CalendarImportance = '重要且紧急' | '重要不紧急' | '不重要但紧急' | '不重要不紧急';
-export type CalendarVisibility = '玩家与LLM' | '仅玩家';
+export type CalendarVisibility = '玩家与LLM' | '仅玩家' | '仅LLM' | '完全不显示';
 
 export interface CalendarEventColorStyle {
   background: string;
@@ -37,6 +37,7 @@ export interface RawCalendarEvent {
   类型?: CalendarNarrativeEventType;
   完成后?: CalendarPostAction;
   重要度?: CalendarImportance;
+  提前提醒天数?: number;
   可见性?: CalendarVisibility;
   标签?: string[];
 }

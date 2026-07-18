@@ -1,4 +1,5 @@
 import { PRESET_TAG_OPTIONS } from '../constants';
+import { isCalendarEventVisibleToPlayer } from '../event-visibility';
 import type {
   ActiveCalendarBuckets,
   ArchivedCalendarEvent,
@@ -25,6 +26,9 @@ export function buildSuggestionSet(args: {
   });
 
   const collect = (id: string, event: RawCalendarEvent | ArchivedCalendarEvent): void => {
+    if (!isCalendarEventVisibleToPlayer(event)) {
+      return;
+    }
     if (id) {
       idPool.add(id);
     }

@@ -4,10 +4,8 @@
  * 仅对 worldbook 扫描类内容做 silent scan，同时对提醒做可见 injectprompt。
  */
 import _ from 'lodash';
-import {
-  CHAT_RUNTIME_PATH,
-  SCRIPT_NAME,
-} from '../constants';
+import { CHAT_RUNTIME_PATH, SCRIPT_NAME } from '../constants';
+import { promoteDueSealedCalendarEvents } from '../event-visibility-scheduler';
 import { readCalendarTriggerVariableContext, readLatestCalendarTriggerMessages } from './chat-context';
 import {
   resolveCalendarContentNode,
@@ -156,7 +154,9 @@ async function 扫描节庆提醒(
           }
         }
       }
-      result.警告.push(...stageReminder.警告.map(message => `[节庆阶段提醒:${festival.名称}/${stage.名称}] ${message}`));
+      result.警告.push(
+        ...stageReminder.警告.map(message => `[节庆阶段提醒:${festival.名称}/${stage.名称}] ${message}`),
+      );
     }
   }
 }
@@ -352,8 +352,13 @@ async function publishCalendarRuntimeWorldbookScan(result: CalendarRuntimeScanRe
 
 async function runCalendarRuntimeWorldbookScan(generation: number): Promise<void> {
   try {
+    const promotion = await promoteDueSealedCalendarEvents();
+    if (generation !== scanGeneration) {
+      return;
+    }
     const snapshot = await loadCalendarRuntimeWorldbookSnapshot();
     const result = await scanCalendarRuntimeWorldbook(snapshot);
+    result.警告 = 取唯一文本([...result.警告, ...promotion.warnings]);
     if (generation !== scanGeneration) {
       return;
     }

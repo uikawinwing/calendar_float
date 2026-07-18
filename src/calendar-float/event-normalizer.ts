@@ -27,7 +27,12 @@ export function sanitizeImportance(value: unknown): NonNullable<RawCalendarEvent
 
 export function sanitizeVisibility(value: unknown): NonNullable<RawCalendarEvent['可见性']> {
   const visibility = String(value ?? '').trim() as NonNullable<RawCalendarEvent['可见性']>;
-  return ['玩家与LLM', '仅玩家'].includes(visibility) ? visibility : '玩家与LLM';
+  return ['玩家与LLM', '仅玩家', '仅LLM', '完全不显示'].includes(visibility) ? visibility : '玩家与LLM';
+}
+
+export function sanitizeReminderLeadDays(value: unknown): number {
+  const days = Number(value);
+  return Number.isFinite(days) ? Math.max(0, Math.floor(days)) : 0;
 }
 
 export function inferDefaultPostAction(
@@ -77,6 +82,7 @@ export function sanitizeRawEvent(value: unknown, bucketType?: CalendarBucketType
     类型,
     完成后: sanitizePostAction(source.完成后, 类型, 重要度),
     重要度,
+    提前提醒天数: sanitizeReminderLeadDays(source.提前提醒天数),
     可见性: sanitizeVisibility(source.可见性),
     标签: sanitizeTagList(source.标签),
   };
@@ -90,8 +96,9 @@ export function sanitizeBucketRecords(
     return {};
   }
   const source = value as Record<string, unknown>;
-  return Object.fromEntries(Object.entries(source).map(([id, event]) => [id, sanitizeRawEvent(event, bucketType)])) as
-    Record<string, RawCalendarEvent>;
+  return Object.fromEntries(
+    Object.entries(source).map(([id, event]) => [id, sanitizeRawEvent(event, bucketType)]),
+  ) as Record<string, RawCalendarEvent>;
 }
 
 export function sanitizeActiveCalendarBuckets(value: unknown): ActiveCalendarBuckets {

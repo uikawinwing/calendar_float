@@ -7,8 +7,8 @@
   const rootPath = 'stat_data.事件.月历';
   const calendar = getvar(rootPath, { defaults: { 临时: {}, 重复: {} } });
 
-  // 仅隐藏玩家手动标记为私有的事件；缺省或脏值按默认公开处理，避免旧变量被误过滤。
-  const isVisibleToLLM = function (event) { return String(_.get(event, '可见性', '')).trim() !== '仅玩家'; };
+  // LLM 只能读取公开事件与仅 LLM 事件；缺省或脏值按默认公开处理，避免旧变量被误过滤。
+  const isVisibleToLLM = function (event) { return !['仅玩家', '完全不显示'].includes(String(_.get(event, '可见性', '')).trim()); };
   const normalizeDisplayImportance = function (value) {
     const text = String(value || '').trim();
     if (['重要且紧急', '重要不紧急', '不重要但紧急', '不重要不紧急'].includes(text)) return text;
@@ -24,8 +24,8 @@
   const removeEmptyValues = function (output) { return _.pickBy(_.mapValues(output, function (value) { return typeof value === 'string' ? value.trim() : value; }), function (value) { return value !== undefined && value !== null && value !== '' && !(_.isArray(value) && value.length === 0); }); };
   const cleanEvent = function (event, bucketType) {
     const keys = bucketType === '重复'
-      ? ['标题', '内容', '时间', '结束时间', '重要度', '标签']
-      : ['标题', '内容', '时间', '结束时间', '重要度', '标签'];
+      ? ['标题', '内容', '时间', '结束时间', '重要度', '可见性', '标签']
+      : ['标题', '内容', '时间', '结束时间', '重要度', '可见性', '标签'];
     const output = _.pick(event, keys);
     const normalizedImportance = normalizeDisplayImportance(output.重要度);
     if (normalizedImportance) {
