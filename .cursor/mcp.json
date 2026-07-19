@@ -4,8 +4,12 @@
       "command": "pnpx",
       "args": [
         "chrome-devtools-mcp@latest",
+<<<<<<< HEAD
         "--browserUrl",
         "http://127.0.0.1:9222"
+=======
+        "--autoConnect"
+>>>>>>> a4d60f52b8b1b0f872a80088ba7e339b0933eeb2
       ]
     }
   }
