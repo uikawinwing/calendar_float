@@ -48,6 +48,7 @@ function common_path(lhs: string, rhs: string) {
   return lhs_parts.join(path.sep);
 }
 
+<<<<<<< HEAD
 function is_bundle_only_entry(file: string): boolean {
   const normalized = normalize_entry_path(file);
   return normalized === 'src/calendar-float/dlc_ellia/index.ts';
@@ -60,6 +61,12 @@ function glob_script_files() {
     .filter(file => !is_bundle_only_entry(file));
 
   script_files
+=======
+function glob_script_files() {
+  const results: string[] = [];
+
+  fs.globSync(`{示例,src}/**/index.{ts,tsx,js,jsx}`)
+>>>>>>> f24091c9a91d583dafdb4867d858268ebc487545
     .filter(
       file => process.env.CI !== 'true' || !fs.readFileSync(path.join(import.meta.dirname, file)).includes('@no-ci'),
     )
@@ -82,6 +89,7 @@ function glob_script_files() {
   return results;
 }
 
+<<<<<<< HEAD
 function normalize_entry_path(file: string) {
   return file.replaceAll('\\', '/').replace(/\/+/g, '/').replace(/^\.\//, '');
 }
@@ -101,6 +109,13 @@ if (targetEntry && config.entries.length === 0) {
   console.warn(`\x1b[33m[webpack]\x1b[0m 未找到目标入口: ${targetEntry}`);
 }
 
+=======
+const config: Config = {
+  port: 6621,
+  entries: glob_script_files().map(parse_entry),
+};
+
+>>>>>>> f24091c9a91d583dafdb4867d858268ebc487545
 let io: Server;
 function watch_tavern_helper(compiler: webpack.Compiler) {
   if (compiler.options.watch) {
@@ -129,13 +144,17 @@ function watch_tavern_helper(compiler: webpack.Compiler) {
 }
 
 let watcher: FSWatcher;
+<<<<<<< HEAD
 let hasQueuedSchemaDump = false;
+=======
+>>>>>>> f24091c9a91d583dafdb4867d858268ebc487545
 const dump = () => {
   exec('pnpm dump', { cwd: import.meta.dirname });
   console.info('\x1b[36m[schema_dump]\x1b[0m 已将所有 schema.ts 转换为 schema.json');
 };
 const dump_debounced = _.debounce(dump, 500, { leading: true, trailing: false });
 function schema_dump(compiler: webpack.Compiler) {
+<<<<<<< HEAD
   if (skipSchemaDump) {
     return;
   }
@@ -144,6 +163,9 @@ function schema_dump(compiler: webpack.Compiler) {
       return;
     }
     hasQueuedSchemaDump = true;
+=======
+  if (!compiler.options.watch) {
+>>>>>>> f24091c9a91d583dafdb4867d858268ebc487545
     dump_debounced();
     return;
   }
@@ -159,13 +181,17 @@ function schema_dump(compiler: webpack.Compiler) {
 }
 
 let child_process: ChildProcess;
+<<<<<<< HEAD
 let hasQueuedBundle = false;
+=======
+>>>>>>> f24091c9a91d583dafdb4867d858268ebc487545
 const bundle = () => {
   exec('pnpm sync bundle all', { cwd: import.meta.dirname });
   console.info('\x1b[36m[tavern_sync]\x1b[0m 已打包所有配置了的角色卡/世界书/预设');
 };
 const bundle_debounced = _.debounce(bundle, 500, { leading: true, trailing: false });
 function tavern_sync(compiler: webpack.Compiler) {
+<<<<<<< HEAD
   if (skipTavernSync) {
     return;
   }
@@ -174,6 +200,9 @@ function tavern_sync(compiler: webpack.Compiler) {
       return;
     }
     hasQueuedBundle = true;
+=======
+  if (!compiler.options.watch) {
+>>>>>>> f24091c9a91d583dafdb4867d858268ebc487545
     bundle_debounced();
     return;
   }
@@ -353,11 +382,14 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
               exclude: /node_modules/,
             },
             {
+<<<<<<< HEAD
               test: /\.txt$/,
               type: 'asset/source',
               exclude: /node_modules/,
             },
             {
+=======
+>>>>>>> f24091c9a91d583dafdb4867d858268ebc487545
               test: /\.html$/,
               use: 'html-loader',
               exclude: /node_modules/,
@@ -495,6 +527,10 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
             { from: 'klona', imports: ['klona'] },
             { from: 'vue-final-modal', imports: ['useModal'] },
             { from: 'zod', imports: ['z'] },
+<<<<<<< HEAD
+=======
+            { from: 'type-fest', imports: [['*', 'TypeFest']], type: true },
+>>>>>>> f24091c9a91d583dafdb4867d858268ebc487545
           ],
         }),
         unpluginVueComponents({
@@ -603,9 +639,23 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       const cdn = {
         sass: 'https://jspm.dev/sass',
       };
+<<<<<<< HEAD
       return callback(
         null,
         'module-import ' + (cdn[request as keyof typeof cdn] ?? `https://testingcf.jsdelivr.net/npm/${request}/+esm`),
+=======
+      const package_json = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'package.json'), 'utf-8')) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      const package_versions = { ...package_json.devDependencies, ...package_json.dependencies };
+      const version = package_versions[request]?.replace(/^[~^]/, '');
+      const versioned_request = /^[.\d]+$/.test(version) ? `${request}@${version}` : request;
+      return callback(
+        null,
+        'module-import ' +
+          (cdn[request as keyof typeof cdn] ?? `https://testingcf.jsdelivr.net/npm/${versioned_request}/+esm`),
+>>>>>>> f24091c9a91d583dafdb4867d858268ebc487545
       );
     },
   });
