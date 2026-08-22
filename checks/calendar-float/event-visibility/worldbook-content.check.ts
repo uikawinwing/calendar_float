@@ -8,37 +8,39 @@ import {
 } from '../../../src/calendar-float/worldbook-manager/content';
 
 const display = buildCalendarVariableListEntryContent();
-assert.match(display, /仅玩家.*完全不显示/);
-assert.match(display, /'可见性'/);
+assert.match(display, /rawCalendar\.临时/); // legacy read compatibility
+assert.match(display, /事件: \{ 月历:/);
+assert.match(display, /'显示'/);
+assert.match(display, /'提醒'/);
+assert.doesNotMatch(display, /'关联'/);
+assert.doesNotMatch(display, /'类型'/);
+assert.doesNotMatch(display, /'完成后'/);
+assert.doesNotMatch(display, /'重要度'/);
 
 const rules = buildCalendarUpdateRulesEntryContent();
 const staticRules = readFileSync('src/calendar-float/mvu_rules/月历变量更新规则.txt', 'utf8');
 
 for (const content of [rules, staticRules]) {
-  assert.doesNotMatch(content, /只有\{\{user\}\}明确要求记录/);
-  assert.doesNotMatch(content, /未经\{\{user\}\}明确同意/);
-  assert.doesNotMatch(content, /系统核心名|systemCore/);
-  assert.doesNotMatch(content, /^隐藏剧情事件:/m);
-  assert.doesNotMatch(content, /^ {2}可见性:/m);
-  assert.doesNotMatch(content, /仅玩家/);
-  assert.match(content, /提前提醒天数: optional\[number\]/);
-  assert.match(content, /可见性: optional\['玩家与LLM' \| '完全不显示'\]/);
-  assert.match(content, /普通事件.*默认.*`玩家与LLM`/);
-  assert.match(content, /隐藏剧情事件.*`完全不显示`/);
-  assert.match(content, /LLM不得主动写入或改为`仅LLM`/);
-  assert.match(content, /只能由月历脚本.*`完全不显示`.*`仅LLM`/);
-  assert.match(content, /看到`可见性: 仅LLM`/);
-  assert.match(content, /不得因为到达提醒时间就自动公开给玩家/);
-  assert.doesNotMatch(content, /<hidden_event>/);
-  assert.doesNotMatch(content, /remind_before_days|hidden_event_vault/);
-
-  const tempRulesStart = content.indexOf('  事件.月历.临时:');
-  const repeatRulesStart = content.indexOf('  事件.月历.重复:');
-  assert.ok(tempRulesStart >= 0 && repeatRulesStart > tempRulesStart);
-  const tempRules = content.slice(tempRulesStart, repeatRulesStart);
-  assert.match(tempRules, /隐藏剧情事件/);
-  assert.match(tempRules, /`完全不显示`/);
-  assert.match(tempRules, /`仅LLM`/);
+  assert.match(content, /月历只记录.*明确时间锚点/);
+  assert.match(content, /月历UI显示与到时提醒/);
+  assert.match(content, /不负责保存任务进度、世界事件状态、新闻内容或剧情结果/);
+  assert.match(content, /不得为了填充月历自行创造未来事件/);
+  assert.match(content, /固定事项.*不重复写入变量/);
+  assert.match(content, /一次性与重复事项使用同一个collection/);
+  assert.match(content, /显示: optional\[boolean\]/);
+  assert.match(content, /提醒: optional\[boolean\]/);
+  assert.match(content, /显示.*只表示不显示在玩家月历UI/);
+  assert.match(content, /到达预定时间只表示时间条件成立/);
+  assert.doesNotMatch(content, /关联: optional/);
+  assert.doesNotMatch(content, /可见性: optional/);
+  assert.doesNotMatch(content, /仅LLM/);
+  assert.doesNotMatch(content, /回忆/);
+  assert.doesNotMatch(content, /归档/);
+  assert.doesNotMatch(content, /完成后/);
+  assert.doesNotMatch(content, /重要度/);
+  assert.doesNotMatch(content, /隐藏剧情/);
+  assert.doesNotMatch(content, /^ {2}事件\.月历\.临时:/m);
+  assert.doesNotMatch(content, /^ {2}事件\.月历\.重复:/m);
 }
 
 console.log('event-visibility/worldbook-content.check.ts OK');

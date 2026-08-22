@@ -1,7 +1,11 @@
 import _ from 'lodash';
 
-import { sanitizeActiveCalendarBuckets, sanitizeBucketRecords } from '../event-normalizer';
-import { getCalendarEventRootPath, getCalendarRepeatEventsPath, getCalendarTempEventsPath } from '../profile';
+import {
+  flattenCalendarBuckets,
+  sanitizeActiveCalendarBuckets,
+  sanitizeBucketRecords,
+} from '../event-normalizer';
+import { getCalendarEventRootPath } from '../profile';
 import type { ActiveCalendarBuckets } from '../types';
 import {
   ensureMvuReady,
@@ -11,28 +15,13 @@ import {
   warnMessageVariableUnavailable,
 } from './message-variable';
 
-function createEmptyBuckets(): ActiveCalendarBuckets {
-  return { 临时: {}, 重复: {} };
-}
-
-function ensureActiveBucketShape(data: Record<string, any>): boolean {
+function ensureCalendarRoot(data: Record<string, any>): boolean {
   const rootPath = getCalendarEventRootPath();
-  const tempPath = getCalendarTempEventsPath();
-  const repeatPath = getCalendarRepeatEventsPath();
-  let changed = false;
-  if (!_.isPlainObject(_.get(data, rootPath))) {
-    _.set(data, rootPath, createEmptyBuckets());
-    changed = true;
+  if (_.isPlainObject(_.get(data, rootPath))) {
+    return false;
   }
-  if (!_.isPlainObject(_.get(data, tempPath))) {
-    _.set(data, tempPath, {});
-    changed = true;
-  }
-  if (!_.isPlainObject(_.get(data, repeatPath))) {
-    _.set(data, repeatPath, {});
-    changed = true;
-  }
-  return changed;
+  _.set(data, rootPath, {});
+  return true;
 }
 
 export function cloneBucketsSnapshot(buckets: ActiveCalendarBuckets): ActiveCalendarBuckets {
@@ -43,11 +32,7 @@ export function cloneBucketsSnapshot(buckets: ActiveCalendarBuckets): ActiveCale
 }
 
 export function hasCalendarBucketPath(variables: Record<string, any>): boolean {
-  return (
-    _.has(variables, getCalendarEventRootPath()) ||
-    _.has(variables, getCalendarTempEventsPath()) ||
-    _.has(variables, getCalendarRepeatEventsPath())
-  );
+  return _.has(variables, getCalendarEventRootPath());
 }
 
 export function readBucketsFromMvuVariables(variables: Record<string, any>): ActiveCalendarBuckets {
@@ -72,7 +57,14 @@ export async function ensureCalendarLatestMessageVariableStore(isCurrent: () => 
   }
 
   const data = readMessageVariableData();
-  if (!ensureActiveBucketShape(data)) {
+  const rootPath = getCalendarEventRootPath();
+  const changed = ensureCalendarRoot(data);
+  const root = _.get(data, rootPath, {});
+  const legacyShape = _.isPlainObject(root) && (_.isPlainObject(_.get(root, '临时')) || _.isPlainObject(_.get(root, '重复')));
+  if (legacyShape) {
+    _.set(data, rootPath, flattenCalendarBuckets(sanitizeActiveCalendarBuckets(root)));
+  }
+  if (!changed && !legacyShape) {
     return false;
   }
 
@@ -87,14 +79,8 @@ export async function ensureCalendarLatestMessageVariableStore(isCurrent: () => 
 export async function readActiveBuckets(): Promise<ActiveCalendarBuckets> {
   await ensureMvuReady();
   const data = readMessageVariableData();
-  ensureActiveBucketShape(data);
-
-  const temp = sanitizeBucketRecords(_.get(data, getCalendarTempEventsPath(), {}), '临时');
-  const repeat = sanitizeBucketRecords(_.get(data, getCalendarRepeatEventsPath(), {}), '重复');
-  return {
-    临时: temp,
-    重复: repeat,
-  };
+  ensureCalendarRoot(data);
+  return sanitizeActiveCalendarBuckets(_.get(data, getCalendarEventRootPath(), {}));
 }
 
 export async function replaceActiveBuckets(
@@ -114,9 +100,8 @@ export async function replaceActiveBuckets(
     return;
   }
   const data = readMessageVariableData();
-  ensureActiveBucketShape(data);
-  _.set(data, getCalendarTempEventsPath(), nextBuckets.临时);
-  _.set(data, getCalendarRepeatEventsPath(), nextBuckets.重复);
+  ensureCalendarRoot(data);
+  _.set(data, getCalendarEventRootPath(), flattenCalendarBuckets(nextBuckets));
 
   if (isMvuReady && hasMvuWriteApi()) {
     await Mvu.replaceMvuData(data as Mvu.MvuData, target);

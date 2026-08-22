@@ -1,59 +1,105 @@
 # Calendar Float Source Structure
 
-`src/calendar-float/` 是月历悬浮球脚本源码。这个项目是 Tavern Helper 浏览器脚本，不是独立 Web App；入口由 `index.ts` 初始化，最终打包为 `dist/calendar-float/index.js`。
+`src/calendar-float/` 是 Calendar Float 的 Tavern Helper 浏览器脚本源码。
+
+它的产品职责只有两层：
+
+1. **Temporal UI**：把角色卡已有的固定/动态时间事项整理成玩家可读的月历
+2. **Temporal Reminder**：根据角色卡世界时间判断事项是否即将或已经到时，并向 LLM 提供时间信号
+
+它不拥有任务进度、新闻、世界事件阶段、剧情后果、系统历史或回忆数据库。
+
+## 主要数据流
+
+```text
+世界时间 ───────────────┐
+[fixed_event_index] ───┼─> runtime dataset ─> Calendar UI
+MVU 动态时间事项 ──────┘             └──────> timed reminder -> LLM
+```
+
+到时 reminder 只说明时间条件成立，不修改其他业务系统状态，也不自动决定剧情结果。
 
 ## 根文件
 
-- `index.ts`：脚本主入口。初始化 context-scoped runtime（profile、变量迁移、runtime scanner、widget、host adapter），并把调试 / 安装函数挂到 `globalThis`
-- `constants.ts`：共享常量，例如脚本名、根 DOM id
-- `types.ts`：跨模块共享的月历数据类型
-- `date.ts`：日期解析、格式化、范围判断、世界时间文本解析
-- `festival-date-range.ts`：节庆月日范围的唯一纯 resolver；统一规范化、最近举办年、周期、跨年、提醒预窗口与状态
-- `runtime-context.ts`：当前角色 / 聊天 identity 与切换监听的唯一入口；context 变化时由 `index.ts` 让旧 lifecycle generation 失效并软重启 runtime，不刷新页面
-- `host-adapter.ts`：和外部宿主页 / host 的桥接启动与清理
-- `mvu-removal-archive.ts`：把 MVU 变量删除同步到月历归档的桥接逻辑
-- `form-service.ts`：用户自定义事件的新增、编辑、删除等表单保存逻辑
-- `event-normalizer.ts`：把原始事件数据归一化为月历可用结构
-- `festival-icons.ts`：打包内置 SVG icon，并提供文件名到 SVG 的映射
-- `festival-visual-types.ts`：节庆视觉 preset 的共享类型
-- `festival-visual.ts`：通用节庆标记选择逻辑；profile 专属 preset 由 `profile/` 提供
-- `runtime-ui-dataset.ts`：widget 读取 runtime dataset 的对外门面
-- `runtime-chat-context.ts`：从聊天消息提取 runtime 扫描需要的文本上下文
-- `runtime-config.ts`：旧 runtime 配置门面；新 profile 逻辑优先看 `profile/` 和 `runtime-worldbook/config.ts`
-- `runtime-month-alias.ts`：月份别名读取门面
+- `index.ts`：runtime 生命周期入口；初始化 profile、变量兼容、scanner、widget 与 host adapter
+- `constants.ts`：脚本名、DOM id、变量路径等共享常量
+- `types.ts`：Calendar runtime/UI 共用类型
+- `date.ts`：世界日期解析、格式化、范围计算
+- `event-normalizer.ts`：读取动态事项并把旧数据迁移为当前薄 schema
+- `event-reminder.ts`：动态事项的时间判断与 `<calendar_reminder>` 构建
+- `festival-date-range.ts`：固定节庆日期范围、跨年与 recurrence resolver
+- `runtime-context.ts`：角色/聊天切换与 lifecycle generation
+- `host-adapter.ts`：与 SillyTavern/Tavern Helper 宿主页的桥接
+- `form-service.ts`：玩家新增/编辑动态时间事项
+- `festival-visual.ts` / `festival-visual-types.ts`：固定事项视觉规则
+- `runtime-ui-dataset.ts`：widget 读取 runtime dataset 的门面
+- `runtime-chat-context.ts`：runtime 扫描所需的聊天上下文
+
+旧 `可见性` 只作为旧存档/旧 Widget 的迁移桥接，不属于新的持久化数据契约。
 
 ## 子目录
 
-- `calendar-view-model/`：把 dataset 转为月视图格子、日程列表、月内条形 chip 等 UI view model
-- `fixed-event-index-editor/`：`[fixed_event_index]` 结构化编辑器，见 `fixed-event-index-editor/structure.md`
-- `profile/`：通用月历 / 命定之诗 profile 检测、路径配置、日期设置和 profile 专属视觉 preset
-- `runtime-dataset/`：把世界书索引、主动事件、归档事件、节庆和读物组装成 UI 使用的 `CalendarDataset`；单次 load 传递 operation-scoped worldbook snapshot
-- `runtime-trigger-evaluator/`：runtime 命中判定、日期窗口、关键词、提醒和内容解析
-- `runtime-worldbook/`：世界书索引来源发现、YAML 读取、schema 归一化、正文解析、runtime defaults、月份别名、scanner 输入上下文和 bootstrap；snapshot 不跨 operation 复用，scanner 在同一 generation 内 single-flight，teardown 后新 generation 不等待旧任务
-- `storage/`：聊天变量、消息变量、归档策略、世界书来源配置、事件颜色和标签建议
-- `widget/`：悬浮月历 UI、事件绑定、渲染和样式，见 `widget/structure.md`
-- `worldbook-manager/`：脚本托管的基础设施世界书条目安装、重装、卸载、诊断和搬运
-- `dlc_ellia/`：命定之诗相关 DLC 扩展逻辑，例如艾莉亚票券渲染
+- `calendar-view-model/`：把 dataset 转成月格、agenda、提醒状态等纯 UI model
+- `fixed-event-index-editor/`：`[fixed_event_index]` 的结构化编辑、校验、序列化与保存
+- `profile/`：不同角色卡的 MVU 时间/地点路径、纪元和日期解析配置
+- `runtime-dataset/`：合并固定事项、动态事项、资料与当前世界时间
+- `runtime-trigger-evaluator/`：固定节庆/正文的时间窗口、关键词与提醒判定
+- `runtime-worldbook/`：发现、读取、归一化 `[fixed_event_index]` 与相关正文世界书
+- `storage/`：动态事项持久化、Calendar settings、来源配置、标签与旧数据迁移
+- `widget/`：悬浮月历 UI、表单与交互
+- `worldbook-manager/`：Calendar 管理的世界书规则安装、诊断、搬运与卸载
+- `dlc_ellia/`：《命定之诗》专属可选 addon，不属于通用 Calendar core
+
+## Storage 边界
+
+新的 Calendar storage 只长期拥有：
+
+- `stat_data.事件.月历.[事件ID]`：动态时间事项
+- Calendar script settings：世界书来源、标签颜色、提醒去重等 UI/runtime 设置
+
+Calendar **不再拥有 Archive / Memory store**。
+
+重构期间 `storage/archive-actions.ts`、`archive-settings.ts`、`archive-store.ts` 仅是旧 Widget host 的无状态兼容 facade：
+
+- `completed` 永远为空
+- 不会创建或恢复历史记录
+- 旧“归档/完成”调用最终只会删除 active item，或成为 no-op
+- 只有仍然有效的来源设置、标签颜色等会迁入 `calendar_float_store.settings`
+
+当 Widget host 不再引用这些旧 API 后，应直接删除这些 facade。
 
 ## 修改路线
 
-- 只改角色 / 聊天切换与 runtime 生命周期：优先改 `runtime-context.ts` 和 `index.ts`；沿用 lifecycle generation cancellation，不要让各模块各自发明 context 切换机制
-- 只改固定事件 YAML 结构：优先改 `fixed-event-index-editor/parse.ts`、`serialize.ts`、`edit.ts` 和对应 check
-- 只改 profile 时间 / 地点 / 纪元解析：优先改 `profile/` 和 `runtime-worldbook/config.ts`
-- 只改 runtime 读取兼容性：优先改 `runtime-worldbook/loader.ts`、`normalizer.ts` 和对应 check
-- 只改 UI dataset 组装：优先改 `runtime-dataset/`，widget 仍从 `runtime-ui-dataset.ts` 门面读取
-- 只改命中条件：优先改 `runtime-trigger-evaluator/`
-- 只改节庆月日范围、跨年或提醒预窗口：优先改 `festival-date-range.ts`；dataset 与 evaluator 只保留兼容 facade，不要再各自推断年份
-- 只改 profile 专属节庆图标 / 颜色规则：优先改 `profile/festival-visual-presets.ts`
-- 只改 UI 展示：优先改 `widget/render.ts`、`widget/form-render.ts`、`widget/day-detail.ts`、`widget/index.ts`、`widget/style-parts/`
-- 只改持久化：优先改 `storage/`，不要改现有变量 key，除非有迁移计划
+- 改动态 MVU schema / 旧存档迁移：`event-normalizer.ts`、`storage/active-buckets.ts`
+- 改动态事项到时提醒：`event-reminder.ts` 与 `runtime-worldbook/scanner.ts`
+- 改固定世界日程 schema：`fixed-event-index-editor/` 与 `runtime-worldbook/`
+- 改固定节庆提醒：`runtime-trigger-evaluator/`
+- 改 Calendar UI：`widget/` 与 `calendar-view-model/`
+- 改 profile 时间/地点/纪元：`profile/` 与 `runtime-worldbook/config.ts`
+- 改来源/标签等脚本设置：`storage/calendar-settings.ts`
+
+## Core 判断规则
+
+准备给 Calendar Float 加功能时先问：
+
+> 这个功能的主要职责，是读取时间、显示时间、比较时间，还是在时间到达时提醒？
+
+如果答案都不是，它通常不属于 Calendar core。
+
+例如：
+
+- 任务完成条件 -> Mission system
+- 世界事件阶段 -> World Event system
+- 新闻内容 -> News system
+- 自动剧情历史 -> 不属于 Calendar
+- NPC 主动写下的 Diary -> 可以作为未来的**带日期内容来源**接入 Calendar，但 Diary 内容本身由 Diary/NPC 系统拥有
 
 ## 不要再做的事
 
-- 不要把《命定之诗》的地点、节庆、颜色规则塞回通用模块
-- 不要在 `widget/index.ts` 增加新的纯函数和 YAML 变换
-- 不要为新 profile 复制 `[DLC][扩展]` 这类旧命名前缀
-- 不要把旧字段 `默认设置.mvu时间路径` / `默认设置.mvu地点路径` 写成新文档示例；它们只属于 fallback
-- 不要把新的 `.check.ts` 放在 `src/`；check 统一放到 `checks/calendar-float/`，按原模块路径分目录
-- 不要绕过 `runtime-worldbook/snapshot.ts` 在一次 dataset/scan 内重复读取同一世界书，也不要给 scanner 加平行 publish 通道
-- 不要在角色 / 聊天切换时使用 `window.location.reload()`；必须通过 `runtime-context.ts` 触发旧 generation 失效与 runtime 软重启
+- 不要让 Calendar 自行规划隐藏剧情
+- 不要因为时间到了就判定任务成功/失败或强制触发世界事件
+- 不要恢复 Archive / Memory 系统历史数据库
+- 不要把任务、新闻或世界事件状态复制进月历
+- 不要把一次性/重复事项重新拆成持久化父目录
+- 不要在世界时间解析失败时回退到现实电脑时间
+- 不要把《命定之诗》的专属规则硬编码回通用模块

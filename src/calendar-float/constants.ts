@@ -6,10 +6,13 @@ export const STYLE_ID = 'th-calendar-float-style';
 export const INSTANCE_KEY = 'CalendarFloatWidget';
 
 export const MVU_ROOT_PATH = 'stat_data.事件.月历';
+// Legacy read compatibility only. New writes persist directly under MVU_ROOT_PATH by event id.
 export const MVU_TEMP_PATH = 'stat_data.事件.月历.临时';
 export const MVU_REPEAT_PATH = 'stat_data.事件.月历.重复';
 
 export const CALENDAR_VARIABLE_STORE_KEY = 'calendar_float_store';
+export const CHAT_SETTINGS_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.settings`;
+/** Legacy read-only source for migrating non-archive settings. */
 export const CHAT_ARCHIVE_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.archive`;
 export const CHAT_RUNTIME_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.runtime`;
 export const CHAT_RUNTIME_PATH_SETTINGS_PATH = `${CHAT_RUNTIME_PATH}.path_settings`;
@@ -17,6 +20,7 @@ export const CHAT_TICKET_ALPHA_STORE_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.tick
 export const MESSAGE_TICKET_ALPHA_LATEST_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.ticket_alpha_latest`;
 export const MESSAGE_KNOWN_TAGS_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.runtime.known_tags`;
 
+/** Legacy read-only source for migrating non-archive settings. */
 export const LEGACY_CHAT_ARCHIVE_KEY = 'calendar_float_archive';
 export const LEGACY_CHAT_RUNTIME_KEY = 'calendar_float_runtime';
 export const LEGACY_CHAT_REMINDER_COMINGSOON_KEY = 'reminder_comingsoon';

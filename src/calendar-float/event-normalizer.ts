@@ -3,59 +3,12 @@ import type { ActiveCalendarBuckets, CalendarBucketType, RawCalendarEvent } from
 
 export function sanitizeRule(value: unknown): RawCalendarEvent['重复规则'] {
   const rule = String(value ?? '无') as RawCalendarEvent['重复规则'];
-  return ['无', '每天', '每周', '每月', '每年', '仅工作日', '仅节假日'].includes(rule) ? rule : '无';
-}
-
-export function sanitizeNarrativeType(value: unknown): NonNullable<RawCalendarEvent['类型']> {
-  const type = String(value ?? '').trim() as NonNullable<RawCalendarEvent['类型']>;
-  return ['日程', '事件', '回忆'].includes(type) ? type : '日程';
-}
-
-export function sanitizeImportance(value: unknown): NonNullable<RawCalendarEvent['重要度']> {
-  const importance = String(value ?? '').trim();
-  if (['重要且紧急', '重要不紧急', '不重要但紧急', '不重要不紧急'].includes(importance)) {
-    return importance as NonNullable<RawCalendarEvent['重要度']>;
-  }
-  if (importance === '重要') {
-    return '重要且紧急';
-  }
-  if (importance === '纪念') {
-    return '重要不紧急';
-  }
-  return '不重要不紧急';
-}
-
-export function sanitizeVisibility(value: unknown): NonNullable<RawCalendarEvent['可见性']> {
-  const visibility = String(value ?? '').trim() as NonNullable<RawCalendarEvent['可见性']>;
-  return ['玩家与LLM', '仅玩家', '仅LLM', '完全不显示'].includes(visibility) ? visibility : '玩家与LLM';
+  return ['无', '每天', '每周', '每月', '每年', '仅工作日'].includes(rule) ? rule : '无';
 }
 
 export function sanitizeReminderLeadDays(value: unknown): number {
   const days = Number(value);
   return Number.isFinite(days) ? Math.max(0, Math.floor(days)) : 0;
-}
-
-export function inferDefaultPostAction(
-  type: NonNullable<RawCalendarEvent['类型']>,
-  importance: NonNullable<RawCalendarEvent['重要度']>,
-): NonNullable<RawCalendarEvent['完成后']> {
-  void type;
-  void importance;
-  return '归档';
-}
-
-export function sanitizePostAction(
-  value: unknown,
-  type: NonNullable<RawCalendarEvent['类型']>,
-  importance: NonNullable<RawCalendarEvent['重要度']>,
-): NonNullable<RawCalendarEvent['完成后']> {
-  const action = String(value ?? '').trim();
-  if (action === '不处理') {
-    return '历史';
-  }
-  return ['历史', '自动清理', '归档', '转回忆'].includes(action)
-    ? (action as NonNullable<RawCalendarEvent['完成后']>)
-    : inferDefaultPostAction(type, importance);
 }
 
 export function sanitizeTagList(value: unknown): string[] {
@@ -68,24 +21,67 @@ export function sanitizeTagList(value: unknown): string[] {
     .filter((item, index, array) => array.indexOf(item) === index);
 }
 
+function readLegacyVisibility(source: Record<string, unknown>): string {
+  const visibility = String(source.可见性 ?? '').trim();
+  return ['玩家与LLM', '仅玩家', '仅LLM', '完全不显示'].includes(visibility) ? visibility : '';
+}
+
+function resolveDisplayFlag(source: Record<string, unknown>): boolean {
+  if (typeof source.显示 === 'boolean') {
+    return source.显示;
+  }
+  const legacyVisibility = readLegacyVisibility(source);
+  return legacyVisibility !== '仅LLM' && legacyVisibility !== '完全不显示';
+}
+
+function resolveReminderFlag(source: Record<string, unknown>): boolean {
+  if (typeof source.提醒 === 'boolean') {
+    return source.提醒;
+  }
+  // Legacy `仅玩家` meant the LLM should not receive the item. Old hidden/LLM-only
+  // records become the new `显示:false + 提醒:true` temporal-signal model.
+  return readLegacyVisibility(source) !== '仅玩家';
+}
+
+function buildLegacyWidgetVisibility(display: boolean, remind: boolean): RawCalendarEvent['可见性'] {
+  if (!display && remind) {
+    return '仅LLM';
+  }
+  if (!display && !remind) {
+    return '完全不显示';
+  }
+  return remind ? '玩家与LLM' : '仅玩家';
+}
+
 export function sanitizeRawEvent(value: unknown, bucketType?: CalendarBucketType): RawCalendarEvent {
   const source = _.isPlainObject(value) ? (value as Record<string, unknown>) : {};
-  const 类型 = sanitizeNarrativeType(source.类型);
-  const 重要度 = sanitizeImportance(source.重要度);
   const 重复规则 = bucketType === '临时' ? '无' : sanitizeRule(source.重复规则 ?? source.重复规则分类);
+  const 显示 = resolveDisplayFlag(source);
+  const 提醒 = resolveReminderFlag(source);
   return {
     标题: String(source.标题 ?? '').trim(),
     内容: String(source.内容 ?? '').trim(),
     时间: String(source.时间 ?? '').trim(),
     结束时间: String(source.结束时间 ?? '').trim(),
     重复规则,
-    类型,
-    完成后: sanitizePostAction(source.完成后, 类型, 重要度),
-    重要度,
     提前提醒天数: sanitizeReminderLeadDays(source.提前提醒天数),
-    可见性: sanitizeVisibility(source.可见性),
+    显示,
+    提醒,
     标签: sanitizeTagList(source.标签),
+
+    // In-memory bridge only for the legacy widget host. `flattenCalendarBuckets()`
+    // strips this before persistence so the new MVU contract stays clean.
+    可见性: buildLegacyWidgetVisibility(显示, 提醒),
   };
+}
+
+export function sanitizeEventRecords(value: unknown): Record<string, RawCalendarEvent> {
+  if (!_.isPlainObject(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([id, event]) => [id, sanitizeRawEvent(event)]),
+  ) as Record<string, RawCalendarEvent>;
 }
 
 export function sanitizeBucketRecords(
@@ -95,16 +91,47 @@ export function sanitizeBucketRecords(
   if (!_.isPlainObject(value)) {
     return {};
   }
-  const source = value as Record<string, unknown>;
   return Object.fromEntries(
-    Object.entries(source).map(([id, event]) => [id, sanitizeRawEvent(event, bucketType)]),
+    Object.entries(value as Record<string, unknown>).map(([id, event]) => [id, sanitizeRawEvent(event, bucketType)]),
   ) as Record<string, RawCalendarEvent>;
+}
+
+export function splitCalendarRecords(records: Record<string, RawCalendarEvent>): ActiveCalendarBuckets {
+  const 临时: Record<string, RawCalendarEvent> = {};
+  const 重复: Record<string, RawCalendarEvent> = {};
+  Object.entries(records).forEach(([id, event]) => {
+    (event.重复规则 === '无' ? 临时 : 重复)[id] = event;
+  });
+  return { 临时, 重复 };
+}
+
+function toPersistedCalendarEvent(event: RawCalendarEvent): RawCalendarEvent {
+  return {
+    标题: String(event.标题 || '').trim(),
+    内容: String(event.内容 || '').trim(),
+    时间: String(event.时间 || '').trim(),
+    结束时间: String(event.结束时间 || '').trim(),
+    重复规则: sanitizeRule(event.重复规则),
+    提前提醒天数: sanitizeReminderLeadDays(event.提前提醒天数),
+    显示: event.显示 !== false,
+    提醒: event.提醒 !== false,
+    标签: sanitizeTagList(event.标签),
+  };
+}
+
+export function flattenCalendarBuckets(buckets: ActiveCalendarBuckets): Record<string, RawCalendarEvent> {
+  return Object.fromEntries(
+    Object.entries({ ...buckets.临时, ...buckets.重复 }).map(([id, event]) => [id, toPersistedCalendarEvent(event)]),
+  );
 }
 
 export function sanitizeActiveCalendarBuckets(value: unknown): ActiveCalendarBuckets {
   const source = _.isPlainObject(value) ? (value as Record<string, unknown>) : {};
-  return {
-    临时: sanitizeBucketRecords(source.临时, '临时'),
-    重复: sanitizeBucketRecords(source.重复, '重复'),
-  };
+  if (_.isPlainObject(source.临时) || _.isPlainObject(source.重复)) {
+    return {
+      临时: sanitizeBucketRecords(source.临时, '临时'),
+      重复: sanitizeBucketRecords(source.重复, '重复'),
+    };
+  }
+  return splitCalendarRecords(sanitizeEventRecords(source));
 }

@@ -1,11 +1,11 @@
 /**
  * 负责：运行时总调度。
- * 流程：读取 index -> 收集最近消息/变量 -> 判定哪些节庆/提醒命中 -> 写入运行时变量 ->
- * 仅对 worldbook 扫描类内容做 silent scan，同时对提醒做可见 injectprompt。
+ * 流程：读取 index -> 收集最近消息/变量 -> 判定固定节庆/资料命中 -> 计算动态时间提醒 ->
+ * 写入运行时变量，并把需要的扫描词与时间提醒注入下一次 LLM 请求。
  */
 import _ from 'lodash';
 import { CHAT_RUNTIME_PATH, SCRIPT_NAME } from '../constants';
-import { promoteDueSealedCalendarEvents } from '../event-visibility-scheduler';
+import { buildCalendarTimedReminderPrompt, evaluateCalendarTimedReminders } from '../event-reminder';
 import { readCalendarTriggerVariableContext, readLatestCalendarTriggerMessages } from './chat-context';
 import {
   resolveCalendarContentNode,
@@ -46,6 +46,7 @@ export interface CalendarRuntimeScanResult {
   命中关键字: string[];
   提醒未开始文本: string[];
   提醒进行中文本: string[];
+  动态月历提醒: string;
   摘要文本: Array<{ 书籍id: string; 名称: string; 正文: string }>;
   警告: string[];
 }
@@ -174,10 +175,11 @@ function buildXmlWrappedPromptContent(tagName: string, content: string): string 
 }
 
 function buildReminderPromptContent(result: CalendarRuntimeScanResult): string {
-  return buildXmlWrappedPromptContent(
+  const festivalReminder = buildXmlWrappedPromptContent(
     'festival_reminder',
     [...取唯一文本(result.提醒未开始文本), ...取唯一文本(result.提醒进行中文本)].join('\n\n'),
   );
+  return [festivalReminder, result.动态月历提醒].map(规范化文本).filter(Boolean).join('\n\n');
 }
 
 function clearPromptById(id: string, uninjectRef: (() => void) | null): void {
@@ -281,6 +283,7 @@ function writeRuntimeScanVariables(result: CalendarRuntimeScanResult): void {
   const payload = {
     reminder_comingsoon: comingSoon,
     reminder_active: active,
+    calendar_reminders: result.动态月历提醒,
     book_abstracts: summaries,
     matched_keywords: 取唯一文本(result.命中关键字),
     warnings: 取唯一文本(result.警告),
@@ -306,6 +309,7 @@ export async function scanCalendarRuntimeWorldbook(
     命中关键字: [],
     提醒未开始文本: [],
     提醒进行中文本: [],
+    动态月历提醒: '',
     摘要文本: [],
     警告: [...indexResult.警告],
   };
@@ -352,13 +356,18 @@ async function publishCalendarRuntimeWorldbookScan(result: CalendarRuntimeScanRe
 
 async function runCalendarRuntimeWorldbookScan(generation: number): Promise<void> {
   try {
-    const promotion = await promoteDueSealedCalendarEvents();
+    const snapshot = await loadCalendarRuntimeWorldbookSnapshot();
     if (generation !== scanGeneration) {
       return;
     }
-    const snapshot = await loadCalendarRuntimeWorldbookSnapshot();
+    const monthAliases = normalizeCalendarMonthAliasList(snapshot.indexResult.索引?.月份别名);
+    const timedReminder = await evaluateCalendarTimedReminders(monthAliases);
+    if (generation !== scanGeneration) {
+      return;
+    }
     const result = await scanCalendarRuntimeWorldbook(snapshot);
-    result.警告 = 取唯一文本([...result.警告, ...promotion.warnings]);
+    result.动态月历提醒 = buildCalendarTimedReminderPrompt(timedReminder.reminders);
+    result.警告 = 取唯一文本([...result.警告, ...timedReminder.warnings]);
     if (generation !== scanGeneration) {
       return;
     }

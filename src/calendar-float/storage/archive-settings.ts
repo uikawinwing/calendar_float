@@ -1,31 +1,48 @@
 import type { CalendarArchiveStore, CalendarSourceConfig } from '../types';
-import { sanitizeArchivePolicy } from './archive-policy';
-import { readArchiveStore, replaceArchiveStore } from './archive-store';
-import { sanitizeSourceConfig } from './source-config';
+import {
+  readCalendarSettings,
+  replaceCalendarSourceConfig as replaceSourceConfig,
+  replaceCalendarTagSettings,
+} from './calendar-settings';
 
 export function readCalendarSourceConfig(): CalendarSourceConfig {
-  return readArchiveStore().sources;
+  return readCalendarSettings().sources;
 }
 
 export function replaceCalendarSourceConfig(nextConfig: CalendarSourceConfig): CalendarSourceConfig {
-  const archive = readArchiveStore();
-  archive.sources = sanitizeSourceConfig(nextConfig);
-  replaceArchiveStore(archive);
-  return archive.sources;
+  return replaceSourceConfig(nextConfig);
 }
 
+/** @deprecated Archive policy is no longer a product feature. */
 export function readCalendarArchivePolicy(): CalendarArchiveStore['policy'] {
-  return readArchiveStore().policy;
+  const settings = readCalendarSettings();
+  return {
+    archiveOnActiveRemoval: false,
+    skipArchiveTags: [],
+    autoDeleteTags: [],
+    protectedTags: [],
+    customTags: settings.customTags,
+    tagColors: settings.tagColors,
+  };
 }
 
+/**
+ * @deprecated Archive behavior is ignored. This only preserves tag/color settings
+ * until the legacy widget settings UI is removed.
+ */
 export function replaceCalendarArchivePolicy(
   nextPolicy: Partial<CalendarArchiveStore['policy']>,
 ): CalendarArchiveStore['policy'] {
-  const archive = readArchiveStore();
-  archive.policy = sanitizeArchivePolicy({
-    ...archive.policy,
-    ...nextPolicy,
+  const settings = replaceCalendarTagSettings({
+    customTags: nextPolicy.customTags,
+    tagColors: nextPolicy.tagColors,
   });
-  replaceArchiveStore(archive);
-  return archive.policy;
+  return {
+    archiveOnActiveRemoval: false,
+    skipArchiveTags: [],
+    autoDeleteTags: [],
+    protectedTags: [],
+    customTags: settings.customTags,
+    tagColors: settings.tagColors,
+  };
 }

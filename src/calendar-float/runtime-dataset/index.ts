@@ -11,35 +11,34 @@ import { isCalendarEventVisibleToPlayer } from '../event-visibility';
 import {
   buildSuggestionSet,
   readActiveBuckets,
-  readArchiveStore,
+  readCalendarSettings,
   readCurrentWorldLocation,
   readCurrentWorldTime,
 } from '../storage';
 import type { CalendarDataset, FestivalRecord } from '../types';
-import { mapActiveCalendarEvent, mapArchivedCalendarEvent } from './active-events';
+import { mapActiveCalendarEvent } from './active-events';
 import { buildRuntimeBookRecord } from './books';
 import { buildRuntimeFestivalRecord } from './festivals';
 
 export async function loadCalendarDatasetFromRuntimeWorldbook(
   snapshot?: CalendarRuntimeWorldbookSnapshot,
 ): Promise<CalendarDataset> {
-  const archive = readArchiveStore();
-  const runtimeSnapshot = snapshot ?? (await loadCalendarRuntimeWorldbookSnapshot(archive.sources));
+  const settings = readCalendarSettings();
+  const runtimeSnapshot = snapshot ?? (await loadCalendarRuntimeWorldbookSnapshot(settings.sources));
   const activeBuckets = await readActiveBuckets();
   const runtimeIndex = runtimeSnapshot.indexResult;
   const monthAliases = normalizeCalendarMonthAliasList(runtimeIndex.索引?.月份别名);
   const worldTime = readCurrentWorldTime(undefined, monthAliases);
   const currentLocationText = readCurrentWorldLocation();
-  const now = worldTime.point ?? {
-    year: new Date().getFullYear(),
-    month: new Date().getMonth() + 1,
-    day: new Date().getDate(),
-  };
+  if (!worldTime.point) {
+    throw new Error(`当前世界时间无法解析：${worldTime.text || '（空）'}。月历停止构建，避免误用现实日期。`);
+  }
+  const now = worldTime.point;
 
   const runtimeSources = runtimeSnapshot.sources;
   const runtimeFestivals = await Promise.all(
     (runtimeIndex.索引?.节庆 ?? []).map(item =>
-      buildRuntimeFestivalRecord(item, now, archive.policy.tagColors, runtimeSnapshot),
+      buildRuntimeFestivalRecord(item, now, settings.tagColors, runtimeSnapshot),
     ),
   );
   const runtimeBooks = await Promise.all(
@@ -54,22 +53,19 @@ export async function loadCalendarDatasetFromRuntimeWorldbook(
       .filter(([, raw]) => isCalendarEventVisibleToPlayer(raw))
       .map(([id, raw]) => mapActiveCalendarEvent('重复', id, raw, now, monthAliases)),
   ];
-  const archivedEvents = Object.entries(archive.completed)
-    .filter(([, raw]) => isCalendarEventVisibleToPlayer(raw))
-    .map(([id, raw]) => mapArchivedCalendarEvent(id, raw, now, monthAliases));
 
   return {
     nowText: worldTime.text,
-    nowDate: worldTime.point ?? undefined,
+    nowDate: worldTime.point,
     calendarAnchor: worldTime.anchor ?? undefined,
     currentLocationText,
     activeEvents,
-    archivedEvents,
+    archivedEvents: [],
     festivals: runtimeFestivals.filter((value): value is FestivalRecord => Boolean(value)),
     books: Object.fromEntries(runtimeBooks.map(book => [book.id, book])),
-    suggestions: buildSuggestionSet({ activeBuckets, archive }),
+    suggestions: buildSuggestionSet({ activeBuckets, settings }),
     monthAliases,
-    sourceConfig: archive.sources,
+    sourceConfig: settings.sources,
     worldbookSources: runtimeSources,
     sourceWarnings: [...runtimeIndex.警告],
   };

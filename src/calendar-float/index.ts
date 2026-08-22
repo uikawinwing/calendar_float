@@ -6,7 +6,6 @@ import {
   invalidateCalendarFloatLifecycle,
   isCalendarFloatLifecycleCancelledError,
 } from './lifecycle';
-import { bootstrapCalendarMvuRemovalArchive, teardownCalendarMvuRemovalArchive } from './mvu-removal-archive';
 import { initializeCalendarProfile } from './profile';
 import {
   type CalendarRuntimeContextChange,
@@ -90,7 +89,6 @@ function queueManagedWorldbookDiagnosticsRefresh(isCurrent: () => boolean): void
 
 function teardownCalendarRuntime(reason: string): void {
   invalidateCalendarFloatLifecycle();
-  teardownCalendarMvuRemovalArchive();
   teardownCalendarFloatHostAdapter({ unregister: true, silent: true });
   teardownCalendarRuntimeWorldbookScanner();
   window.CalendarFloatWidget?.destroy(reason);
@@ -121,7 +119,6 @@ async function bootstrapCalendarRuntime(
   });
   queueManagedWorldbookDiagnosticsRefresh(lifecycle.isCurrent);
 
-  bootstrapCalendarMvuRemovalArchive();
   bootstrapCalendarRuntimeWorldbookScanner();
   void bootstrapCalendarWidget(lifecycle).catch(error => {
     if (isCalendarFloatLifecycleCancelledError(error) || !lifecycle.isCurrent()) {
@@ -169,7 +166,6 @@ function cleanup(): void {
   contextWatcher?.stop();
   contextWatcher = null;
   invalidateCalendarFloatLifecycle();
-  teardownCalendarMvuRemovalArchive();
   teardownCalendarFloatHostAdapter({ unregister: true, silent: true });
   teardownCalendarRuntimeWorldbookScanner();
   window.CalendarFloatWidget?.destroy('pagehide');

@@ -2,8 +2,7 @@ import { PRESET_TAG_OPTIONS } from '../constants';
 import { isCalendarEventVisibleToPlayer } from '../event-visibility';
 import type {
   ActiveCalendarBuckets,
-  ArchivedCalendarEvent,
-  CalendarArchiveStore,
+  CalendarSourceSettings,
   CalendarSuggestionSet,
   CalendarTagOption,
   RawCalendarEvent,
@@ -12,20 +11,20 @@ import { collectEventTags } from './tags';
 
 export function buildSuggestionSet(args: {
   activeBuckets: ActiveCalendarBuckets;
-  archive: CalendarArchiveStore;
+  settings: CalendarSourceSettings;
 }): CalendarSuggestionSet {
   const titlePool = new Set<string>();
   const tagMap = new Map<string, CalendarTagOption>();
   const idPool = new Set<string>();
 
   PRESET_TAG_OPTIONS.forEach(option => tagMap.set(option.value, option));
-  args.archive.policy.customTags.forEach(tag => {
+  args.settings.customTags.forEach(tag => {
     if (!tagMap.has(tag)) {
       tagMap.set(tag, { value: tag, label: tag, source: 'custom' });
     }
   });
 
-  const collect = (id: string, event: RawCalendarEvent | ArchivedCalendarEvent): void => {
+  const collect = (id: string, event: RawCalendarEvent): void => {
     if (!isCalendarEventVisibleToPlayer(event)) {
       return;
     }
@@ -44,7 +43,6 @@ export function buildSuggestionSet(args: {
 
   Object.entries(args.activeBuckets.临时).forEach(([id, event]) => collect(id, event));
   Object.entries(args.activeBuckets.重复).forEach(([id, event]) => collect(id, event));
-  Object.entries(args.archive.completed).forEach(([id, event]) => collect(id, event));
 
   return {
     idCandidates: Array.from(idPool).sort((left, right) => left.localeCompare(right, 'zh-CN')),

@@ -222,6 +222,8 @@ export function renderFormHtml(args: {
     start?: string;
     end?: string;
     rule?: string;
+    remind?: boolean;
+    /** @deprecated Temporary bridge for the current widget host. */
     visibility?: string;
   };
   editing?: boolean;
@@ -234,11 +236,12 @@ export function renderFormHtml(args: {
   const defaultDate = parseMonthDayFromText(args.nowText);
   const defaultMonth = defaultDate?.month ?? 1;
   const defaultDay = defaultDate?.day ?? 1;
+  const remind = values.remind ?? values.visibility !== '仅玩家';
   return `
     <section class="th-calendar-section">
       <div class="th-section-title-row">
         <div>
-          <div class="th-section-title">${args.editing ? '编辑事件' : '新增事件'}</div>
+          <div class="th-section-title">${args.editing ? '编辑事项' : '新增事项'}</div>
           <div class="th-section-subtitle">当前世界时间：${escapeHtml(args.nowText || '未读取到')}</div>
         </div>
       </div>
@@ -246,21 +249,21 @@ export function renderFormHtml(args: {
         <div class="th-form-field">
           <label>类型</label>
           <select data-form-field="type">
-            <option value="临时" ${values.type === '重复' ? '' : 'selected'}>临时</option>
+            <option value="临时" ${values.type === '重复' ? '' : 'selected'}>一次性</option>
             <option value="重复" ${values.type === '重复' ? 'selected' : ''}>重复</option>
           </select>
         </div>
         <details class="th-form-advanced" ${args.editing ? 'open' : ''}>
           <summary>高级选项</summary>
           <div class="th-form-field">
-            <label>事件 ID</label>
-            <input data-form-field="id" value="${escapeHtml(values.id || '')}" placeholder="留空自动生成，例如 quest_01" />
+            <label>事项 ID</label>
+            <input data-form-field="id" value="${escapeHtml(values.id || '')}" placeholder="留空自动生成，例如 class_01" />
           </div>
           <div class="th-form-field">
-            <label>可见性</label>
+            <label>到时提醒 LLM</label>
             <select data-form-field="visibility">
-              <option value="玩家与LLM" ${values.visibility === '仅玩家' ? '' : 'selected'}>玩家与 LLM</option>
-              <option value="仅玩家" ${values.visibility === '仅玩家' ? 'selected' : ''}>仅玩家</option>
+              <option value="玩家与LLM" ${remind ? 'selected' : ''}>开启</option>
+              <option value="仅玩家" ${remind ? '' : 'selected'}>关闭</option>
             </select>
           </div>
           <div class="th-form-field" data-role="absolute-time-field" ${isRepeat ? 'hidden' : ''}>
@@ -293,19 +296,19 @@ export function renderFormHtml(args: {
         </details>
         <div class="th-form-field">
           <label>标题</label>
-          <input data-form-field="title" value="${escapeHtml(values.title || '')}" placeholder="事件标题" />
+          <input data-form-field="title" value="${escapeHtml(values.title || '')}" placeholder="事项标题" />
         </div>
         <div class="th-form-field">
           <label>标签</label>
           ${renderTagPicker({ selectedTags, tagCandidates: args.tagCandidates })}
         </div>
         <div class="th-form-field">
-          <label>内容</label>
-          <textarea data-form-field="content" rows="4" placeholder="详细描述、备忘信息">${escapeHtml(values.content || '')}</textarea>
+          <label>备注</label>
+          <textarea data-form-field="content" rows="4" placeholder="可选；只记录与时间安排直接相关的说明">${escapeHtml(values.content || '')}</textarea>
         </div>
         <div class="th-form-actions">
           <button type="button" class="th-btn" data-action="fill-now-time">填入当前时间</button>
-          <button type="button" class="th-btn th-primary-btn" data-action="save-form">${args.editing ? '保存修改' : '新增事件'}</button>
+          <button type="button" class="th-btn th-primary-btn" data-action="save-form">${args.editing ? '保存修改' : '新增事项'}</button>
           <button type="button" class="th-btn" data-action="cancel-form">取消</button>
         </div>
       </div>
