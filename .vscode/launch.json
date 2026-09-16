@@ -1,7 +1,10 @@
 {
   "version": "0.2.0",
   "configurations": [
+<<<<<<< HEAD
     
+=======
+>>>>>>> d77edb7121650f80c9a1a62357d549925d1336ad
     {
       "name": "编译代码并调试酒馆网页 (Chrome)",
       "type": "chrome",
@@ -9,10 +12,13 @@
       "preLaunchTask": "开始任务",
       "postDebugTask": "结束任务",
       "url": "http://localhost:8000",
+<<<<<<< HEAD
       "runtimeArgs": [
         "--remote-debugging-port=9222"
       ],
       "userDataDir": "${env:LOCALAPPDATA}\\CodexChromeMCPProfile",
+=======
+>>>>>>> d77edb7121650f80c9a1a62357d549925d1336ad
       "disableNetworkCache": true,
       "internalConsoleOptions": "neverOpen",
       "cwd": "${workspaceFolder}",
@@ -51,10 +57,13 @@
       "type": "chrome",
       "request": "launch",
       "url": "http://localhost:8000",
+<<<<<<< HEAD
       "runtimeArgs": [
         "--remote-debugging-port=9222"
       ],
       "userDataDir": "${env:LOCALAPPDATA}\\CodexChromeMCPProfile",
+=======
+>>>>>>> d77edb7121650f80c9a1a62357d549925d1336ad
       "disableNetworkCache": true,
       "internalConsoleOptions": "neverOpen",
       "cwd": "${workspaceFolder}",
