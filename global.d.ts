@@ -18,10 +18,13 @@ declare module '*.md' {
   const content: string;
   export default content;
 }
+<<<<<<< HEAD
 declare module '*.txt' {
   const content: string;
   export default content;
 }
+=======
+>>>>>>> a5317b873d6a11e0ca2f71d53e45bc23e81faf2a
 declare module '*.yaml' {
   const content: any;
   export default content;
