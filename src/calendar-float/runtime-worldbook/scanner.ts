@@ -411,7 +411,9 @@ function startCalendarRuntimeScan(generation: number): Promise<void> {
 export function requestCalendarRuntimeWorldbookScan(): Promise<void> {
   if (activeRuntimeScan?.generation === scanGeneration) {
     activeRuntimeScan.queued = true;
-    return activeRuntimeScan.promise;
+    // A queued request is a distinct operation: keep the running scan single-flight
+    // but do not expose the already-settling request's Promise identity to callers.
+    return activeRuntimeScan.promise.then(() => undefined);
   }
   return startCalendarRuntimeScan(scanGeneration);
 }
