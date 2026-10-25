@@ -1,7 +1,5 @@
 import _ from 'lodash';
-import {
-  getRelativeDayDistance,
-} from '../date';
+import { getRelativeDayDistance } from '../date';
 import { resolveFestivalDateRange } from '../festival-date-range';
 import { resolveCalendarRuntimeNodeText } from '../runtime-worldbook/resolver';
 import type {
@@ -52,7 +50,11 @@ export function buildCalendarFestivalWindow(
   };
 }
 
-function 渲染提醒模板(template: string, festival: CalendarRuntimeFestivalEntry, window: CalendarRuntimeFestivalWindowResult): string {
+function 渲染提醒模板(
+  template: string,
+  festival: CalendarRuntimeFestivalEntry,
+  window: CalendarRuntimeFestivalWindowResult,
+): string {
   return template
     .replaceAll('${节庆名}', festival.名称)
     .replaceAll('${固定事件}', festival.名称)
@@ -101,6 +103,16 @@ export async function resolveCalendarFestivalReminder(
   context: CalendarRuntimeTriggerContext,
   snapshot?: CalendarRuntimeWorldbookSnapshot,
 ): Promise<CalendarRuntimeReminderResolveResult> {
+  if (festival.提醒?.启用 === false) {
+    return {
+      正文: '',
+      状态: '未命中',
+      来源条目名: null,
+      文本库键: null,
+      警告: [],
+    };
+  }
+
   const now = context.当前日期 ?? readCurrentWorldTime().point ?? null;
   if (!now) {
     return {
@@ -163,7 +175,7 @@ export async function resolveCalendarFestivalStageReminder(
   context: CalendarRuntimeTriggerContext,
   snapshot?: CalendarRuntimeWorldbookSnapshot,
 ): Promise<CalendarRuntimeReminderResolveResult> {
-  if (stage.启用 === false || !stage.提醒) {
+  if (stage.启用 === false || !stage.提醒 || stage.提醒.启用 === false) {
     return {
       正文: '',
       状态: '未命中',

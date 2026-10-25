@@ -1,6 +1,7 @@
 import { getActiveCalendarProfile } from '../profile';
 
 export function buildCalendarVariableListEntryContent(): string {
+  const profile = getActiveCalendarProfile();
   return [
     '---',
     '现有月历事件',
@@ -8,7 +9,7 @@ export function buildCalendarVariableListEntryContent(): string {
     '<calendar_variables_display>',
     '<%_ { _%>',
     '<%_',
-    "  const rootPath = 'stat_data.事件.月历';",
+    `  const rootPath = ${JSON.stringify(profile.paths.eventRoot)};`,
     '  const calendar = getvar(rootPath, { defaults: { 临时: {}, 重复: {} } });',
     '',
     '  // 仅隐藏玩家手动标记为私有的事件；缺省或脏值按默认公开处理，避免旧变量被误过滤。',
@@ -58,7 +59,7 @@ export function buildCalendarVariableListEntryContent(): string {
     '      },',
     '    },',
     '  };',
-    '  print(YAML.stringify(displayOutput, { blockQuote: \'literal\' }));',
+    "  print(YAML.stringify(displayOutput, { blockQuote: 'literal' }));",
     '_%>',
     '<%_ } _%>',
     '</calendar_variables_display>',
@@ -68,6 +69,9 @@ export function buildCalendarVariableListEntryContent(): string {
 export function buildCalendarUpdateRulesEntryContent(): string {
   const profile = getActiveCalendarProfile();
   const timeExamples = profile.worldbook.updateRuleTimeExamples.map(example => `\`${example}\``).join('、');
+  const forbiddenRepeatTimeExamples = profile.worldbook.forbiddenRepeatTimeExamples
+    .map(example => `“${example}”`)
+    .join('、');
   const tempPath = profile.paths.tempEvents.replace(/^stat_data\./, '');
   const repeatPath = profile.paths.repeatEvents.replace(/^stat_data\./, '');
   return [
@@ -134,7 +138,7 @@ export function buildCalendarUpdateRulesEntryContent(): string {
     '    check:',
     `      - 只存规律重复事件；一次性事件必须写入 \`${tempPath}\``,
     '      - 时间与结束时间必须严格按 `重复规则分类` 填写',
-    '      - 重复事件严禁使用包含具体年份的完整世界时间，例如“复兴纪元488年-6月5日”',
+    `      - 重复事件严禁使用包含具体年份的完整世界时间，例如：${forbiddenRepeatTimeExamples}`,
     '      - 不得把一次性任务截止日、单次约定或一次性旅行计划写成重复事件',
     `      - 若重复安排被{{user}}取消、停止或改为一次性安排，应移除重复事件或迁移为 \`${tempPath}\``,
   ].join('\n');

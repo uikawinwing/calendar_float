@@ -4,9 +4,8 @@ import type { CalendarRuntimeWorldbookSnapshot } from '../runtime-worldbook/snap
 import type { CalendarBookRecord, DatePoint } from '../types';
 import { buildRuntimeDatasetTriggerContext } from './context';
 
-function buildBookTriggerText(bookTitle: string): string {
-  const title = String(bookTitle || '').trim() || '未命名读物';
-  return `[[打开《${title}》]]`;
+function buildBookTriggerText(book: CalendarRuntimeBookEntry): string {
+  return String(book.全文?.元数据?.快速触发词 ?? '').trim() || book.全文?.条目?.条目名?.trim() || book.名称;
 }
 
 export async function buildRuntimeBookRecord(
@@ -22,7 +21,7 @@ export async function buildRuntimeBookRecord(
     title: book.名称,
     summary: abstract.正文 || '',
     content: fulltext.正文 || '',
-    triggerText: buildBookTriggerText(book.名称),
+    triggerText: buildBookTriggerText(book),
     worldbookEntryName: book.全文?.条目?.条目名 || book.全文?.文本库?.条目名,
   };
 }
