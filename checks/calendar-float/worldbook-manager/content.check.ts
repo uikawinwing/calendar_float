@@ -1,3 +1,4 @@
+import _ from 'lodash';
 import {
   buildCalendarUpdateRulesEntryContent,
   buildCalendarVariableListEntryContent,
@@ -59,10 +60,33 @@ function testUpdateRulesUseLatestMvuRuleTemplate(): void {
   );
 }
 
+function testPlayerOnlyTagsStayOutOfModelRules(): void {
+  const content = buildCalendarUpdateRulesEntryContent();
+  const expression = [...content.matchAll(/<%- ([\s\S]*?) %>/g)]
+    .map(match => match[1])
+    .find(value => value.includes('collectBucketTags'));
+  assert(expression, '更新规则应包含可执行的标签展示表达式');
+  const calendar = {
+    临时: {
+      public: { 标签: ['公开标签'] },
+      private: { 标签: ['私人标签'], 可见性: '仅玩家' },
+    },
+    重复: { private: { 标签: ['私人重复标签'], 可见性: '仅玩家' } },
+  };
+  const getvar = (path: string) => (path === 'stat_data.事件.月历' ? calendar : ['私人标签', '私人重复标签']);
+  const rendered: string = new Function('getvar', '_', `return ${expression}`)(getvar, _);
+  assert(rendered.includes('公开标签'), '旧事件的缺省可见标签应继续提供给模型');
+  assert(
+    !rendered.includes('私人标签') && !rendered.includes('私人重复标签'),
+    '仅玩家标签和 UI 镜像标签不得进入模型规则',
+  );
+}
+
 function main(): void {
   testVariableListUsesLatestMvuRuleTemplate();
   testWorldbookRulesFollowConfiguredRuntimePathsAndExamples();
   testUpdateRulesUseLatestMvuRuleTemplate();
+  testPlayerOnlyTagsStayOutOfModelRules();
   console.log('content.check.ts OK');
 }
 
