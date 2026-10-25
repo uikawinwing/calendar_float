@@ -94,6 +94,7 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
   $(refs.ball).off('.calendar-float');
   $(refs.root).off('.calendar-float');
   $(rootDocument).off('.calendar-float-panel-drag');
+  $(rootDocument).off('.calendar-float-button');
   $(ballDocument).off('.calendar-float-ball-drag');
   $(rootDocument).off('.calendar-float-tools-menu');
   $(hostWindow).off('.calendar-float-window');
