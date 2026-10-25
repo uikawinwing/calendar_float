@@ -21,7 +21,13 @@ function addIfDefined(target: Record<string, unknown>, key: string, value: unkno
 }
 
 function serializeContentRef(ref: FixedEventContentRefDraft): Record<string, unknown> | undefined {
-  if (!ref.enabled && !ref.entryName && ref.keywords.length === 0 && ref.userKeywords.length === 0) {
+  if (
+    !ref.enabled &&
+    !ref.entryName &&
+    ref.keywords.length === 0 &&
+    ref.userKeywords.length === 0 &&
+    Object.keys(ref.unknownFields).length === 0
+  ) {
     return undefined;
   }
   const output: Record<string, unknown> = { ...ref.unknownFields };

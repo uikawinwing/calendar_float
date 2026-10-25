@@ -210,9 +210,6 @@ function parseContentRef(source: unknown): FixedEventContentRefDraft {
       '用户消息包含',
       'user_keywords',
       'userKeywords',
-      '完整逻辑',
-      'logic_tree',
-      'logicTree',
     ]),
   };
 }
@@ -265,9 +262,6 @@ function parseReminder(source: unknown): FixedEventReminderDraft {
       '用户消息包含',
       'user_keywords',
       'userKeywords',
-      '完整逻辑',
-      'logic_tree',
-      'logicTree',
     ]),
   };
 }
@@ -344,9 +338,6 @@ function parseMaterial(source: Record<string, unknown>, parentEventId?: string):
       '用户消息包含',
       'user_keywords',
       'userKeywords',
-      '完整逻辑',
-      'logic_tree',
-      'logicTree',
     ]),
   };
 }
@@ -545,7 +536,11 @@ function parseStages(source: Record<string, unknown>): FixedEventStageDraft[] {
     .filter((stage): stage is FixedEventStageDraft => stage !== null);
 }
 
-function parseEvent(source: Record<string, unknown>, materials: FixedEventMaterialDraft[], warnings: string[]): FixedEventDraft | null {
+function parseEvent(
+  source: Record<string, unknown>,
+  materials: FixedEventMaterialDraft[],
+  warnings: string[],
+): FixedEventDraft | null {
   const id = toText(readField(source, ['id']));
   const name = toText(readField(source, ['名称', 'name', '标题', 'title']));
   const start = toText(readField(source, ['开始', 'start']));
@@ -670,9 +665,6 @@ function parseEvent(source: Record<string, unknown>, materials: FixedEventMateri
       '用户消息包含',
       'user_keywords',
       'userKeywords',
-      '完整逻辑',
-      'logic_tree',
-      'logicTree',
     ]),
   };
 }

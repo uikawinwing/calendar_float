@@ -1304,7 +1304,7 @@ function renderStageDetail(draft: FixedEventIndexDraft, selection: FixedEventInd
   return renderStageEditCard(event.id, stage, stageIndex, stages.length);
 }
 
-function renderSettingsDetail(draft: FixedEventIndexDraft, selection: FixedEventIndexEditorSelection): string {
+function renderSettingsDetail(draft: FixedEventIndexDraft): string {
   return renderAllSettingsEditor(draft);
 }
 
@@ -1412,7 +1412,7 @@ function renderEditorDetail(
       ? renderMaterialEditCard(material, validation)
       : '<div class="th-index-editor-empty">找不到这个补充资料</div>';
   } else if (selection.section === 'settings') {
-    content = renderSettingsDetail(draft, selection);
+    content = renderSettingsDetail(draft);
   } else if (selection.scope === 'yaml') {
     content = renderYamlPreview(yamlPreview);
   } else {
@@ -1528,7 +1528,7 @@ export function renderFixedEventIndexEditorPreview(
   model: FixedEventIndexEditorPreviewModel,
   selection?: FixedEventIndexEditorSelection | null,
 ): string {
-  const canSave = Boolean(model.source && !model.saving);
+  const canSave = Boolean(model.source && model.validation?.canSave && !model.saving);
   return `
     <div class="th-managed-worldbook-dialog-backdrop" data-action="close-fixed-event-index-editor"></div>
     <section class="th-managed-worldbook-dialog th-index-editor-dialog" role="dialog" aria-modal="true" aria-label="固定事件索引">
