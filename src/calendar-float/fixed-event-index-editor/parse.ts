@@ -120,7 +120,8 @@ function parseProfile(root: Record<string, unknown>): FixedEventProfileDraft {
   const paths = readObject(settings, ['路径', 'paths']) ?? {};
   const date = readObject(settings, ['日期', 'date']) ?? {};
   return {
-    id: toText(readField(settings, ['id', 'Profile', 'profileId'])) || toText(readField(root, ['Profile'])) || undefined,
+    id:
+      toText(readField(settings, ['id', 'Profile', 'profileId'])) || toText(readField(root, ['Profile'])) || undefined,
     settings: {
       label: toText(readField(settings, ['显示名称', 'label', '名称'])) || undefined,
       developerMode: toBoolean(readField(settings, ['开发者模式', 'developerMode'])) ?? false,
@@ -129,7 +130,8 @@ function parseProfile(root: Record<string, unknown>): FixedEventProfileDraft {
         tempEvents: toText(readField(paths, ['临时事件路径', 'tempEvents'])) || undefined,
         repeatEvents: toText(readField(paths, ['重复事件路径', 'repeatEvents'])) || undefined,
         worldTime: toText(readField(paths, ['世界时间路径', 'worldTime', 'mvu时间路径', 'mvuTimePath'])) || undefined,
-        worldLocation: toText(readField(paths, ['世界地点路径', 'worldLocation', 'mvu地点路径', 'mvuLocationPath'])) || undefined,
+        worldLocation:
+          toText(readField(paths, ['世界地点路径', 'worldLocation', 'mvu地点路径', 'mvuLocationPath'])) || undefined,
         unknownFields: pickUnknownFields(paths, [
           '事件根路径',
           'eventRoot',
@@ -284,8 +286,7 @@ function parseMaterial(source: Record<string, unknown>, parentEventId?: string):
     enabled: readField(source, ['启用', 'enabled']) === false ? false : true,
     eventIds: uniqueTexts(eventIds),
     summaryText: toText(readField(source, ['摘要', '摘要内容', 'summary'])) || undefined,
-    fullTextEntryName:
-      toText(readField(fullText, ['条目名', '世界书条目名称', 'entryname', 'entryName'])) || undefined,
+    fullTextEntryName: toText(readField(fullText, ['条目名', '世界书条目名称', 'entryname', 'entryName'])) || undefined,
     fullTextWorldbookName: toText(readField(fullText, ['世界书', 'worldbook', 'worldbookName'])) || undefined,
     fullTextUnknownFields: fullTextSource
       ? pickUnknownFields(fullTextSource, [
@@ -447,11 +448,13 @@ function parseReminderDefaults(source: Record<string, unknown>): FixedEventRemin
   const rawTemplates = readObject(rawDefaults, ['缺省模板', 'template']) ?? {};
   const outputMode = toText(readField(rawDefaults, ['注入方式', 'mode', 'output_mode']));
   return {
-    outputMode: outputMode === 'injectprompt' ? 'injectprompt' : outputMode === 'silent_scan' ? 'silent_scan' : undefined,
+    outputMode:
+      outputMode === 'injectprompt' ? 'injectprompt' : outputMode === 'silent_scan' ? 'silent_scan' : undefined,
     injectDepth: toNumber(readField(rawDefaults, ['注入深度', 'depth'])),
     disableRecursive: toBoolean(readField(rawDefaults, ['禁用递归', 'disable_recursive'])),
     disableKeywords: toBoolean(readField(rawDefaults, ['禁用触发词', 'disable_keywords'])),
-    macroTemplate: toText(readField(rawDefaults, ['宏触发词模板', 'macro_template', 'macroTemplate', '提醒宏模板'])) || undefined,
+    macroTemplate:
+      toText(readField(rawDefaults, ['宏触发词模板', 'macro_template', 'macroTemplate', '提醒宏模板'])) || undefined,
     inactiveTemplate: toText(readField(rawTemplates, ['未开始', 'upcoming'])) || undefined,
     activeTemplate: toText(readField(rawTemplates, ['进行中', 'active'])) || undefined,
     unknownFields: pickUnknownFields(rawDefaults, [
@@ -480,12 +483,7 @@ function parseBookDefaults(source: Record<string, unknown>): FixedEventBookDefau
   return {
     summaryOutputMode: toText(readField(rawDefaults, ['摘要注入方式', 'abstract_mode'])) || undefined,
     summaryInjectDepth: toNumber(readField(rawDefaults, ['摘要注入深度', 'abstract_depth'])),
-    unknownFields: pickUnknownFields(rawDefaults, [
-      '摘要注入方式',
-      'abstract_mode',
-      '摘要注入深度',
-      'abstract_depth',
-    ]),
+    unknownFields: pickUnknownFields(rawDefaults, ['摘要注入方式', 'abstract_mode', '摘要注入深度', 'abstract_depth']),
   };
 }
 
@@ -596,7 +594,9 @@ function parseEvent(
                   ]),
           }
         : undefined,
-    locationKeywords: toTextList(readField(source, ['地点关键词', '地点', 'location_keywords', 'locationKeywords', 'locations'])),
+    locationKeywords: toTextList(
+      readField(source, ['地点关键词', '地点', 'location_keywords', 'locationKeywords', 'locations']),
+    ),
     stages: parseStages(source),
     intro: parseContentRef(readField(source, ['介绍', 'event', 'intro'])),
     reminder: parseReminder(readField(source, ['提醒', 'reminder'])),

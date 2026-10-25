@@ -85,12 +85,11 @@ export function collectFixedEventEditorStructuredEdits(layer: HTMLElement): Fixe
 
   const profile: FixedEventProfileStructuredEdit | undefined = profileRow
     ? {
-        id: readFixedEventEditField(profileRow, 'id'),
-        label: readFixedEventEditField(profileRow, 'label'),
         worldTimePath: readFixedEventEditField(profileRow, 'worldTimePath'),
         worldLocationPath: readFixedEventEditField(profileRow, 'worldLocationPath'),
         eraName: readFixedEventEditField(profileRow, 'eraName'),
         useChineseNumeralYear: readFixedEventEditField(profileRow, 'useChineseNumeralYear'),
+        visualYaml: readFixedEventEditField(profileRow, 'visualYaml'),
       }
     : undefined;
   const defaults: FixedEventDefaultsStructuredEdit | undefined = defaultsRow

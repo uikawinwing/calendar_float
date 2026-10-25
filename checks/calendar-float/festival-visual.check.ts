@@ -1,6 +1,7 @@
 /* eslint-disable import-x/no-nodejs-modules */
 import * as fs from 'fs';
 import * as path from 'path';
+import defaults from '../../src/calendar-float/profile/fate-poem-defaults.json';
 
 function assert(condition: unknown, message: string): void {
   if (!condition) {
@@ -41,24 +42,23 @@ function testNewBundledIconsAreMapped(): void {
 }
 
 function testGhostIsNotGenericFallback(): void {
-  const source = readSource('festival-visual.ts');
-  const fallbackBlock =
-    source.match(/const GENERIC_FALLBACK_FESTIVAL_MARKERS[\s\S]*?const GENERIC_FESTIVAL_MARKER_PRESET_GROUP/)?.[0] ??
-    '';
-  assert(!fallbackBlock.includes('ghostIconSvg'), 'ghost 图标不应该进入通用 fallback，避免新年等节日随机显示幽灵');
+  assert(
+    !defaults.visual.fallbackMarkers.some(item => item.icon === 'ghost-solid-full.svg'),
+    '默认标记应避免把新年等节日随机显示为幽灵',
+  );
 }
 
 function testCreationDayKeywordsPreferCelebrationIcon(): void {
-  const source = readSource('profile/festival-visual-presets.ts');
-  const champagneBlock = source.match(/iconSvg: champagneGlassesIconSvg[\s\S]*?keywords: \[[^\]]+\]/)?.[0] ?? '';
-  assert(champagneBlock.includes('创生'), '创生之日应该命中庆典图标');
-  assert(champagneBlock.includes('新年'), '新年应该命中庆典图标');
+  const keywords = defaults.visual.markerPresets.find(item => item.icon === 'champagne-glasses-solid.svg')!.keywords;
+  assert(keywords.includes('创生'), '创生之日应该命中庆典图标');
+  assert(keywords.includes('新年'), '新年应该命中庆典图标');
 }
 
 function testSaireliaUsesMusicIcon(): void {
-  const source = readSource('profile/festival-visual-presets.ts');
-  const musicBlock = source.match(/iconSvg: musicIconSvg[\s\S]*?keywords: \[[^\]]+\]/)?.[0] ?? '';
-  assert(musicBlock.includes('赛瑞利亚'), '赛瑞利亚应该命中音乐图标');
+  assert(
+    defaults.visual.locationPresets.some(item => item.icon === 'music-solid.svg' && item.keywords.includes('赛瑞利亚')),
+    '赛瑞利亚应该命中音乐图标',
+  );
 }
 
 function testSvgColorCssCoversCommonShapes(): void {
@@ -86,21 +86,21 @@ function testFestivalCanUseHashtagColor(): void {
 }
 
 function testBaseHashtagsUseDifferentIcons(): void {
-  const source = readSource('festival-visual.ts');
-  const tagPresetBlock = source.match(/const HASHTAG_MARKER_PRESETS[\s\S]*?const GENERIC_FALLBACK_FESTIVAL_MARKERS/)?.[0] ?? '';
   [
-    ['主线', 'compassIconSvg'],
-    ['支线', 'arrowsToCircleIconSvg'],
-    ['节庆', 'champagneGlassesIconSvg'],
-    ['课程', 'bookIconSvg'],
-    ['旅行', 'suitcaseIconSvg'],
-    ['限时', 'alarmClockIconSvg'],
-    ['约会', 'heartIconSvg'],
-    ['比赛', 'chessIconSvg'],
-    ['纪念', 'calendarIconSvg'],
+    ['主线', 'compass-regular.svg'],
+    ['支线', 'arrows-to-circle-solid.svg'],
+    ['节庆', 'champagne-glasses-solid.svg'],
+    ['课程', 'book-solid.svg'],
+    ['旅行', 'suitcase-solid.svg'],
+    ['限时', 'alarm-clock-regular.svg'],
+    ['约会', 'heart-solid.svg'],
+    ['比赛', 'chess-solid.svg'],
+    ['纪念', 'calendar-regular.svg'],
   ].forEach(([tag, iconName]) => {
-    assert(tagPresetBlock.includes(`iconSvg: ${iconName}`), `${tag} 应该绑定 ${iconName}`);
-    assert(tagPresetBlock.includes(`'${tag}'`), `${tag} 应该出现在 hashtag 图标预设中`);
+    assert(
+      defaults.visual.tagPresets.some(item => item.icon === iconName && item.keywords.includes(tag)),
+      `${tag} 应该绑定 ${iconName}`,
+    );
   });
 }
 

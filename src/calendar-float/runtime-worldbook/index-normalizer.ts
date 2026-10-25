@@ -137,7 +137,9 @@ function 收集节庆文本映射(rawFestivals: unknown): Map<string, string> {
       }
     }
 
-    const nestedBooks = 规范化对象数组(读取对象字段(festival, ['补充资料', '书籍', 'materials', 'material', 'book', 'books']));
+    const nestedBooks = 规范化对象数组(
+      读取对象字段(festival, ['补充资料', '书籍', 'materials', 'material', 'book', 'books']),
+    );
     nestedBooks.forEach((bookNode, index) => {
       const 节庆id = 规范化名称(读取对象字段(festival, ['id']));
       const 书名 = 规范化名称(读取对象字段(bookNode, ['书名', '名称', 'bookname', 'name']));
@@ -213,18 +215,28 @@ function 规范化节庆与内嵌书籍(
 
     const 周期 = 读取节庆周期(item);
     const 节庆共享触发 = 构建节庆共享触发映射(item, runtimeDefaults, 开始, 结束, 周期);
-    const 分组 = 规范化名称(读取对象字段(item, ['分组', 'group', 'groupId', 'group_id'])) || groupIdByEventId.get(id) || '';
+    const 分组 =
+      规范化名称(读取对象字段(item, ['分组', 'group', 'groupId', 'group_id'])) || groupIdByEventId.get(id) || '';
     const 分组信息 = 分组 ? groupById.get(分组) : undefined;
     const 相关书籍: string[] = [];
     const 节庆文本节点: CalendarRuntimeContentNode[] = [];
 
     相关书籍.push(
       ...规范化单值或字符串数组(
-        读取对象字段(item, ['相关资料', '相关书籍', 'relatedMaterials', 'related_materials', 'relatedBooks', 'related_books']),
+        读取对象字段(item, [
+          '相关资料',
+          '相关书籍',
+          'relatedMaterials',
+          'related_materials',
+          'relatedBooks',
+          'related_books',
+        ]),
       ),
     );
 
-    const nestedBooks = 规范化对象数组(读取对象字段(item, ['补充资料', '书籍', 'materials', 'material', 'book', 'books']));
+    const nestedBooks = 规范化对象数组(
+      读取对象字段(item, ['补充资料', '书籍', 'materials', 'material', 'book', 'books']),
+    );
     nestedBooks.forEach((rawBook, index) => {
       const bookName = 规范化名称(读取对象字段(rawBook, ['书名', '名称', 'bookname', 'name']));
       const bookId =
@@ -372,10 +384,32 @@ function 规范化配置档案设置(data: Record<string, unknown>, warnings: st
     return undefined;
   }
 
-  const rawPaths = 读取对象(rawSettings, ['路径', 'paths']) ?? {};
-  const rawDate = 读取对象(rawSettings, ['日期', 'date']) ?? {};
-  const rawWorldbook = 读取对象(rawSettings, ['世界书', 'worldbook']) ?? {};
-  const rawVisual = 读取对象(rawSettings, ['视觉', 'visual']) ?? {};
+  const readSettingsObject = (names: string[]): Record<string, unknown> => {
+    const value = 读取对象字段(rawSettings, names);
+    if (value === undefined) return {};
+    if (是否对象(value)) return value;
+    warnings.push(`配置档案设置.${names[0]} 必须是对象`);
+    return {};
+  };
+  const rawPaths = readSettingsObject(['路径', 'paths']);
+  const rawDate = readSettingsObject(['日期', 'date']);
+  const rawWorldbook = readSettingsObject(['世界书', 'worldbook']);
+  const rawVisual = readSettingsObject(['视觉', 'visual']);
+  const visualKeys = [
+    '节庆标记预设',
+    'festivalMarkerPresetId',
+    '地点规则',
+    'locationPresets',
+    '分类规则',
+    'markerPresets',
+    '标签规则',
+    'tagPresets',
+    '默认标记',
+    'fallbackMarkers',
+  ];
+  for (const key of Object.keys(rawVisual)) {
+    if (!visualKeys.includes(key)) warnings.push(`配置档案设置.视觉 包含未知字段：${key}`);
+  }
 
   const config = 去掉未定义字段({
     id: 读取对象字段(rawSettings, ['id', 'Profile', 'profileId']) ?? 读取对象字段(data, ['Profile']),
@@ -396,20 +430,24 @@ function 规范化配置档案设置(data: Record<string, unknown>, warnings: st
     worldbook: 去掉空对象({
       variableDisplayTitle: 读取对象字段(rawWorldbook, ['变量展示标题', 'variableDisplayTitle']),
       updateRuleTimeExamples: 读取对象字段(rawWorldbook, ['更新规则时间示例', 'updateRuleTimeExamples']),
-      forbiddenRepeatTimeExamples: 读取对象字段(rawWorldbook, [
-        '禁止重复时间示例',
-        'forbiddenRepeatTimeExamples',
-      ]),
+      forbiddenRepeatTimeExamples: 读取对象字段(rawWorldbook, ['禁止重复时间示例', 'forbiddenRepeatTimeExamples']),
     }),
     visual: 去掉空对象({
       festivalMarkerPresetId: 读取对象字段(rawVisual, ['节庆标记预设', 'festivalMarkerPresetId']),
+      tagPresets: 读取对象字段(rawVisual, ['标签规则', 'tagPresets']),
+      locationPresets: 读取对象字段(rawVisual, ['地点规则', 'locationPresets']),
+      markerPresets: 读取对象字段(rawVisual, ['分类规则', 'markerPresets']),
+      fallbackMarkers: 读取对象字段(rawVisual, ['默认标记', 'fallbackMarkers']),
     }),
     addons: 读取对象字段(rawSettings, ['插件', 'addons']),
   });
   return Object.keys(config).length > 0 ? (config as CalendarProfileConfigInput) : undefined;
 }
 
-export function normalizeCalendarRuntimeIndexDocument(data: unknown, warnings: string[] = []): CalendarRuntimeIndex | null {
+export function normalizeCalendarRuntimeIndexDocument(
+  data: unknown,
+  warnings: string[] = [],
+): CalendarRuntimeIndex | null {
   if (!是否对象(data)) {
     warnings.push('索引解析结果不是对象');
     return null;
@@ -422,9 +460,7 @@ export function normalizeCalendarRuntimeIndexDocument(data: unknown, warnings: s
   const 提醒默认值 = 规范化提醒默认值(读取对象字段(data, ['提醒默认值']));
   const 书籍默认值 = 规范化书籍默认值(读取对象字段(data, ['书籍默认值']));
   const 原始节庆列表 = 读取对象字段(data, ['固定事件']);
-  const 固定事件分组 = 规范化固定事件分组列表(
-    读取对象字段(data, ['固定事件分组']),
-  );
+  const 固定事件分组 = 规范化固定事件分组列表(读取对象字段(data, ['固定事件分组']));
   const 分组映射 = new Map(固定事件分组.map(group => [group.id, group] as const));
   const 事件分组映射 = 建立事件分组映射(固定事件分组);
   const 节庆文本映射 = 收集节庆文本映射(原始节庆列表);
@@ -437,12 +473,7 @@ export function normalizeCalendarRuntimeIndexDocument(data: unknown, warnings: s
     分组映射,
     事件分组映射,
   );
-  const 顶层书籍 = 规范化顶层书籍列表(
-    读取对象字段(data, ['补充资料']),
-    书籍默认值,
-    节庆文本映射,
-    默认设置,
-  );
+  const 顶层书籍 = 规范化顶层书籍列表(读取对象字段(data, ['补充资料']), 书籍默认值, 节庆文本映射, 默认设置);
   const 关联书籍映射 = 建立书籍关联事件映射(顶层书籍);
 
   节庆与书籍.节庆.forEach(festival => {
@@ -459,7 +490,7 @@ export function normalizeCalendarRuntimeIndexDocument(data: unknown, warnings: s
   const Profile设置 = 规范化配置档案设置(data, warnings);
 
   return {
-    Profile: 规范化名称(Profile设置?.id ?? 读取对象字段(data, ['Profile'])) || undefined,
+    Profile: 规范化名称(读取对象字段(data, ['Profile']) ?? Profile设置?.id) || undefined,
     Profile设置,
     版本: 规范化数字(读取对象字段(data, ['版本', 'version'])),
     说明: 规范化名称(读取对象字段(data, ['说明', 'description'])) || undefined,

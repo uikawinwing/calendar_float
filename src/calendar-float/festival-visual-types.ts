@@ -7,6 +7,7 @@ export interface CalendarFestivalMarkerPreset {
 }
 
 export interface CalendarFestivalMarkerPresetGroup {
+  tagPresets: CalendarFestivalMarkerPreset[];
   markerPresets: CalendarFestivalMarkerPreset[];
   locationPresets: CalendarFestivalMarkerPreset[];
   fallbackMarkers: Array<DayCellFestivalMarker['color'] & { iconSvg: string }>;

@@ -1,9 +1,9 @@
-import { GENERIC_CALENDAR_PROFILE, getProfileWorldLocationPath, getProfileWorldTimePath } from '../profile';
+import { FATE_POEM_CALENDAR_PROFILE, getProfileWorldLocationPath, getProfileWorldTimePath } from '../profile';
 import { readCalendarRuntimePathSettings } from '../storage/runtime-path-settings';
 import type { CalendarRuntimeDefaults } from './types';
 
-export const DEFAULT_MVU_TIME_PATH = GENERIC_CALENDAR_PROFILE.paths.worldTime;
-export const DEFAULT_MVU_LOCATION_PATH = GENERIC_CALENDAR_PROFILE.paths.worldLocation;
+export const DEFAULT_MVU_TIME_PATH = FATE_POEM_CALENDAR_PROFILE.paths.worldTime;
+export const DEFAULT_MVU_LOCATION_PATH = FATE_POEM_CALENDAR_PROFILE.paths.worldLocation;
 
 let currentRuntimeDefaults: Required<Pick<CalendarRuntimeDefaults, 'mvu时间路径' | 'mvu地点路径'>> &
   Pick<CalendarRuntimeDefaults, '书籍全文默认关键词模板'> = {

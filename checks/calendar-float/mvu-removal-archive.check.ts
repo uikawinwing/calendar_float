@@ -72,8 +72,7 @@ function testRemovedMvuCalendarEventIsArchived(): void {
     '重复事件归档时应该保留事件类型',
   );
   assert(
-    _.get(chatVariables, `${CHAT_ARCHIVE_PATH}.completed.trial_day.completed_at`) ===
-      '复兴纪元488年-6月27日-星期六',
+    _.get(chatVariables, `${CHAT_ARCHIVE_PATH}.completed.trial_day.completed_at`) === '复兴纪元488年-6月27日-星期六',
     '归档事件应该记录当前世界时间',
   );
 }

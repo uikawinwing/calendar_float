@@ -1,4 +1,4 @@
-export type CalendarProfileId = string;
+export type CalendarProfileId = 'fate-poem';
 
 export type CalendarAddonId = 'dlc_ellia';
 
@@ -23,12 +23,19 @@ export interface CalendarProfileWorldbookSettings {
 }
 
 export interface CalendarProfileVisualSettings {
-  festivalMarkerPresetId?: string;
+  tagPresets: CalendarMarkerRule[];
+  locationPresets: CalendarMarkerRule[];
+  markerPresets: CalendarMarkerRule[];
+  fallbackMarkers: CalendarMarkerAppearance[];
 }
 
-export interface CalendarProfileDetectionRule {
-  characterNames: string[];
-  worldbookKeywords: string[];
+export interface CalendarMarkerAppearance {
+  icon: string;
+  color: { background: string; text: string; border?: string };
+}
+
+export interface CalendarMarkerRule extends CalendarMarkerAppearance {
+  keywords: string[];
 }
 
 export interface CalendarProfile {
@@ -38,9 +45,8 @@ export interface CalendarProfile {
   paths: CalendarProfilePaths;
   date: CalendarProfileDateSettings;
   worldbook: CalendarProfileWorldbookSettings;
-  visual?: CalendarProfileVisualSettings;
+  visual: CalendarProfileVisualSettings;
   addons: CalendarAddonId[];
-  detection: CalendarProfileDetectionRule;
 }
 
 export interface CalendarProfileConfigInput {
@@ -50,7 +56,7 @@ export interface CalendarProfileConfigInput {
   paths?: Partial<Record<keyof CalendarProfilePaths, unknown>>;
   date?: Partial<Record<keyof CalendarProfileDateSettings, unknown>>;
   worldbook?: Partial<Record<keyof CalendarProfileWorldbookSettings, unknown>>;
-  visual?: Partial<Record<keyof CalendarProfileVisualSettings, unknown>>;
+  visual?: Partial<Record<keyof CalendarProfileVisualSettings | 'festivalMarkerPresetId', unknown>>;
   addons?: unknown;
 }
 
@@ -58,10 +64,5 @@ export interface CalendarProfileResolveResult {
   profile: CalendarProfile;
   source: 'default' | 'builtin' | 'runtime_index';
   warnings: string[];
-}
-
-export interface CalendarProfileDetectionResult {
-  candidate: CalendarProfile;
-  reason: 'runtime_index_profile' | 'default';
-  matchedText: string;
+  compatible: boolean;
 }

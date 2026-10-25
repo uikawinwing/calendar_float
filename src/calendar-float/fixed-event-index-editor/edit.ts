@@ -19,12 +19,11 @@ export interface FixedEventDefaultsStructuredEdit {
 }
 
 export interface FixedEventProfileStructuredEdit {
-  id?: string;
-  label?: string;
   worldTimePath?: string;
   worldLocationPath?: string;
   eraName?: string;
   useChineseNumeralYear?: string;
+  visualYaml?: string;
 }
 
 export interface FixedEventMonthAliasStructuredEdit {
@@ -218,7 +217,9 @@ function assertSourceYamlParsed(draft: ReturnType<typeof parseFixedEventIndexDra
   }
   const unsupportedMaterial = draft.materials.find(material => material.hasUnsupportedAdvancedLogic);
   if (unsupportedMaterial) {
-    throw new Error(`补充资料「${unsupportedMaterial.title || unsupportedMaterial.id}」包含完整逻辑，编辑器不能安全转换`);
+    throw new Error(
+      `补充资料「${unsupportedMaterial.title || unsupportedMaterial.id}」包含完整逻辑，编辑器不能安全转换`,
+    );
   }
 }
 
@@ -364,17 +365,30 @@ function buildBookDefaultsEdit(
   };
 }
 
-function buildProfileEdit(edit: FixedEventProfileStructuredEdit, profile: FixedEventProfileDraft): FixedEventProfileDraft {
+function buildProfileEdit(
+  edit: FixedEventProfileStructuredEdit,
+  profile: FixedEventProfileDraft,
+): FixedEventProfileDraft {
+  const unknownFields = { ...profile.settings.unknownFields };
+  if (edit.visualYaml !== undefined && edit.visualYaml.trim()) {
+    const document = parseDocument(edit.visualYaml);
+    if (document.errors.length) throw new Error(`视觉规则 YAML 无法解析：${document.errors[0].message}`);
+    const visual: unknown = document.toJS();
+    if (!visual || typeof visual !== 'object' || Array.isArray(visual)) throw new Error('视觉规则必须是 YAML 对象');
+    unknownFields.视觉 = visual;
+    delete unknownFields.visual;
+  }
   return {
     ...profile,
-    id: edit.id === undefined ? profile.id : normalizeOptionalText(edit.id),
     settings: {
       ...profile.settings,
-      label: edit.label === undefined ? profile.settings.label : normalizeOptionalText(edit.label),
+      unknownFields,
       paths: {
         ...profile.settings.paths,
         worldTime:
-          edit.worldTimePath === undefined ? profile.settings.paths.worldTime : normalizeOptionalText(edit.worldTimePath),
+          edit.worldTimePath === undefined
+            ? profile.settings.paths.worldTime
+            : normalizeOptionalText(edit.worldTimePath),
         worldLocation:
           edit.worldLocationPath === undefined
             ? profile.settings.paths.worldLocation
@@ -851,3 +865,4 @@ export function applyFixedEventIndexRowOperationsToYaml(input: FixedEventIndexRo
 
   return serializeFixedEventIndexDraft(draft);
 }
+import { parseDocument } from 'yaml';

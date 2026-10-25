@@ -84,7 +84,7 @@ function renderProfileDatePreview(draft: FixedEventIndexDraft): string {
 
   return `
     <div class="th-index-editor-profile-preview" data-role="profile-date-preview">
-      <div class="th-index-editor-muted">日期解析规则来自配置档案设置.日期</div>
+      <div class="th-index-editor-muted">预览会根据索引中的纪元与日期格式更新</div>
       <ul>${acceptedText.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
     </div>
   `;
@@ -488,7 +488,7 @@ function renderDefaultsEditor(draft: FixedEventIndexDraft): string {
     <section class="th-index-editor-settings-block">
       <div class="th-index-editor-settings-block-head">
         <h3>书籍全文</h3>
-        <p>决定全文资料触发词的默认写法。MVU 时间和地点路径统一在 Profile 设置里编辑。</p>
+        <p>决定全文资料触发词的默认写法。世界时间和地点的变量位置在日历设置里编辑。</p>
       </div>
       <div class="th-index-editor-edit-card" data-role="fixed-event-defaults-row" data-scope="defaults" data-id="main">
         <div class="th-index-editor-edit-grid">
@@ -510,25 +510,11 @@ function renderProfileSettingsEditor(draft: FixedEventIndexDraft): string {
   return `
     <section class="th-index-editor-settings-block">
       <div class="th-index-editor-settings-block-head">
-        <h3>配置档案</h3>
-        <p>决定这份索引属于哪种月历配置，以及运行时从哪里读取时间、地点和纪元格式。</p>
+        <h3>命定之诗日历设置</h3>
+        <p>设置世界时间、地点的变量位置，以及纪元格式、节庆图标与颜色。</p>
       </div>
       <div class="th-index-editor-edit-card" data-role="fixed-event-profile-row" data-scope="profile" data-id="main">
         <div class="th-index-editor-edit-grid">
-          ${renderInput({
-            scope: 'profile',
-            id: 'main',
-            field: 'id',
-            label: 'Profile ID',
-            value: profile.id,
-          })}
-          ${renderInput({
-            scope: 'profile',
-            id: 'main',
-            field: 'label',
-            label: '显示名称',
-            value: profile.settings.label,
-          })}
           ${renderInput({
             scope: 'profile',
             id: 'main',
@@ -567,6 +553,15 @@ function renderProfileSettingsEditor(draft: FixedEventIndexDraft): string {
           })}
         </div>
         ${renderProfileDatePreview(draft)}
+        ${renderInput({
+          scope: 'profile',
+          id: 'main',
+          field: 'visualYaml',
+          label: '节庆视觉规则（YAML）',
+          value: stringify(profile.settings.unknownFields.视觉 ?? profile.settings.unknownFields.visual ?? {}),
+          textarea: true,
+          fieldClassName: 'is-wide',
+        })}
       </div>
     </section>
   `;
@@ -1546,3 +1541,4 @@ export function renderFixedEventIndexEditorPreview(
     </section>
   `;
 }
+import { stringify } from 'yaml';

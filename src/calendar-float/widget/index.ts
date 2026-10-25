@@ -7,7 +7,7 @@ import {
   buildReminderState,
 } from '../calendar-view-model';
 import { INSTANCE_KEY, MESSAGE_KNOWN_TAGS_PATH, ROOT_ID, SCRIPT_NAME, STYLE_ID } from '../constants';
-import { compareDatePoint, extractClockTimeText, formatDateKey } from '../date';
+import { extractClockTimeText, formatDateKey } from '../date';
 import { buildFestivalTagPreviewMarker } from '../festival-visual';
 import type { CalendarFloatLifecycleToken } from '../lifecycle';
 import {
@@ -675,13 +675,13 @@ function syncDeveloperToolMenuItems(): void {
   if (!refs.root) {
     return;
   }
-	  const showDeveloperTools = isCalendarDeveloperModeEnabled();
-	  refs.root.querySelectorAll<HTMLElement>('[data-role="developer-tool-menu-item"]').forEach(item => {
-	    item.hidden = !showDeveloperTools;
-	    item.classList.toggle('is-hidden', !showDeveloperTools);
-	    item.setAttribute('aria-hidden', showDeveloperTools ? 'false' : 'true');
-	  });
-	}
+  const showDeveloperTools = isCalendarDeveloperModeEnabled();
+  refs.root.querySelectorAll<HTMLElement>('[data-role="developer-tool-menu-item"]').forEach(item => {
+    item.hidden = !showDeveloperTools;
+    item.classList.toggle('is-hidden', !showDeveloperTools);
+    item.setAttribute('aria-hidden', showDeveloperTools ? 'false' : 'true');
+  });
+}
 
 function getEditingRecord() {
   if (!state.dataset || !state.editingEventId) {
@@ -1065,8 +1065,7 @@ function renderManagedWorldbookDialog(): void {
   const uninstallDisabled = diagnostics.managedEntryCount <= 0;
 
   let title = 'MVU设定';
-  let description =
-    '这里检查月历需要的两条基础规则，也可以调整当前聊天读取 MVU 时间和地点的路径。';
+  let description = '这里检查月历需要的两条基础规则，也可以调整当前聊天读取 MVU 时间和地点的路径。';
   let bodyHtml = buildMvuPathSettingsPanelHtml();
   let actionHtml = [
     '<details class="th-mvu-maintenance-details">',
@@ -1112,9 +1111,7 @@ function renderManagedWorldbookDialog(): void {
     ].join('');
   } else if (dialog.mode === 'export-external') {
     const diagnosticsWorldbookName = String(diagnostics.worldbookName || '').trim();
-    const availableNames = dialog.availableTargetNames
-      .map(name => String(name || '').trim())
-      .filter(Boolean);
+    const availableNames = dialog.availableTargetNames.map(name => String(name || '').trim()).filter(Boolean);
     const suggestedName = availableNames.find(name => name !== diagnosticsWorldbookName) ?? `${SCRIPT_NAME}-基础规则`;
     const worldbookListHtml = availableNames.length
       ? availableNames
@@ -1401,7 +1398,9 @@ function renderTagColorDialog(): void {
 function readMvuPathSettingsInputs(layer: HTMLElement): { mvuTimePath: string; mvuLocationPath: string } {
   return {
     mvuTimePath: String(layer.querySelector<HTMLInputElement>('[data-role="mvu-path-time"]')?.value || '').trim(),
-    mvuLocationPath: String(layer.querySelector<HTMLInputElement>('[data-role="mvu-path-location"]')?.value || '').trim(),
+    mvuLocationPath: String(
+      layer.querySelector<HTMLInputElement>('[data-role="mvu-path-location"]')?.value || '',
+    ).trim(),
   };
 }
 
@@ -1431,8 +1430,7 @@ async function handleFixedEventEditorBindingIntent(intent: FixedEventEditorBindi
   }
 
   const layer = refs.root?.querySelector<HTMLElement>('[data-role="fixed-event-index-editor-layer"]');
-  const scrollSnapshot =
-    intent.render === 'selection' && layer ? readFixedEventIndexEditorScrollSnapshot(layer) : null;
+  const scrollSnapshot = intent.render === 'selection' && layer ? readFixedEventIndexEditorScrollSnapshot(layer) : null;
   for (const command of intent.commands) {
     await session.dispatch(command);
   }
@@ -3079,7 +3077,7 @@ function scheduleInitialDatasetRefreshRetries(): void {
       if (!state.destroyed) {
         void refreshDataset();
       }
-    }, delay)
+    }, delay),
   );
 }
 

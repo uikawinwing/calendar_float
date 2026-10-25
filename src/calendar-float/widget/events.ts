@@ -1,10 +1,6 @@
 import type { WidgetRefs } from '../types';
 import type { WidgetActionDispatch } from './actions';
-import {
-  parseAgendaSort,
-  parseCalendarBucketType,
-  parseSidebarTab,
-} from './event-binding/parsers';
+import { parseAgendaSort, parseCalendarBucketType, parseSidebarTab } from './event-binding/parsers';
 
 export interface BindCalendarWidgetEventsOptions {
   refs: WidgetRefs;
@@ -32,7 +28,9 @@ function syncRepeatWeekdayValue(formPanel: HTMLElement | null): void {
   if (!hidden) {
     return;
   }
-  const values = Array.from(formPanel?.querySelectorAll<HTMLInputElement>('[data-action="toggle-repeat-weekday"]') ?? [])
+  const values = Array.from(
+    formPanel?.querySelectorAll<HTMLInputElement>('[data-action="toggle-repeat-weekday"]') ?? [],
+  )
     .filter(input => input.checked)
     .map(input => String(input.value || '').trim())
     .filter(Boolean);
@@ -69,12 +67,16 @@ function syncRepeatFormControls(formPanel: HTMLElement | null): void {
     group.hidden = !isRepeat || group.getAttribute('data-repeat-detail') !== repeatRule;
   });
 
-  const monthMode = String(formPanel?.querySelector<HTMLSelectElement>('[data-form-field="repeat_month_mode"]')?.value || 'day');
+  const monthMode = String(
+    formPanel?.querySelector<HTMLSelectElement>('[data-form-field="repeat_month_mode"]')?.value || 'day',
+  );
   formPanel?.querySelectorAll<HTMLElement>('[data-repeat-mode^="month-"]').forEach(group => {
     group.hidden = group.getAttribute('data-repeat-mode') !== `month-${monthMode}`;
   });
 
-  const yearMode = String(formPanel?.querySelector<HTMLSelectElement>('[data-form-field="repeat_year_mode"]')?.value || 'day');
+  const yearMode = String(
+    formPanel?.querySelector<HTMLSelectElement>('[data-form-field="repeat_year_mode"]')?.value || 'day',
+  );
   formPanel?.querySelectorAll<HTMLElement>('[data-repeat-mode^="year-"]').forEach(group => {
     group.hidden = group.getAttribute('data-repeat-mode') !== `year-${yearMode}`;
   });
@@ -125,11 +127,14 @@ export function bindCalendarWidgetEvents(options: BindCalendarWidgetEventsOption
     },
   );
 
-  $(rootDocument).on('mouseup.calendar-float-button touchend.calendar-float-button touchcancel.calendar-float-button', () => {
-    refs.root?.querySelectorAll<HTMLElement>('.is-pressing').forEach(button => {
-      triggerSpringFeedback(button);
-    });
-  });
+  $(rootDocument).on(
+    'mouseup.calendar-float-button touchend.calendar-float-button touchcancel.calendar-float-button',
+    () => {
+      refs.root?.querySelectorAll<HTMLElement>('.is-pressing').forEach(button => {
+        triggerSpringFeedback(button);
+      });
+    },
+  );
 
   $(refs.root).on('click.calendar-float', '.th-month-nav-btn, .th-window-actions .th-btn', event => {
     const button = event.currentTarget as HTMLElement;

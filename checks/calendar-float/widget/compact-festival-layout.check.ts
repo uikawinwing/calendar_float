@@ -69,7 +69,9 @@ function createDataset(festivals: FestivalRecord[]): CalendarDataset {
   return { festivals } as CalendarDataset;
 }
 
-function testSpansAndOrderingAreStable(addCompactFestivalChips: typeof import('../../../src/calendar-float/widget/compact-festival-layout').addCompactFestivalChips): void {
+function testSpansAndOrderingAreStable(
+  addCompactFestivalChips: typeof import('../../../src/calendar-float/widget/compact-festival-layout').addCompactFestivalChips,
+): void {
   const cells = createCells();
   const festivals = [
     createFestival('short', '较短节庆', '01-03', '01-04', {
@@ -91,7 +93,9 @@ function testSpansAndOrderingAreStable(addCompactFestivalChips: typeof import('.
   assert(cells[4].chips.length === 0, '节庆范围外日期不得生成条带');
 }
 
-function testAlreadyRenderedFestivalIsNotDuplicated(addCompactFestivalChips: typeof import('../../../src/calendar-float/widget/compact-festival-layout').addCompactFestivalChips): void {
+function testAlreadyRenderedFestivalIsNotDuplicated(
+  addCompactFestivalChips: typeof import('../../../src/calendar-float/widget/compact-festival-layout').addCompactFestivalChips,
+): void {
   const cells = createCells();
   const festival = createFestival('shown', '已显示节庆', '01-01', '01-02', {
     start: { year: 2025, month: 1, day: 1 },
@@ -100,10 +104,15 @@ function testAlreadyRenderedFestivalIsNotDuplicated(addCompactFestivalChips: typ
 
   addCompactFestivalChips(cells, createDataset([festival]), createDataset([festival]));
 
-  assert(cells.every(cell => cell.chips.length === 0), '已显示为完整条带的节庆不得重复生成紧凑条带');
+  assert(
+    cells.every(cell => cell.chips.length === 0),
+    '已显示为完整条带的节庆不得重复生成紧凑条带',
+  );
 }
 
-function testOverflowCountAndFeedbackCleanupContract(addCompactFestivalChips: typeof import('../../../src/calendar-float/widget/compact-festival-layout').addCompactFestivalChips): void {
+function testOverflowCountAndFeedbackCleanupContract(
+  addCompactFestivalChips: typeof import('../../../src/calendar-float/widget/compact-festival-layout').addCompactFestivalChips,
+): void {
   const cells = createCells();
   const events = ['甲'].map((title, index) =>
     createFestival(`event_${index}`, title, '01-01', '01-02', {
@@ -131,7 +140,10 @@ function testOverflowCountAndFeedbackCleanupContract(addCompactFestivalChips: ty
   const eventSource = readFileSync(resolve(__dirname, '../../../src/calendar-float/widget/events.ts'), 'utf8');
   const widgetSource = readFileSync(resolve(__dirname, '../../../src/calendar-float/widget/index.ts'), 'utf8');
   assert(eventSource.includes("$(rootDocument).off('.calendar-float-button')"), '事件重绑前应移除旧 document 反馈监听');
-  assert(widgetSource.includes("$(refs.root.ownerDocument).off('.calendar-float-button')"), 'widget 销毁时应释放 document 反馈监听');
+  assert(
+    widgetSource.includes("$(refs.root.ownerDocument).off('.calendar-float-button')"),
+    'widget 销毁时应释放 document 反馈监听',
+  );
 }
 
 async function main(): Promise<void> {

@@ -25,7 +25,7 @@
 
 - `calendar-view-model/`：把 dataset 转为月视图格子、日程列表、月内条形 chip 等 UI view model
 - `fixed-event-index-editor/`：`[fixed_event_index]` 结构化编辑器，见 `fixed-event-index-editor/structure.md`
-- `profile/`：通用月历 / 命定之诗 profile 检测、路径配置、日期设置和 profile 专属视觉 preset
+- `profile/`：《命定之诗》索引配置、路径/日期校验、旧索引兼容数据与视觉规则解析
 - `runtime-dataset/`：把世界书索引、主动事件、归档事件、节庆和读物组装成 UI 使用的 `CalendarDataset`；单次 load 传递 operation-scoped worldbook snapshot
 - `runtime-trigger-evaluator/`：runtime 命中判定、日期窗口、关键词、提醒和内容解析
 - `runtime-worldbook/`：世界书索引来源发现、YAML 读取、schema 归一化、正文解析、runtime defaults、月份别名、scanner 输入上下文和 bootstrap；snapshot 不跨 operation 复用，scanner 在同一 generation 内 single-flight，teardown 后新 generation 不等待旧任务
@@ -48,7 +48,7 @@
 
 ## 不要再做的事
 
-- 不要把《命定之诗》的地点、节庆、颜色规则塞回通用模块
+- 地点、节庆和颜色规则由固定事件索引提供；旧索引兼容数据集中保存在数据文件中
 - 不要在 `widget/index.ts` 增加新的纯函数和 YAML 变换
 - 不要为新 profile 复制 `[DLC][扩展]` 这类旧命名前缀
 - 不要把旧字段 `默认设置.mvu时间路径` / `默认设置.mvu地点路径` 写成新文档示例；它们只属于 fallback

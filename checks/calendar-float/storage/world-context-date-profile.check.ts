@@ -16,7 +16,7 @@ async function main(): Promise<void> {
   applyCalendarProfileConfig({
     profileHint: 'generic',
     config: {
-      id: 'custom-era',
+      id: 'fate-poem',
       paths: {
         worldTime: 'stat_data.世界.时辰',
       },

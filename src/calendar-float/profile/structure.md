@@ -1,55 +1,44 @@
-# Calendar Profile Structure
+# 《命定之诗》日历配置
 
-`profile/` 负责把通用月历脚本适配到不同角色卡 / 世界书配置。它是“通用脚本主体”和“某张角色卡具体规则”之间的边界。
+本文面向维护者。`profile/` 保留旧配置字段的读写协议，运行身份固定为 `fate-poem`，不再提供其他世界的注册表、自动识别或适配入口。
 
 ## 文件职责
 
-- `profiles.ts`：内置 profile 定义，例如 `generic` 和 `fate-poem`
-- `types.ts`：profile 输入、解析结果、路径、日期和视觉配置类型
-- `normalize.ts`：把 runtime index 里的 profile hint / config 归一化为 `CalendarProfile`
-- `index.ts`：active profile 状态、初始化、应用 runtime profile 配置、对外 getter
-- `festival-visual-presets.ts`：profile 专属节庆 marker preset registry
+- `types.ts`：索引配置、日期/路径与视觉数据类型。
+- `normalize.ts`：校验现有 `配置档案设置`；每次基于独立默认副本应用覆盖，不合并上一次配置。
+- `index.ts`：当前配置及原业务调用接口。
+- `profiles.ts`：固定运行身份和现有艾莉亚功能的启用默认值。
+- `fate-poem-defaults.json`：旧索引缺少新字段时使用的 v1.0.24 数据快照，不包含固定事件正文，不作为另一套运行配置注册表。
+- `festival-visual-presets.ts`：将索引中的 SVG 文件名转换为已打包图标；不维护国家、地点和颜色表。
 
-## 当前配置来源
+## 世界书配置
 
-固定事件索引推荐在 `[fixed_event_index]` 写：
+继续在禁用自动注入的 `[fixed_event_index]` 中使用 `配置档案设置`。完整示例在仓库根目录 `节庆_索引.latest.yaml`：
 
 ```yaml
 配置档案设置:
-  id: generic
-  显示名称: 王庭月历
-  开发者模式: false
+  id: fate-poem
   路径:
-    世界时间路径: stat_data.世界信息.完整时间字符串
-    世界地点路径: stat_data.世界信息.地点
+    事件根路径: stat_data.事件.月历
+    世界时间路径: stat_data.世界.时间
+    世界地点路径: stat_data.世界.地点
   日期:
-    纪元名: 星历
-    纪元别名:
-      - 星历
-      - 王庭历
-    中文数字年份: true
+    纪元名: 复兴纪元
+    纪元别名: [复兴纪元]
+    中文数字年份: false
+  视觉:
+    地点规则:
+      - icon: 索伦蒂斯王国_chess-queen-regular-full.svg
+        keywords: [索伦蒂斯王国, 潮汐王座]
+        color: { background: '#b9ddff', text: '#075c9f', border: '#4aa8ff' }
 ```
 
-读取优先级：
+视觉字段 `地点规则`、`分类规则`、`标签规则` 为有序规则数组；`默认标记` 为不带 keywords 的图标/颜色数组，至少一项。字段也支持对应的 `locationPresets`、`markerPresets`、`tagPresets`、`fallbackMarkers`。图标只引用本地已打包 SVG 文件名，颜色使用十六进制。地点优先于名称/正文分类，标签预览优先使用标签规则；明确指定的分组图标和用户标签颜色仍有原来的优先级。
 
-1. 聊天级 override
-2. `配置档案设置.路径`
-3. 旧字段 `默认设置.mvu时间路径` / `默认设置.mvu地点路径`
-4. 内置 generic fallback
+规则数组按字段整体覆盖；缺字段保持旧版效果；地点/分类/标签数组可用空数组清空，默认标记不可为空。无效字段会产生诊断并保留兼容默认值，未知图标会告警并显示日历图标。编辑器设置页提供视觉 YAML 编辑，保留未识别的扩展字段。
 
-新 profile 应优先使用 `配置档案设置.路径`，不要继续写旧字段。
+时间与地点读取优先级保留为：聊天中的既有覆盖 → 索引路径设置 → 旧版默认设置字段 → 兼容默认值。事件根路径变化时，未显式指定的临时/重复路径随根路径推导。
 
-## 边界
+无身份字段的旧 YAML 可直接使用；旧 `generic` 输入会提示迁移但仍按《命定之诗》读取。其他显式身份会被拒绝，索引不会参与事件或提示生成。缺失、损坏或拒绝索引都会清除上一份配置。
 
-- 通用视觉选择逻辑放在 `../festival-visual.ts`
-- 内置 SVG icon 打包放在 `../festival-icons.ts`
-- profile 专属关键词、国家、颜色、fallback marker 放在 `festival-visual-presets.ts`
-- 日期解析、纪元名和中文数字年份属于 profile 配置，不属于 widget UI 硬编码
-- 不要把某个世界 / card 的专属视觉规则塞回 `../festival-visual.ts`
-
-## 新增 profile 的最低要求
-
-1. 在 `profiles.ts` 定义 profile id、显示名、默认路径和日期设置
-2. 如果它有专属视觉规则，在 `festival-visual-presets.ts` 添加 preset
-3. 在 `[fixed_event_index]` 的 `配置档案设置` 中声明实际路径
-4. 加一个 focused check，至少覆盖路径归一化和一个日期解析样例
+主题、字号、窗口尺寸、过滤排序、提醒偏好和用户选择的标签颜色继续存于用户设置，不进入本索引。

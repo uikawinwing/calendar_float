@@ -11,7 +11,7 @@ function testElliaTicketDateUsesActiveProfileDateParser(): void {
   applyCalendarProfileConfig({
     profileHint: 'generic',
     config: {
-      id: 'custom-era',
+      id: 'fate-poem',
       label: 'Custom Era',
       date: {
         eraName: '星历',
@@ -22,25 +22,26 @@ function testElliaTicketDateUsesActiveProfileDateParser(): void {
   });
 
   (globalThis as unknown as { getLastMessageId: () => number }).getLastMessageId = () => -1;
-  (globalThis as unknown as { getVariables: (target: { type?: string }) => Record<string, unknown> }).getVariables = target =>
-    target?.type === 'chat'
-      ? {
-          系统核心: '艾莉亚',
-          calendar_float_store: {
-            ticket_alpha_store: {
-              tickets: {
-                ticket_1: {
-                  id: 'ticket_1',
-                  savedAt: '2-05-01',
-                  time: '王庭历二年五月二十三日',
-                  location: '王都',
-                  fields: { title: '星历票券', date: '王庭历二年五月二十三日' },
+  (globalThis as unknown as { getVariables: (target: { type?: string }) => Record<string, unknown> }).getVariables =
+    target =>
+      target?.type === 'chat'
+        ? {
+            系统核心: '艾莉亚',
+            calendar_float_store: {
+              ticket_alpha_store: {
+                tickets: {
+                  ticket_1: {
+                    id: 'ticket_1',
+                    savedAt: '2-05-01',
+                    time: '王庭历二年五月二十三日',
+                    location: '王都',
+                    fields: { title: '星历票券', date: '王庭历二年五月二十三日' },
+                  },
                 },
               },
             },
-          },
-        }
-      : {};
+          }
+        : {};
 
   const events = buildElliaBetaTicketCalendarEventsForMonth(['2-05-23']);
 

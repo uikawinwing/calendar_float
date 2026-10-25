@@ -1,7 +1,4 @@
-import {
-  MONTH_EVENT_ROW_LIMIT,
-  buildFestivalMonthChipEventsForRange,
-} from '../calendar-view-model';
+import { MONTH_EVENT_ROW_LIMIT, buildFestivalMonthChipEventsForRange } from '../calendar-view-model';
 import { addDays, compareDatePoint } from '../date';
 import type { CalendarDataset, CalendarEventRecord, DatePoint, DateRange, MonthDayCell } from '../types';
 
