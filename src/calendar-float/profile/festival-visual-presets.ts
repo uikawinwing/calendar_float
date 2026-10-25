@@ -230,20 +230,11 @@ const FATE_POEM_FALLBACK_FESTIVAL_MARKERS: CalendarFestivalMarkerPresetGroup['fa
   { iconSvg: crownIconSvg, background: '#fff0b8', text: '#895710', border: '#facc15' },
 ];
 
-const FESTIVAL_MARKER_PRESET_GROUPS = new Map<string, CalendarFestivalMarkerPresetGroup>([
-  [
-    'fate-poem',
-    {
-      markerPresets: FATE_POEM_FESTIVAL_MARKER_PRESETS,
-      locationPresets: FATE_POEM_COUNTRY_MARKER_PRESETS,
-      fallbackMarkers: FATE_POEM_FALLBACK_FESTIVAL_MARKERS,
-    },
-  ],
-]);
-
-export function getCalendarProfileFestivalMarkerPresetGroup(
-  presetId: string | undefined,
-): CalendarFestivalMarkerPresetGroup | null {
-  const normalizedPresetId = String(presetId || '').trim();
-  return normalizedPresetId ? (FESTIVAL_MARKER_PRESET_GROUPS.get(normalizedPresetId) ?? null) : null;
+/** The script serves Fate Poem only; no runtime profile registry is required. */
+export function getFatePoemFestivalMarkerPresetGroup(): CalendarFestivalMarkerPresetGroup {
+  return {
+    markerPresets: FATE_POEM_FESTIVAL_MARKER_PRESETS,
+    locationPresets: FATE_POEM_COUNTRY_MARKER_PRESETS,
+    fallbackMarkers: FATE_POEM_FALLBACK_FESTIVAL_MARKERS,
+  };
 }

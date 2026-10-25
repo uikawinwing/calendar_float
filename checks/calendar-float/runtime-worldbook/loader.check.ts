@@ -140,7 +140,7 @@ async function testRuntimeIndexAppliesProfileConfigBeforeDefaults(): Promise<voi
   try {
     const result = await readCalendarRuntimeIndex();
     assert(result.索引?.Profile === 'custom-court', 'loader 应该读取配置档案设置.id');
-    assert(getActiveCalendarProfile().id === 'custom-court', 'loader 应该应用自定义 Profile');
+    assert(getActiveCalendarProfile().id === 'fate-poem', 'loader must not switch to arbitrary Profile IDs');
     assert(getActiveCalendarProfile().developerMode === true, 'loader 应该应用开发者模式');
     assert(
       getCalendarRuntimeDefaults().mvu时间路径 === 'stat_data.王庭.时辰',

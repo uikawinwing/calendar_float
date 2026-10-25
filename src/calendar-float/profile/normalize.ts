@@ -1,4 +1,4 @@
-import { CALENDAR_PROFILES, GENERIC_CALENDAR_PROFILE } from './profiles';
+import { FATE_POEM_CALENDAR_PROFILE } from './profiles';
 import type {
   CalendarAddonId,
   CalendarProfile,
@@ -30,10 +30,6 @@ function normalizeText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function normalizeMatchText(value: unknown): string {
-  return normalizeText(value).toLowerCase();
-}
-
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === '[object Object]';
 }
@@ -51,28 +47,7 @@ function cloneProfile(profile: CalendarProfile): CalendarProfile {
     },
     visual: { ...(profile.visual ?? {}) },
     addons: [...profile.addons],
-    detection: {
-      characterNames: [...profile.detection.characterNames],
-      worldbookKeywords: [...profile.detection.worldbookKeywords],
-    },
   };
-}
-
-function findBuiltinProfile(value: unknown): CalendarProfile | null {
-  const text = normalizeMatchText(value);
-  if (!text) {
-    return null;
-  }
-  return (
-    CALENDAR_PROFILES.find(profile => {
-      if (text === normalizeMatchText(profile.id) || text === normalizeMatchText(profile.label)) {
-        return true;
-      }
-      return [...profile.detection.characterNames, ...profile.detection.worldbookKeywords].some(keyword =>
-        text.includes(normalizeMatchText(keyword)),
-      );
-    }) ?? null
-  );
 }
 
 function warnUnknownKeys(
@@ -227,10 +202,10 @@ function applyVisualOverrides(
   warnUnknownKeys(warnings, 'visual', visual, VISUAL_KEYS);
   if ('festivalMarkerPresetId' in visual) {
     const presetId = normalizeText(visual.festivalMarkerPresetId);
-    if (presetId) {
-      profile.visual = { ...(profile.visual ?? {}), festivalMarkerPresetId: presetId };
+    if (presetId === 'fate-poem') {
+      profile.visual = { ...(profile.visual ?? {}), festivalMarkerPresetId: 'fate-poem' };
     } else {
-      warnings.push('Profile visual.festivalMarkerPresetId 必须是非空字符串');
+      warnings.push('只支持命定之诗节庆标记预设 fate-poem');
     }
   }
 }
@@ -273,26 +248,18 @@ export function resolveCalendarProfileConfig(args: {
 }): CalendarProfileResolveResult {
   const warnings: string[] = [];
   const config = isPlainRecord(args.config) ? (args.config as CalendarProfileConfigInput) : null;
-  const configId = normalizeText(config?.id);
-  const profileHint = normalizeText(args.profileHint);
-  const identity = configId || profileHint;
-  const builtin = findBuiltinProfile(identity);
-
-  if (!config && !builtin && identity) {
-    return {
-      profile: cloneProfile(GENERIC_CALENDAR_PROFILE),
-      source: 'default',
-      warnings: [`未知 Profile：${identity}，已回退到 generic`],
-    };
+  // The fixed-event index can override Fate Poem settings, but never select
+  // an unrelated profile or silently turn the script into a generic calendar.
+  const requestedIds = [...new Set([config?.id, args.profileHint].map(normalizeText).filter(Boolean))];
+  for (const id of requestedIds) {
+    if (!['fate-poem', '命定之诗'].includes(id)) {
+      warnings.push(`不支持的月历 Profile：${id}；保持命定之诗`);
+    }
   }
 
-  const profile = cloneProfile(builtin ?? GENERIC_CALENDAR_PROFILE);
+  const profile = cloneProfile(FATE_POEM_CALENDAR_PROFILE);
   if (!config) {
-    return {
-      profile,
-      source: builtin ? 'builtin' : 'default',
-      warnings,
-    };
+    return { profile, source: 'default', warnings };
   }
 
   warnUnknownKeys(warnings, 'config', config as Record<string, unknown>, [
@@ -305,10 +272,6 @@ export function resolveCalendarProfileConfig(args: {
     'visual',
     'addons',
   ]);
-
-  if (identity && !builtin) {
-    profile.id = identity;
-  }
 
   const label = normalizeText(config.label);
   if ('label' in config) {

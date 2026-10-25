@@ -295,7 +295,7 @@ export function serializeFixedEventIndexDraft(draft: FixedEventIndexDraft): stri
   const output: Record<string, unknown> = { ...draft.unknownTopLevelFields };
   const profileSettings = serializeProfileSettings(draft.profile.settings);
   output.配置档案设置 = {
-    ...(draft.profile.id ? { id: draft.profile.id } : {}),
+    id: 'fate-poem',
     ...(profileSettings ?? {}),
   };
   output.版本 = draft.metadata.version ?? 1;

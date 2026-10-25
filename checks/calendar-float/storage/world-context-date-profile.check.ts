@@ -14,7 +14,7 @@ function assertJsonEqual(name: string, actual: unknown, expected: unknown): void
 async function main(): Promise<void> {
   await initializeCalendarProfile();
   applyCalendarProfileConfig({
-    profileHint: 'generic',
+    profileHint: 'fate-poem',
     config: {
       id: 'custom-era',
       paths: {

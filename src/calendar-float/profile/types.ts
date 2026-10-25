@@ -26,11 +26,6 @@ export interface CalendarProfileVisualSettings {
   festivalMarkerPresetId?: string;
 }
 
-export interface CalendarProfileDetectionRule {
-  characterNames: string[];
-  worldbookKeywords: string[];
-}
-
 export interface CalendarProfile {
   id: CalendarProfileId;
   label: string;
@@ -40,7 +35,6 @@ export interface CalendarProfile {
   worldbook: CalendarProfileWorldbookSettings;
   visual?: CalendarProfileVisualSettings;
   addons: CalendarAddonId[];
-  detection: CalendarProfileDetectionRule;
 }
 
 export interface CalendarProfileConfigInput {
@@ -56,12 +50,6 @@ export interface CalendarProfileConfigInput {
 
 export interface CalendarProfileResolveResult {
   profile: CalendarProfile;
-  source: 'default' | 'builtin' | 'runtime_index';
+  source: 'default' | 'runtime_index';
   warnings: string[];
-}
-
-export interface CalendarProfileDetectionResult {
-  candidate: CalendarProfile;
-  reason: 'runtime_index_profile' | 'default';
-  matchedText: string;
 }

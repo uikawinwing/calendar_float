@@ -1,55 +1,41 @@
-# Calendar Profile Structure
+# 命定之诗月历配置
 
-`profile/` 负责把通用月历脚本适配到不同角色卡 / 世界书配置。它是“通用脚本主体”和“某张角色卡具体规则”之间的边界。
+`calendar_float` 现在只服务《命定之诗》。不再检测、选择或创建其他角色卡的 Generic Profile。
 
-## 文件职责
+## 文件
 
-- `profiles.ts`：内置 profile 定义，例如 `generic` 和 `fate-poem`
-- `types.ts`：profile 输入、解析结果、路径、日期和视觉配置类型
-- `normalize.ts`：把 runtime index 里的 profile hint / config 归一化为 `CalendarProfile`
-- `index.ts`：active profile 状态、初始化、应用 runtime profile 配置、对外 getter
-- `festival-visual-presets.ts`：profile 专属节庆 marker preset registry
+- `profiles.ts`：唯一内置配置 `FATE_POEM_CALENDAR_PROFILE`
+- `normalize.ts`：仅归一化该世界书允许覆盖的路径、纪元、提示词默认值和开发者模式；任何不同的 Profile ID 都给出警告并忽略
+- `index.ts`：聊天上下文初始化、活动配置与 getter
+- `festival-visual-presets.ts`：索伦蒂斯等命定世界节庆的专属颜色和图标
 
-## 当前配置来源
-
-固定事件索引推荐在 `[fixed_event_index]` 写：
+## 唯一 Profile
 
 ```yaml
 配置档案设置:
-  id: generic
-  显示名称: 王庭月历
+  id: fate-poem
+  显示名称: 命定之诗
   开发者模式: false
   路径:
-    世界时间路径: stat_data.世界信息.完整时间字符串
-    世界地点路径: stat_data.世界信息.地点
+    事件根路径: stat_data.事件.月历
+    世界时间路径: stat_data.世界.时间
+    世界地点路径: stat_data.世界.地点
   日期:
-    纪元名: 星历
+    纪元名: 复兴纪元
     纪元别名:
-      - 星历
-      - 王庭历
-    中文数字年份: true
+      - 复兴纪元
 ```
 
-读取优先级：
+`id` 固定为 `fate-poem`。读取既有世界书时，旧 ID 不会切换产品；显式保存索引时，编辑器会写回 `fate-poem`。
 
-1. 聊天级 override
-2. `配置档案设置.路径`
-3. 旧字段 `默认设置.mvu时间路径` / `默认设置.mvu地点路径`
-4. 内置 generic fallback
+运行时路径优先级仍保留：聊天路径覆盖 → `配置档案设置.路径` → 旧 `默认设置` → 内置命定路径；不能因为删除多 Profile 系统就丢失旧存档或自定义路径。
 
-新 profile 应优先使用 `配置档案设置.路径`，不要继续写旧字段。
+## 保留
 
-## 边界
+固定事件和阶段、MVU 临时/重复事件、提醒、世界书 Scanner/Prompt、隐藏剧情解封、正文阅读、编辑器、归档及 `dlc_ellia`。
 
-- 通用视觉选择逻辑放在 `../festival-visual.ts`
-- 内置 SVG icon 打包放在 `../festival-icons.ts`
-- profile 专属关键词、国家、颜色、fallback marker 放在 `festival-visual-presets.ts`
-- 日期解析、纪元名和中文数字年份属于 profile 配置，不属于 widget UI 硬编码
-- 不要把某个世界 / card 的专属视觉规则塞回 `../festival-visual.ts`
+## 不再做
 
-## 新增 profile 的最低要求
-
-1. 在 `profiles.ts` 定义 profile id、显示名、默认路径和日期设置
-2. 如果它有专属视觉规则，在 `festival-visual-presets.ts` 添加 preset
-3. 在 `[fixed_event_index]` 的 `配置档案设置` 中声明实际路径
-4. 加一个 focused check，至少覆盖路径归一化和一个日期解析样例
+- 新增 Generic Profile、新世界 Profile 注册表和角色名自动匹配
+- 为了“通用日历”复制另一个 UI、CalendarCore 引擎或事件模型
+- 把具体节庆日期硬编码进源码（仍由 `[fixed_event_index]` 决定）

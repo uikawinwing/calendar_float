@@ -94,7 +94,7 @@ function testStructuredEditsCanUpdateProfileConfig(): void {
   const serialized = parseYaml(updatedYaml) as Record<string, any>;
 
   assert(serialized.Profile === undefined, '结构化编辑不应该重新生成顶层 Profile');
-  assert(serialized.配置档案设置?.id === 'custom-court', '结构化编辑应该更新配置档案设置.id');
+  assert(serialized.配置档案设置?.id === 'fate-poem', '结构化编辑不得将命定月历改为任意通用 Profile');
   assert(serialized.配置档案设置?.显示名称 === '王庭月历', '结构化编辑应该更新配置档案设置.显示名称');
   assert(
     serialized.配置档案设置?.路径?.世界时间路径 === 'stat_data.王庭.时辰',
@@ -145,7 +145,9 @@ function testProfileConfigFieldsRenderInSettingsPanel(): void {
     { section: 'settings', scope: 'profile' },
   );
 
-  assert(html.includes('data-role="fixed-event-profile-row"'), '设置页应该渲染 Profile 编辑卡片');
+  assert(html.includes('data-role="fixed-event-profile-row"'), '设置页应该渲染命定配置卡片');
+  assert(!html.includes('data-field="id"'), '设置页不再提供任意 Profile ID 编辑入口');
+  assert(html.includes('fate-poem'), '固定世界书目标应该可见');
   assert(html.includes('data-field="worldTimePath"'), '设置页应该渲染 Profile 时间路径字段');
   assert(!html.includes('data-scope="defaults" data-id="main" data-field="mvuTimePath"'), '设置页不应该重复渲染默认 MVU 时间路径字段');
   assert(!html.includes('data-scope="defaults" data-id="main" data-field="mvuLocationPath"'), '设置页不应该重复渲染默认 MVU 地点路径字段');

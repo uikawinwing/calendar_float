@@ -42,7 +42,7 @@ assertEqual(
 );
 
 applyCalendarProfileConfig({
-  profileHint: 'generic',
+  profileHint: 'fate-poem',
   config: {
     id: 'profile-path-test',
     paths: {

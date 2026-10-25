@@ -8,7 +8,7 @@ function assert(condition: unknown, message: string): void {
 }
 
 function testDeveloperModeDefaultsToHidden(): void {
-  const result = resolveCalendarProfileConfig({ profileHint: 'generic' });
+  const result = resolveCalendarProfileConfig({ profileHint: 'fate-poem' });
 
   assert(result.profile.developerMode === false, '开发者模式缺省应该关闭');
   assert(!shouldShowCalendarDeveloperTools(result.profile), '缺省 profile 不应该显示开发者入口');
@@ -16,7 +16,7 @@ function testDeveloperModeDefaultsToHidden(): void {
 
 function testDeveloperModeCanBeEnabledFromProfileConfig(): void {
   const result = resolveCalendarProfileConfig({
-    profileHint: 'generic',
+    profileHint: 'fate-poem',
     config: {
       developerMode: true,
     },

@@ -511,17 +511,11 @@ function renderProfileSettingsEditor(draft: FixedEventIndexDraft): string {
     <section class="th-index-editor-settings-block">
       <div class="th-index-editor-settings-block-head">
         <h3>配置档案</h3>
-        <p>决定这份索引属于哪种月历配置，以及运行时从哪里读取时间、地点和纪元格式。</p>
+        <p>专用于《命定之诗》；在这里配置世界时间、地点及纪元格式。</p>
       </div>
       <div class="th-index-editor-edit-card" data-role="fixed-event-profile-row" data-scope="profile" data-id="main">
         <div class="th-index-editor-edit-grid">
-          ${renderInput({
-            scope: 'profile',
-            id: 'main',
-            field: 'id',
-            label: 'Profile ID',
-            value: profile.id,
-          })}
+          <div class="th-index-editor-muted">世界书适配：命定之诗 (fate-poem) · 固定</div>
           ${renderInput({
             scope: 'profile',
             id: 'main',

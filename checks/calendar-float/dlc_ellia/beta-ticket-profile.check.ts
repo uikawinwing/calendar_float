@@ -9,7 +9,7 @@ function assert(condition: unknown, message: string): asserts condition {
 
 function testElliaTicketDateUsesActiveProfileDateParser(): void {
   applyCalendarProfileConfig({
-    profileHint: 'generic',
+    profileHint: 'fate-poem',
     config: {
       id: 'custom-era',
       label: 'Custom Era',

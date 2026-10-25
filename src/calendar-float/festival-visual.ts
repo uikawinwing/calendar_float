@@ -6,16 +6,13 @@ import {
   champagneGlassesIconSvg,
   chessIconSvg,
   compassIconSvg,
-  crownIconSvg,
-  fortIconSvg,
   heartIconSvg,
   BUNDLED_FESTIVAL_ICON_BY_FILENAME,
   suitcaseIconSvg,
 } from './festival-icons';
-import type { CalendarFestivalMarkerPreset, CalendarFestivalMarkerPresetGroup } from './festival-visual-types';
+import type { CalendarFestivalMarkerPreset } from './festival-visual-types';
 import { getFestivalLocationKeywords } from './festival-location';
-import { getActiveCalendarProfile } from './profile';
-import { getCalendarProfileFestivalMarkerPresetGroup } from './profile/festival-visual-presets';
+import { getFatePoemFestivalMarkerPresetGroup } from './profile/festival-visual-presets';
 import type { CalendarEventColorStyle, DayCellFestivalMarker, FestivalRecord } from './types';
 
 type FestivalVisualSource = Pick<
@@ -91,22 +88,6 @@ const HASHTAG_MARKER_PRESETS: CalendarFestivalMarkerPreset[] = [
   },
 ];
 
-const GENERIC_FALLBACK_FESTIVAL_MARKERS: Array<DayCellFestivalMarker['color'] & { iconSvg: string }> = [
-  { iconSvg: fortIconSvg, background: '#ffcdd4', text: '#9f2834', border: '#fb7185' },
-  { iconSvg: champagneGlassesIconSvg, background: '#fff0c9', text: '#8a5a00', border: '#f2c55c' },
-  { iconSvg: crownIconSvg, background: '#fff0b8', text: '#895710', border: '#facc15' },
-];
-
-const GENERIC_FESTIVAL_MARKER_PRESET_GROUP: CalendarFestivalMarkerPresetGroup = {
-  markerPresets: [],
-  locationPresets: [],
-  fallbackMarkers: GENERIC_FALLBACK_FESTIVAL_MARKERS,
-};
-
-function getActiveFestivalMarkerPresetGroup(): CalendarFestivalMarkerPresetGroup {
-  const presetId = getActiveCalendarProfile().visual?.festivalMarkerPresetId;
-  return getCalendarProfileFestivalMarkerPresetGroup(presetId) ?? GENERIC_FESTIVAL_MARKER_PRESET_GROUP;
-}
 
 function findPresetByOrderedKeywords(
   keywords: string[],
@@ -140,7 +121,7 @@ export function buildFestivalTagPreviewMarker(
   color: CalendarEventColorStyle,
 ): Pick<DayCellFestivalMarker, 'iconSvg' | 'iconColor' | 'color'> {
   const normalizedTag = String(tag || '').trim();
-  const profilePresets = getActiveFestivalMarkerPresetGroup().markerPresets;
+  const profilePresets = getFatePoemFestivalMarkerPresetGroup().markerPresets;
   const preset =
     findPresetByOrderedKeywords([normalizedTag], HASHTAG_MARKER_PRESETS) ??
     findPresetByOrderedKeywords([normalizedTag], profilePresets);
@@ -154,7 +135,7 @@ export function buildFestivalTagPreviewMarker(
 export function buildFestivalMarker(festival: FestivalVisualSource): DayCellFestivalMarker {
   const keywords = getFestivalLocationKeywords(festival);
   const searchableText = [festival.title, festival.summary, festival.content, ...keywords].join('|').toLowerCase();
-  const presetGroup = getActiveFestivalMarkerPresetGroup();
+  const presetGroup = getFatePoemFestivalMarkerPresetGroup();
   const locationPreset = findPresetByOrderedKeywords(keywords, presetGroup.locationPresets);
   const textPreset = presetGroup.markerPresets.find(item =>
     item.keywords.some(keyword => searchableText.includes(keyword.toLowerCase())),

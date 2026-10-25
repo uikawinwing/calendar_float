@@ -55,11 +55,8 @@ function createFestival(args: Partial<FestivalRecord>): FestivalRecord {
 }
 
 function testProfilePresetRegistryOwnsFatePoemPresets(modules: FestivalVisualProfilePresetCheckModules): void {
-  const generic = modules.profilePresets.getCalendarProfileFestivalMarkerPresetGroup(undefined);
-  const fatePoem = modules.profilePresets.getCalendarProfileFestivalMarkerPresetGroup('fate-poem');
-
-  assert(generic === null, '通用 profile 不应该注册命定之诗视觉 preset');
-  assert(fatePoem !== null, '命定之诗 profile 应该注册视觉 preset');
+  const fatePoem = modules.profilePresets.getFatePoemFestivalMarkerPresetGroup();
+  assert(fatePoem !== null, '命定之诗视觉 preset 必须存在');
   assert(fatePoem?.locationPresets.some(preset => preset.keywords.includes('索伦蒂斯王国')), '命定之诗 preset 应该包含索伦蒂斯地点规则');
 }
 
@@ -70,13 +67,13 @@ function testActiveProfileControlsFestivalMarkerPresets(modules: FestivalVisualP
     locationKeywords: ['索伦蒂斯王国'],
   });
 
-  modules.profile.applyCalendarProfileConfig({ profileHint: 'generic' });
-  const genericMarker = modules.festivalVisual.buildFestivalMarker(festival);
-  assert(genericMarker.color.background !== '#b9ddff', '通用 profile 不应该套用索伦蒂斯专属颜色');
-
-  modules.profile.applyCalendarProfileHint('命定之诗');
+  modules.profile.applyCalendarProfileConfig({ profileHint: 'fate-poem' });
   const fateMarker = modules.festivalVisual.buildFestivalMarker(festival);
-  assert(fateMarker.color.background === '#b9ddff', '命定之诗 profile 应该套用索伦蒂斯专属颜色');
+  assert(fateMarker.color.background === '#b9ddff', 'Fate-only calendar keeps Solentis marker colors');
+  const rejected = modules.profile.applyCalendarProfileConfig({ profileHint: 'generic' });
+  assert(rejected.profile.id === 'fate-poem', 'generic hint must not switch the product identity');
+  const after = modules.festivalVisual.buildFestivalMarker(festival);
+  assert(after.color.background === '#b9ddff', 'unsupported generic hint must not disable Fate visuals');
 }
 
 function testGenericFestivalVisualModuleDoesNotOwnFatePoemConstants(): void {

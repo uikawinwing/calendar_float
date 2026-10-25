@@ -341,7 +341,7 @@ function buildBookDefaultsEdit(
 function buildProfileEdit(edit: FixedEventProfileStructuredEdit, profile: FixedEventProfileDraft): FixedEventProfileDraft {
   return {
     ...profile,
-    id: edit.id === undefined ? profile.id : normalizeOptionalText(edit.id),
+    id: 'fate-poem', // The editor no longer supports creating arbitrary calendar products.
     settings: {
       ...profile.settings,
       label: edit.label === undefined ? profile.settings.label : normalizeOptionalText(edit.label),

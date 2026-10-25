@@ -50,9 +50,9 @@ function createEmptyFixedEventIndexDraft(source: { worldbookName: string; entryN
     saveBlockedReasons: [],
     warnings: [],
     profile: {
-      id: 'generic',
+      id: 'fate-poem',
       settings: {
-        label: '通用月历',
+        label: '命定之诗',
         developerMode: false,
         paths: {
           eventRoot: 'stat_data.事件.月历',
@@ -61,7 +61,8 @@ function createEmptyFixedEventIndexDraft(source: { worldbookName: string; entryN
           unknownFields: {},
         },
         date: {
-          eraNames: [],
+          eraName: '复兴纪元',
+          eraNames: ['复兴纪元'],
           unknownFields: {},
         },
         unknownFields: {},

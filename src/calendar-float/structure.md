@@ -16,7 +16,7 @@
 - `event-normalizer.ts`：把原始事件数据归一化为月历可用结构
 - `festival-icons.ts`：打包内置 SVG icon，并提供文件名到 SVG 的映射
 - `festival-visual-types.ts`：节庆视觉 preset 的共享类型
-- `festival-visual.ts`：通用节庆标记选择逻辑；profile 专属 preset 由 `profile/` 提供
+- `festival-visual.ts`：命定节庆标记选择逻辑；地点与节庆 preset 由 `profile/` 提供
 - `runtime-ui-dataset.ts`：widget 读取 runtime dataset 的对外门面
 - `runtime-chat-context.ts`：从聊天消息提取 runtime 扫描需要的文本上下文
 - `runtime-config.ts`：旧 runtime 配置门面；新 profile 逻辑优先看 `profile/` 和 `runtime-worldbook/config.ts`
@@ -26,7 +26,7 @@
 
 - `calendar-view-model/`：把 dataset 转为月视图格子、日程列表、月内条形 chip 等 UI view model
 - `fixed-event-index-editor/`：`[fixed_event_index]` 结构化编辑器，见 `fixed-event-index-editor/structure.md`
-- `profile/`：通用月历 / 命定之诗 profile 检测、路径配置、日期设置和 profile 专属视觉 preset
+- `profile/`：固定命定之诗 Profile、世界时间路径、日期解析与专属视觉 preset
 - `runtime-dataset/`：把世界书索引、主动事件、归档事件、节庆和读物组装成 UI 使用的 `CalendarDataset`；单次 load 传递 operation-scoped worldbook snapshot
 - `runtime-trigger-evaluator/`：runtime 命中判定、日期窗口、关键词、提醒和内容解析
 - `runtime-worldbook/`：世界书索引来源发现、YAML 读取、schema 归一化、正文解析、runtime defaults、月份别名、scanner 输入上下文和 bootstrap；snapshot 不跨 operation 复用，scanner 在同一 generation 内 single-flight，teardown 后新 generation 不等待旧任务
@@ -50,9 +50,9 @@
 
 ## 不要再做的事
 
-- 不要把《命定之诗》的地点、节庆、颜色规则塞回通用模块
+- 不要重新引入通用 Profile / CalendarCore 或第二套月历引擎；命定数据从世界书读取，不复制硬编码节庆
 - 不要在 `widget/index.ts` 增加新的纯函数和 YAML 变换
-- 不要为新 profile 复制 `[DLC][扩展]` 这类旧命名前缀
+- 不要增加其他世界 Profile；`[DLC][扩展]` 旧命名只为现有世界书兼容保留
 - 不要把旧字段 `默认设置.mvu时间路径` / `默认设置.mvu地点路径` 写成新文档示例；它们只属于 fallback
 - 不要把新的 `.check.ts` 放在 `src/`；check 统一放到 `checks/calendar-float/`，按原模块路径分目录
 - 不要绕过 `runtime-worldbook/snapshot.ts` 在一次 dataset/scan 内重复读取同一世界书，也不要给 scanner 加平行 publish 通道
