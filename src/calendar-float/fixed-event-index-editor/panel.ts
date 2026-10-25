@@ -1,3 +1,4 @@
+import { stringify } from 'yaml';
 import {
   readCalendarRuntimeIndexSourceEntry,
   type CalendarRuntimeIndexSourceCandidate,
@@ -1541,4 +1542,3 @@ export function renderFixedEventIndexEditorPreview(
     </section>
   `;
 }
-import { stringify } from 'yaml';

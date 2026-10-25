@@ -1,21 +1,21 @@
 # 月历悬浮球（Calendar Float）
 
-这是一个用于 SillyTavern / Tavern Helper 的月历悬浮窗脚本。它会从角色卡或世界书里的月历索引读取固定事件、节庆、提醒和补充资料，并把它们渲染成可交互的月历 UI。
+这是一个为《命定之诗》世界书提供日历功能的 SillyTavern / Tavern Helper 脚本。它会从世界书的月历索引读取固定事件、节庆、提醒和补充资料，并提供悬浮月历、事件编辑和提醒。
 
-项目最早服务于《命定之诗与黄昏之歌》的月历 DLC，现在已经拆成 **通用脚本主体 + profile 配置 + 世界书索引**。不同角色卡可以带自己的 profile、MVU 时间路径、地点路径、固定事件索引和正文条目，不需要额外导入独立 JSON。
+脚本负责功能，世界书负责世界设定，用户设置负责主题、尺寸、过滤等个人偏好。日历的运行身份固定为《命定之诗》，时间路径、纪元、月份别名及节庆视觉规则继续由原有索引配置。
 
 ## 当前状态
 
-- 适合给熟悉 SillyTavern / Tavern Helper 的用户做 controlled alpha 测试
-- 推荐把脚本、`[fixed_event_index]`、profile 配置和正文世界书条目一起打包进角色卡或配套世界书
-- 旧的《命定之诗》命名仍可读取，但新 profile 不应该复制 `[DLC][扩展]` 这类前缀
+- 当前分支基于 v1.0.24 重构，本地回归通过后仍需完成真实 SillyTavern 验收
+- 脚本配合 `[fixed_event_index]` 和正文世界书条目使用
+- 旧索引缺少新增字段时保持原版默认效果；保留《命定之诗》原有条目命名兼容
 
 ## 核心入口
 
 - 脚本入口：`src/calendar-float/index.ts`
 - 月历 UI：`src/calendar-float/widget/`
 - 固定事件索引编辑器：`src/calendar-float/fixed-event-index-editor/`
-- profile 配置：`src/calendar-float/profile/`
+- 日历索引配置：`src/calendar-float/profile/`
 - runtime 世界书读取：`src/calendar-float/runtime-worldbook/`
 - 世界书基础设施安装：`src/calendar-float/worldbook-manager/`
 - 仓库结构说明：`structure.md`
@@ -45,18 +45,18 @@ pnpm run serve:dev
 
 ## 世界书条目
 
-通用 profile 推荐使用这些条目名：
+日历使用这些条目名：
 
 - `[fixed_event_index]`：固定事件索引，月历主要数据源
 - `[mvu_update][月历球][月历变量更新规则]`：月历变量更新规则
 - `[月历球][当前月历内容展示]`：当前月历内容展示
 
-《命定之诗》profile 仍兼容带 `[DLC][扩展]` 的旧命名，例如：
+同时保留带 `[DLC][扩展]` 的旧命名，例如：
 
 - `[DLC][扩展][月历球][月历变量更新规则][mvu_update]`
 - `[DLC][扩展][月历球][当前月历内容展示](...)`
 
-新角色卡不要硬抄旧前缀。通用脚本只需要能语义匹配 `[月历球][当前月历内容展示]` 和 `[月历球][月历变量更新规则]`。
+已有世界书无需为了本轮重构改名。`[fixed_event_index]` 供脚本按需读取，应保持禁用自动注入；配置字段不会整份送入模型。
 
 ## 固定事件索引结构
 
@@ -64,19 +64,18 @@ pnpm run serve:dev
 
 ```yaml
 配置档案设置:
-  id: generic
-  显示名称: 王庭月历
+  id: fate-poem
+  显示名称: 命定之诗
   开发者模式: false
   路径:
     事件根路径: stat_data.事件.月历
-    世界时间路径: stat_data.世界信息.完整时间字符串
-    世界地点路径: stat_data.世界信息.地点
+    世界时间路径: stat_data.世界.时间
+    世界地点路径: stat_data.世界.地点
   日期:
-    纪元名: 星历
+    纪元名: 复兴纪元
     纪元别名:
-      - 星历
-      - 王庭历
-    中文数字年份: true
+      - 复兴纪元
+    中文数字年份: false
 版本: 1
 说明: 固定事件索引
 默认设置:
@@ -142,17 +141,18 @@ pnpm run serve:dev
 
 旧字段 `默认设置.mvu时间路径` 和 `默认设置.mvu地点路径` 只作为兼容 fallback。新配置应写在 `配置档案设置.路径.世界时间路径` 和 `配置档案设置.路径.世界地点路径`。
 
+完整配置示例见 [节庆索引](节庆_索引.latest.yaml)。`配置档案设置.视觉` 可分别设置地点、分类、标签的图标与颜色；不填写时保留原版效果。旧 `generic` 身份会提示迁移，其他世界身份的索引会停止读取并显示诊断。
+
 ## 固定事件编辑器教程
 
 1. 开发者先在 `[fixed_event_index]` 把 `配置档案设置.开发者模式` 设为 `true`，再打开月历悬浮球，从设置或工具菜单进入 `固定事件索引`。普通测试者默认看不到这个入口。
 2. 如果提示找不到固定事件索引，点击 `创建空固定事件索引`。脚本会在当前角色的主世界书里创建 `[fixed_event_index]`。
-3. 在 `基础设置` 里填写 profile：
-   - `Profile ID`：写入 `配置档案设置.id`，通用角色卡通常写 `generic`
-   - `显示名称`：UI 或诊断里显示的名字
+3. 在 `基础设置` 的 `命定之诗日历设置` 中填写：
    - `MVU 时间路径`：从 MVU/stat_data 读取当前世界时间的路径
    - `MVU 地点路径`：从 MVU/stat_data 读取当前地点的路径
-   - `纪元名`：例如 `AC`、`星历`、`王庭历`
-   - `中文数字年份`：如果世界时间会写成 `星历二年五月三日`，设为 `是`
+   - `纪元名`：使用世界书中的纪元名
+   - `中文数字年份`：如果世界时间使用中文数字年份，设为 `是`
+   - `节庆视觉规则（YAML）`：编辑索引中的地点、分类、标签图标和配色规则
 4. 如果需要自定义月份名，在 `月份别名` 写月份、名称和季节。
 5. 在左侧新增分组。分组用于给事件分类和设置图标。
 6. 新增固定事件，至少填写：
@@ -170,18 +170,18 @@ pnpm run serve:dev
 
 注意事项：
 
-- 不要把 profile 时间路径和 MVU 全局默认路径填两次。当前推荐只填 `配置档案设置.路径`。
+- 时间路径只需填写 `配置档案设置.路径`，无需重复填写旧默认字段。
 - 创建空索引前要确认当前角色卡已经有可写的主世界书。
 - 编辑器会尽量保留未知 YAML 字段，但不要依赖旧顶层字段 `节庆`、`书籍`、`fixed_events`、`event_groups`、`materials`、`books`。
-- 日期解析预览只验证 profile 的纪元和日期规则，不代表对应日期一定有事件。
-- 保存前如果有红色错误提示，先修正；否则可能写入了 UI 能显示但 runtime 无法正确扫描的索引。
+- 日期解析预览用于验证纪元和日期规则，不代表对应日期一定有事件。
+- 错误 YAML 或无法安全编辑的完整逻辑会阻止保存；应先在 YAML 中修正，原有条件不会被结构化编辑静默删除。
 
 ## Runtime 行为
 
 运行时会：
 
 1. 读取 `[fixed_event_index]`
-2. 读取 profile 的时间路径和地点路径
+2. 读取索引配置的时间路径和地点路径
 3. 解析当前世界日期、地点、最近消息和用户输入
 4. 根据固定事件日期窗口、地点关键词、正文关键词和资料关键词判断命中
 5. 对世界书扫描类内容 silent inject token 并开启 `should_scan`
@@ -199,7 +199,8 @@ git diff --check
 代码改动后至少运行：
 
 ```powershell
-pnpm run build:dev
+pnpm test
+pnpm run build
 ```
 
 固定事件编辑器相关改动可加跑：
@@ -209,6 +210,8 @@ pnpm exec ts-node --transpile-only --compiler-options '{"module":"CommonJS","mod
 pnpm exec ts-node --transpile-only --compiler-options '{"module":"CommonJS","moduleResolution":"node"}' checks/calendar-float/fixed-event-index-editor/save.check.ts
 pnpm exec ts-node --transpile-only --compiler-options '{"module":"CommonJS","moduleResolution":"node"}' checks/calendar-float/widget/fixed-event-editor-row-actions.check.ts
 ```
+
+`pnpm test` 包含 v1.0.24 同输入对照，需要本地 Git 历史中存在 `9b8da7b`。
 
 ## 许可证
 

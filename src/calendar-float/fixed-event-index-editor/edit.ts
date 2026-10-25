@@ -1,3 +1,4 @@
+import { parseDocument } from 'yaml';
 import { parseFixedEventIndexDraft } from './parse';
 import { serializeFixedEventIndexDraft } from './serialize';
 import type {
@@ -865,4 +866,3 @@ export function applyFixedEventIndexRowOperationsToYaml(input: FixedEventIndexRo
 
   return serializeFixedEventIndexDraft(draft);
 }
-import { parseDocument } from 'yaml';
