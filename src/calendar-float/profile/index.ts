@@ -1,5 +1,5 @@
-import { SCRIPT_NAME } from '../constants';
 import type { ParseWorldDateAnchorOptions } from '../date';
+import { SCRIPT_NAME } from '../constants';
 import { resolveCalendarProfileConfig } from './normalize';
 import { FATE_POEM_CALENDAR_PROFILE } from './profiles';
 import type {

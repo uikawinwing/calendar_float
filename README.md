@@ -1,8 +1,8 @@
 # 月历悬浮球（Calendar Float）
 
-这是一个用于 SillyTavern / Tavern Helper 的月历悬浮窗脚本。它会读取固定事件、MVU 临时/重复事件、节庆、提醒和补充资料，并把它们渲染成可交互的月历 UI。
+这是一个专为《命定之诗》世界书提供日历功能的 SillyTavern / Tavern Helper 脚本。它会读取固定事件、MVU 临时与重复事件、节庆、提醒和补充资料，并提供悬浮月历、事件编辑和归档。
 
-**本项目只服务《命定之诗》的 SillyTavern 世界书**。不再维护 Generic Profile、跨角色卡适配和独立的 Universal CalendarCore。保留原有世界书索引、MVU、剧情 Scanner、Prompt 注入、提醒、固定事件编辑器及归档等完整工作流。
+脚本负责功能，世界书负责世界设定，用户设置负责主题、尺寸、过滤等个人偏好。日历的运行身份固定为《命定之诗》，时间路径、纪元、月份别名及节庆视觉规则继续由原有索引配置。
 
 ## 主要能力
 
@@ -13,13 +13,15 @@
 - 内置固定事件索引编辑器、世界书诊断、搬运和基础设施安装工具
 - 与《命定之诗》世界书中的 `[fixed_event_index]`、世界时间和月历 MVU 配合使用
 - 保留历史 `[DLC][扩展]` 条目名兼容；不再提供跨世界 Profile 创建功能
+- 固定事件编辑器保护未知 YAML 字段与复杂条件，读取世界书失败时停止覆盖
+- 节庆图标与颜色可在索引中配置；旧索引缺少新字段时保留原有默认效果
 
 ## 核心入口
 
 - 脚本入口：`src/calendar-float/index.ts`
 - 月历 UI：`src/calendar-float/widget/`
 - 固定事件索引编辑器：`src/calendar-float/fixed-event-index-editor/`
-- profile 配置：`src/calendar-float/profile/`
+- 日历索引配置：`src/calendar-float/profile/`
 - runtime 世界书读取：`src/calendar-float/runtime-worldbook/`
 - 世界书基础设施安装：`src/calendar-float/worldbook-manager/`
 - 仓库结构说明：`structure.md`
@@ -61,6 +63,8 @@ pnpm run serve:dev
 - `[DLC][扩展][月历球][当前月历内容展示](...)`
 
 建议使用上面的标准条目名。兼容旧名称用于读取已有存档，不需要为其他角色卡制作 Profile。
+
+`[fixed_event_index]` 供脚本按需读取，应保持禁用自动注入；配置字段不会整份送入模型。
 
 ## MVU 事件与隐藏剧情
 
@@ -175,16 +179,19 @@ LLM 写普通事件时，`可见性`默认为`玩家与LLM`，可以省略。需
 
 旧字段 `默认设置.mvu时间路径` 和 `默认设置.mvu地点路径` 只作为兼容 fallback。新配置应写在 `配置档案设置.路径.世界时间路径` 和 `配置档案设置.路径.世界地点路径`。
 
+完整配置示例见 [节庆索引](节庆_索引.latest.yaml)。`配置档案设置.视觉` 可分别设置地点、分类、标签的图标与颜色；不填写时保留原版效果。旧 `generic` 身份会提示迁移，其他世界身份的索引会停止读取并显示诊断。
+
 ## 固定事件编辑器教程
 
 1. 开发者先在 `[fixed_event_index]` 把 `配置档案设置.开发者模式` 设为 `true`，再打开月历悬浮球，从设置或工具菜单进入 `固定事件索引`。普通测试者默认看不到这个入口。
 2. 如果提示找不到固定事件索引，点击 `创建空固定事件索引`。脚本会在当前角色的主世界书里创建 `[fixed_event_index]`。
-3. 在 `基础设置` 修改命定世界书的数据设置。Profile ID 固定为 `fate-poem`，不再需要填写：
-   - `显示名称`：UI 或诊断里显示的名字
+3. 在 `基础设置` 的 `命定之诗日历设置` 中填写：
+   - `显示名称`：月历配置的显示标题，运行身份始终为 `fate-poem`
    - `MVU 时间路径`：从 MVU/stat_data 读取当前世界时间的路径
    - `MVU 地点路径`：从 MVU/stat_data 读取当前地点的路径
-   - `纪元名`：例如 `复兴纪元`
+   - `纪元名`：使用世界书中的纪元名
    - `中文数字年份`：如果世界时间使用中文数字年份，设为 `是`
+   - `节庆视觉规则（YAML）`：编辑索引中的地点、分类、标签图标和配色规则
 4. 如果需要自定义月份名，在 `月份别名` 写月份、名称和季节。
 5. 在左侧新增分组。分组用于给事件分类和设置图标。
 6. 新增固定事件，至少填写：
@@ -202,11 +209,11 @@ LLM 写普通事件时，`可见性`默认为`玩家与LLM`，可以省略。需
 
 注意事项：
 
-- 不要把 profile 时间路径和 MVU 全局默认路径填两次。当前推荐只填 `配置档案设置.路径`。
+- 时间路径只需填写 `配置档案设置.路径`，无需重复填写旧默认字段。
 - 创建空索引前要确认当前角色卡已经有可写的主世界书。
 - 编辑器会尽量保留未知 YAML 字段，但不要依赖旧顶层字段 `节庆`、`书籍`、`fixed_events`、`event_groups`、`materials`、`books`。
-- 日期解析预览只验证 profile 的纪元和日期规则，不代表对应日期一定有事件。
-- 保存前如果有红色错误提示，先修正；否则可能写入了 UI 能显示但 runtime 无法正确扫描的索引。
+- 日期解析预览用于验证纪元和日期规则，不代表对应日期一定有事件。
+- 错误 YAML 或无法安全编辑的完整逻辑会阻止保存；应先在 YAML 中修正，原有条件不会被结构化编辑静默删除。
 
 ## Runtime 行为
 
@@ -233,7 +240,8 @@ git diff --check
 代码改动后至少运行：
 
 ```powershell
-pnpm run build:dev
+pnpm test
+pnpm run build
 ```
 
 固定事件编辑器相关改动可加跑：
@@ -243,6 +251,8 @@ pnpm exec ts-node --transpile-only --compiler-options '{"module":"CommonJS","mod
 pnpm exec ts-node --transpile-only --compiler-options '{"module":"CommonJS","moduleResolution":"node"}' checks/calendar-float/fixed-event-index-editor/save.check.ts
 pnpm exec ts-node --transpile-only --compiler-options '{"module":"CommonJS","moduleResolution":"node"}' checks/calendar-float/widget/fixed-event-editor-row-actions.check.ts
 ```
+
+`pnpm test` 会从 Git 历史读取 v1.0.24 和整合前的命定之诗分支作为对照，请使用包含完整历史的克隆。
 
 ## 许可证
 

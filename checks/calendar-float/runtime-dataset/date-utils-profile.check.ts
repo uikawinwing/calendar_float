@@ -11,7 +11,7 @@ function testRuntimeEventDateUsesActiveProfileDateParser(): void {
   applyCalendarProfileConfig({
     profileHint: 'fate-poem',
     config: {
-      id: 'custom-era',
+      id: 'fate-poem',
       label: 'Custom Era',
       date: {
         eraName: '星历',

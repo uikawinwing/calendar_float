@@ -1,3 +1,4 @@
+import { parseDocument } from 'yaml';
 import { parseFixedEventIndexDraft } from './parse';
 import { serializeFixedEventIndexDraft } from './serialize';
 import type {
@@ -19,12 +20,12 @@ export interface FixedEventDefaultsStructuredEdit {
 }
 
 export interface FixedEventProfileStructuredEdit {
-  id?: string;
   label?: string;
   worldTimePath?: string;
   worldLocationPath?: string;
   eraName?: string;
   useChineseNumeralYear?: string;
+  visualYaml?: string;
 }
 
 export interface FixedEventMonthAliasStructuredEdit {
@@ -199,6 +200,31 @@ function normalizeOptionalText(value: unknown): string | undefined {
   return text || undefined;
 }
 
+function assertSourceYamlParsed(draft: ReturnType<typeof parseFixedEventIndexDraft>): void {
+  const parseError = draft.saveBlockedReasons.find(
+    reason => reason.startsWith('YAML 解析失败：') || reason === '索引 YAML 顶层不是对象',
+  );
+  if (parseError) {
+    throw new Error(`固定事件索引无法安全编辑：${parseError}`);
+  }
+  const unsupportedEvent = draft.events.find(
+    event =>
+      event.hasUnsupportedAdvancedLogic ||
+      event.intro.hasUnsupportedAdvancedLogic ||
+      event.reminder.hasUnsupportedAdvancedLogic ||
+      event.stages.some(stage => stage.reminder.hasUnsupportedAdvancedLogic),
+  );
+  if (unsupportedEvent) {
+    throw new Error(`固定事件「${unsupportedEvent.name || unsupportedEvent.id}」包含完整逻辑，编辑器不能安全转换`);
+  }
+  const unsupportedMaterial = draft.materials.find(material => material.hasUnsupportedAdvancedLogic);
+  if (unsupportedMaterial) {
+    throw new Error(
+      `补充资料「${unsupportedMaterial.title || unsupportedMaterial.id}」包含完整逻辑，编辑器不能安全转换`,
+    );
+  }
+}
+
 function normalizeOptionalNumberText(value: string | undefined): number | undefined {
   const text = normalizeOptionalText(value);
   if (!text) {
@@ -298,12 +324,15 @@ function buildEventEndEdit(edit: FixedEventStructuredEdit, event: FixedEventDraf
   return edit.start?.trim() || event.end;
 }
 
-function buildMonthAliasDraft(edit: FixedEventMonthAliasStructuredEdit): FixedEventMonthAliasDraft {
+function buildMonthAliasDraft(
+  edit: FixedEventMonthAliasStructuredEdit,
+  existing?: FixedEventMonthAliasDraft,
+): FixedEventMonthAliasDraft {
   return {
     month: normalizeOptionalNumberText(edit.month) ?? 0,
     name: edit.name.trim(),
     season: normalizeOptionalText(edit.season),
-    unknownFields: {},
+    unknownFields: existing?.unknownFields ?? {},
   };
 }
 
@@ -338,17 +367,32 @@ function buildBookDefaultsEdit(
   };
 }
 
-function buildProfileEdit(edit: FixedEventProfileStructuredEdit, profile: FixedEventProfileDraft): FixedEventProfileDraft {
+function buildProfileEdit(
+  edit: FixedEventProfileStructuredEdit,
+  profile: FixedEventProfileDraft,
+): FixedEventProfileDraft {
+  const unknownFields = { ...profile.settings.unknownFields };
+  if (edit.visualYaml !== undefined && edit.visualYaml.trim()) {
+    const document = parseDocument(edit.visualYaml);
+    if (document.errors.length) throw new Error(`视觉规则 YAML 无法解析：${document.errors[0].message}`);
+    const visual: unknown = document.toJS();
+    if (!visual || typeof visual !== 'object' || Array.isArray(visual)) throw new Error('视觉规则必须是 YAML 对象');
+    unknownFields.视觉 = visual;
+    delete unknownFields.visual;
+  }
   return {
     ...profile,
     id: 'fate-poem', // The editor no longer supports creating arbitrary calendar products.
     settings: {
       ...profile.settings,
       label: edit.label === undefined ? profile.settings.label : normalizeOptionalText(edit.label),
+      unknownFields,
       paths: {
         ...profile.settings.paths,
         worldTime:
-          edit.worldTimePath === undefined ? profile.settings.paths.worldTime : normalizeOptionalText(edit.worldTimePath),
+          edit.worldTimePath === undefined
+            ? profile.settings.paths.worldTime
+            : normalizeOptionalText(edit.worldTimePath),
         worldLocation:
           edit.worldLocationPath === undefined
             ? profile.settings.paths.worldLocation
@@ -522,6 +566,7 @@ function moveStageInList(
 
 export function applyFixedEventIndexStructuredEditsToYaml(input: FixedEventIndexStructuredEditInput): string {
   const draft = parseFixedEventIndexDraft(input.sourceYaml, input.sourceInfo);
+  assertSourceYamlParsed(draft);
 
   if (input.profile) {
     draft.profile = buildProfileEdit(input.profile, draft.profile);
@@ -545,7 +590,10 @@ export function applyFixedEventIndexStructuredEditsToYaml(input: FixedEventIndex
   }
 
   if (input.monthAliases) {
-    draft.monthAliases = input.monthAliases.map(buildMonthAliasDraft);
+    const existingAliasesByMonth = new Map(draft.monthAliases.map(alias => [alias.month, alias]));
+    draft.monthAliases = input.monthAliases.map(alias =>
+      buildMonthAliasDraft(alias, existingAliasesByMonth.get(normalizeOptionalNumberText(alias.month) ?? 0)),
+    );
   }
 
   const groupEdits = new Map(input.groups.map(group => [group.id, group]));
@@ -693,6 +741,7 @@ export function applyFixedEventIndexStructuredEditsToYaml(input: FixedEventIndex
 
 export function renameFixedEventIndexRowIdInYaml(input: FixedEventIndexRenameIdInput): string {
   const draft = parseFixedEventIndexDraft(input.sourceYaml, input.sourceInfo);
+  assertSourceYamlParsed(draft);
   const oldId = input.oldId.trim();
   const newId = input.newId.trim();
 
@@ -740,6 +789,7 @@ export function renameFixedEventIndexRowIdInYaml(input: FixedEventIndexRenameIdI
 
 export function applyFixedEventIndexRowOperationsToYaml(input: FixedEventIndexRowOperationInput): string {
   const draft = parseFixedEventIndexDraft(input.sourceYaml, input.sourceInfo);
+  assertSourceYamlParsed(draft);
 
   const deleteGroupIds = new Set(input.deleteGroupIds ?? []);
   const deleteEventIds = new Set(input.deleteEventIds ?? []);

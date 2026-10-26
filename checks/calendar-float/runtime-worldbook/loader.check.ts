@@ -1,7 +1,11 @@
 import { parseDocument } from 'yaml';
 import { getActiveCalendarProfile, initializeCalendarProfile } from '../../../src/calendar-float/profile';
 import { getCalendarRuntimeDefaults } from '../../../src/calendar-float/runtime-worldbook/config';
-import { findCalendarRuntimeEntryByReference, normalizeCalendarRuntimeIndexDocument, readCalendarRuntimeIndex } from '../../../src/calendar-float/runtime-worldbook/loader';
+import {
+  findCalendarRuntimeEntryByReference,
+  normalizeCalendarRuntimeIndexDocument,
+  readCalendarRuntimeIndex,
+} from '../../../src/calendar-float/runtime-worldbook/loader';
 
 function assert(condition: unknown, message: string): void {
   if (!condition) {
@@ -60,9 +64,23 @@ function testProfileIsReadFromRuntimeIndex(): void {
   const normalized = normalizeCalendarRuntimeIndexDocument(parsed, warnings) as any;
   assert(normalized, '索引应该能被成功归一化');
   assert(normalized.Profile === 'fate-poem', '配置档案设置.id 应该用于 profile 识别');
-  assert(normalized.Profile设置?.paths?.worldTime === 'stat_data.世界.时辰', '配置档案设置.路径 应该被转成内部 profile paths');
+  assert(
+    normalized.Profile设置?.paths?.worldTime === 'stat_data.世界.时辰',
+    '配置档案设置.路径 应该被转成内部 profile paths',
+  );
   assert(normalized.Profile设置?.date?.eraName === '复兴纪元', '配置档案设置.日期 应该被转成内部 profile date');
   assert(normalized.Profile设置?.developerMode === false, '配置档案设置.开发者模式 应该被保留');
+  const invalidVisualWarnings: string[] = [];
+  normalizeCalendarRuntimeIndexDocument({ 配置档案设置: { 视觉: { 标签规則: [] } } }, invalidVisualWarnings);
+  assert(
+    invalidVisualWarnings.some(message => message.includes('标签规則')),
+    '拼错的视觉字段不能静默忽略',
+  );
+  normalizeCalendarRuntimeIndexDocument({ 配置档案设置: { 视觉: [] } }, invalidVisualWarnings);
+  assert(
+    invalidVisualWarnings.some(message => message.includes('必须是对象')),
+    '错误视觉结构应给出诊断',
+  );
 }
 
 function testRuntimeIndexRejectsOldTopLevelSchemaAliases(): void {
@@ -124,7 +142,7 @@ async function testRuntimeIndexAppliesProfileConfigBeforeDefaults(): Promise<voi
       name: '[fixed_event_index]',
       content: `
 配置档案设置:
-  id: custom-court
+  id: fate-poem
   显示名称: 王庭月历
   开发者模式: true
   路径:
@@ -139,8 +157,8 @@ async function testRuntimeIndexAppliesProfileConfigBeforeDefaults(): Promise<voi
 
   try {
     const result = await readCalendarRuntimeIndex();
-    assert(result.索引?.Profile === 'custom-court', 'loader 应该读取配置档案设置.id');
-    assert(getActiveCalendarProfile().id === 'fate-poem', 'loader must not switch to arbitrary Profile IDs');
+    assert(result.索引?.Profile === 'fate-poem', 'loader 应该读取命定之诗配置');
+    assert(getActiveCalendarProfile().id === 'fate-poem', 'loader 运行身份固定为命定之诗');
     assert(getActiveCalendarProfile().developerMode === true, 'loader 应该应用开发者模式');
     assert(
       getCalendarRuntimeDefaults().mvu时间路径 === 'stat_data.王庭.时辰',
@@ -150,6 +168,31 @@ async function testRuntimeIndexAppliesProfileConfigBeforeDefaults(): Promise<voi
       getCalendarRuntimeDefaults().mvu地点路径 === 'stat_data.王庭.所在地',
       'runtime defaults 应该使用配置档案设置.路径.世界地点路径',
     );
+    host.getWorldbook = async () => [{ name: '[fixed_event_index]', content: '固定事件: []' }];
+    await readCalendarRuntimeIndex();
+    assert(getActiveCalendarProfile().paths.worldTime === 'stat_data.世界.时间', '缺省索引不得残留上一次路径');
+    assert(getCalendarRuntimeDefaults().mvu时间路径 === 'stat_data.世界.时间', 'runtime defaults 也应恢复默认路径');
+    host.getWorldbook = async () => [
+      {
+        name: '[fixed_event_index]',
+        content: 'Profile: unknown-world\n固定事件:\n  - id: secret\n    名称: 不应读取\n    开始: 01-01',
+      },
+    ];
+    const unsupported = await readCalendarRuntimeIndex();
+    assert(unsupported.索引 === null, '不支持的显式身份必须拒绝整个索引');
+    assert(
+      unsupported.警告.some(message => message.includes('unknown-world')),
+      '拒绝索引必须给出诊断',
+    );
+    assert(getActiveCalendarProfile().id === 'fate-poem', '拒绝索引后不应切换运行身份');
+    host.getWorldbook = async () => [
+      { name: '[fixed_event_index]', content: 'Profile: unknown-world\n配置档案设置:\n  id: fate-poem\n固定事件: []' },
+    ];
+    assert((await readCalendarRuntimeIndex()).索引 === null, '冲突的顶层身份不得被嵌套身份掩盖');
+    host.getWorldbook = async () => [{ name: '[fixed_event_index]', content: '固定事件: [' }];
+    assert((await readCalendarRuntimeIndex()).索引 === null, '坏 YAML 应安全失败');
+    host.getWorldbook = async () => [];
+    assert((await readCalendarRuntimeIndex()).索引 === null, '缺失索引应安全失败');
   } finally {
     host.getVariables = previousGetVariables;
     host.getCharWorldbookNames = previousGetCharWorldbookNames;

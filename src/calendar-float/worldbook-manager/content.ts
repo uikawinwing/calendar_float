@@ -1,14 +1,15 @@
 import { getActiveCalendarProfile } from '../profile';
 
 export function buildCalendarVariableListEntryContent(): string {
+  const profile = getActiveCalendarProfile();
   return [
     '---',
-    '现有月历事件',
+    profile.worldbook.variableDisplayTitle,
     '',
     '<calendar_variables_display>',
     '<%_ { _%>',
     '<%_',
-    "  const rootPath = 'stat_data.事件.月历';",
+    `  const rootPath = ${JSON.stringify(profile.paths.eventRoot)};`,
     '  const calendar = getvar(rootPath, { defaults: { 临时: {}, 重复: {} } });',
     '',
     '  // LLM 只能读取公开事件与仅 LLM 事件；缺省或脏值按默认公开处理，避免旧变量被误过滤。',
@@ -68,6 +69,9 @@ export function buildCalendarVariableListEntryContent(): string {
 export function buildCalendarUpdateRulesEntryContent(): string {
   const profile = getActiveCalendarProfile();
   const timeExamples = profile.worldbook.updateRuleTimeExamples.map(example => `\`${example}\``).join('、');
+  const forbiddenRepeatTimeExamples = profile.worldbook.forbiddenRepeatTimeExamples
+    .map(example => `“${example}”`)
+    .join('、');
   const tempPath = profile.paths.tempEvents.replace(/^stat_data\./, '');
   const repeatPath = profile.paths.repeatEvents.replace(/^stat_data\./, '');
   return [
@@ -143,7 +147,7 @@ export function buildCalendarUpdateRulesEntryContent(): string {
     '    check:',
     `      - 只存规律重复事件；一次性事件必须写入 \`${tempPath}\``,
     '      - 时间与结束时间必须严格按 `重复规则分类` 填写',
-    '      - 重复事件严禁使用包含具体年份的完整世界时间，例如“复兴纪元488年-6月5日”',
+    `      - 重复事件严禁使用包含具体年份的完整世界时间，例如：${forbiddenRepeatTimeExamples}`,
     '      - 不得把一次性任务截止日、单次约定或一次性旅行计划写成重复事件',
     `      - 若重复安排被{{user}}取消、停止或改为一次性安排，应移除重复事件或迁移为 \`${tempPath}\``,
   ].join('\n');
@@ -151,5 +155,5 @@ export function buildCalendarUpdateRulesEntryContent(): string {
 
 function buildCalendarTagRuleText(): string {
   const profile = getActiveCalendarProfile();
-  return `标签优先复用已有标签；只有现有标签无法表达时才新增短标签。当前可用标签：<%- (function () { var calendar = getvar('${profile.paths.eventRoot}', { defaults: { 临时: {}, 重复: {} } }); var baseTags = ['主线', '支线', '课程', '约会', '节庆', '旅行', '比赛', '限时', '纪念']; var mirroredTags = getvar('calendar_float_store.runtime.known_tags', { defaults: [] }); var collectBucketTags = function (bucket) { return _.flatMap(_.values(_.isObject(bucket) ? bucket : {}), function (event) { return _.isArray(_.get(event, '标签')) ? _.get(event, '标签') : []; }); }; var tags = _.uniq([].concat(baseTags, _.isArray(mirroredTags) ? mirroredTags : [], collectBucketTags(_.get(calendar, '临时')), collectBucketTags(_.get(calendar, '重复'))).map(function (tag) { return String(tag || '').trim(); }).filter(Boolean)).sort(function (left, right) { return left.localeCompare(right, 'zh-CN'); }); return tags.length ? tags.join('、') : '暂无'; }()) %>`;
+  return `标签优先复用已有标签；只有现有标签无法表达时才新增短标签。当前可用标签：<%- (function () { var calendar = getvar(${JSON.stringify(profile.paths.eventRoot)}, { defaults: { 临时: {}, 重复: {} } }); var baseTags = ['主线', '支线', '课程', '约会', '节庆', '旅行', '比赛', '限时', '纪念']; var collectBucketTags = function (bucket) { return _.flatMap(_.values(_.isObject(bucket) ? bucket : {}).filter(function (event) { return !['仅玩家', '完全不显示'].includes(String(_.get(event, '可见性', '')).trim()); }), function (event) { return _.isArray(_.get(event, '标签')) ? _.get(event, '标签') : []; }); }; var tags = _.uniq([].concat(baseTags, collectBucketTags(_.get(calendar, '临时')), collectBucketTags(_.get(calendar, '重复'))).map(function (tag) { return String(tag || '').trim(); }).filter(Boolean)).sort(function (left, right) { return left.localeCompare(right, 'zh-CN'); }); return tags.length ? tags.join('、') : '暂无'; }()) %>`;
 }

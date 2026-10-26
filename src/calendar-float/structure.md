@@ -26,7 +26,7 @@
 
 - `calendar-view-model/`：把 dataset 转为月视图格子、日程列表、月内条形 chip 等 UI view model
 - `fixed-event-index-editor/`：`[fixed_event_index]` 结构化编辑器，见 `fixed-event-index-editor/structure.md`
-- `profile/`：固定命定之诗 Profile、世界时间路径、日期解析与专属视觉 preset
+- `profile/`：《命定之诗》索引配置、路径/日期校验、旧索引兼容数据与视觉规则解析
 - `runtime-dataset/`：把世界书索引、主动事件、归档事件、节庆和读物组装成 UI 使用的 `CalendarDataset`；单次 load 传递 operation-scoped worldbook snapshot
 - `runtime-trigger-evaluator/`：runtime 命中判定、日期窗口、关键词、提醒和内容解析
 - `runtime-worldbook/`：世界书索引来源发现、YAML 读取、schema 归一化、正文解析、runtime defaults、月份别名、scanner 输入上下文和 bootstrap；snapshot 不跨 operation 复用，scanner 在同一 generation 内 single-flight，teardown 后新 generation 不等待旧任务
@@ -44,13 +44,14 @@
 - 只改 UI dataset 组装：优先改 `runtime-dataset/`，widget 仍从 `runtime-ui-dataset.ts` 门面读取
 - 只改命中条件：优先改 `runtime-trigger-evaluator/`
 - 只改节庆月日范围、跨年或提醒预窗口：优先改 `festival-date-range.ts`；dataset 与 evaluator 只保留兼容 facade，不要再各自推断年份
-- 只改 profile 专属节庆图标 / 颜色规则：优先改 `profile/festival-visual-presets.ts`
+- 只改节庆图标 / 颜色规则：优先改世界书索引的 `配置档案设置.视觉`；解析规则见 `profile/normalize.ts`
 - 只改 UI 展示：优先改 `widget/render.ts`、`widget/form-render.ts`、`widget/day-detail.ts`、`widget/index.ts`、`widget/style-parts/`
 - 只改持久化：优先改 `storage/`，不要改现有变量 key，除非有迁移计划
 
 ## 不要再做的事
 
 - 不要重新引入通用 Profile / CalendarCore 或第二套月历引擎；命定数据从世界书读取，不复制硬编码节庆
+- 地点、节庆和颜色规则由固定事件索引提供；旧索引兼容数据集中保存在数据文件中
 - 不要在 `widget/index.ts` 增加新的纯函数和 YAML 变换
 - 不要增加其他世界 Profile；`[DLC][扩展]` 旧命名只为现有世界书兼容保留
 - 不要把旧字段 `默认设置.mvu时间路径` / `默认设置.mvu地点路径` 写成新文档示例；它们只属于 fallback

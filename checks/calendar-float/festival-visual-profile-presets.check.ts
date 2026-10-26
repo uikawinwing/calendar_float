@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Module from 'node:module';
+import { strict as strictAssert } from 'node:assert';
+import { parse as parseYaml } from 'yaml';
+import { normalizeCalendarRuntimeIndexDocument } from '../../src/calendar-float/runtime-worldbook/index-normalizer';
 import type { FestivalRecord } from '../../src/calendar-float/types';
 
 function installSvgRawRequireHook(): void {
@@ -54,10 +57,17 @@ function createFestival(args: Partial<FestivalRecord>): FestivalRecord {
   };
 }
 
-function testProfilePresetRegistryOwnsFatePoemPresets(modules: FestivalVisualProfilePresetCheckModules): void {
-  const fatePoem = modules.profilePresets.getFatePoemFestivalMarkerPresetGroup();
-  assert(fatePoem !== null, '命定之诗视觉 preset 必须存在');
-  assert(fatePoem?.locationPresets.some(preset => preset.keywords.includes('索伦蒂斯王国')), '命定之诗 preset 应该包含索伦蒂斯地点规则');
+function testDefaultDataAndWorldbookSettingsAgree(modules: FestivalVisualProfilePresetCheckModules): void {
+  modules.profile.applyCalendarProfileConfig({});
+  const legacy = modules.profile.getActiveCalendarProfile().visual;
+  const index = normalizeCalendarRuntimeIndexDocument(parseYaml(readFileSync('节庆_索引.latest.yaml', 'utf8')))!;
+  modules.profile.applyCalendarProfileConfig({ config: index.Profile设置 });
+  strictAssert.deepEqual(modules.profile.getActiveCalendarProfile().visual, legacy, '索引示例与旧版兼容数据应一致');
+  const group = modules.profilePresets.buildFestivalMarkerPresetGroup(legacy);
+  assert(
+    group.locationPresets.some(preset => preset.keywords.includes('索伦蒂斯王国')),
+    '旧版索伦蒂斯地点规则应保留',
+  );
 }
 
 function testActiveProfileControlsFestivalMarkerPresets(modules: FestivalVisualProfilePresetCheckModules): void {
@@ -74,6 +84,24 @@ function testActiveProfileControlsFestivalMarkerPresets(modules: FestivalVisualP
   assert(rejected.profile.id === 'fate-poem', 'generic hint must not switch the product identity');
   const after = modules.festivalVisual.buildFestivalMarker(festival);
   assert(after.color.background === '#b9ddff', 'unsupported generic hint must not disable Fate visuals');
+  modules.profile.applyCalendarProfileConfig({
+    config: {
+      id: 'fate-poem',
+      visual: {
+        locationPresets: [
+          { icon: 'heart-solid.svg', color: { background: '#123456', text: '#abcdef' }, keywords: ['索伦蒂斯王国'] },
+        ],
+      },
+    },
+  });
+  const customMarker = modules.festivalVisual.buildFestivalMarker(festival);
+  assert(customMarker.color.background === '#123456', '世界书的地点规则应覆盖旧版默认值');
+  assert(customMarker.iconSvg.includes('heart-solid.svg'), '图标应采用配置的已打包文件');
+  modules.profile.applyCalendarProfileConfig({});
+  assert(
+    modules.festivalVisual.buildFestivalMarker(festival).color.background === '#b9ddff',
+    '重载无配置索引应清除自定义视觉规则',
+  );
 }
 
 function testGenericFestivalVisualModuleDoesNotOwnFatePoemConstants(): void {
@@ -83,7 +111,7 @@ function testGenericFestivalVisualModuleDoesNotOwnFatePoemConstants(): void {
 
 async function main(): Promise<void> {
   const modules = await loadModules();
-  testProfilePresetRegistryOwnsFatePoemPresets(modules);
+  testDefaultDataAndWorldbookSettingsAgree(modules);
   testActiveProfileControlsFestivalMarkerPresets(modules);
   testGenericFestivalVisualModuleDoesNotOwnFatePoemConstants();
   console.log('festival-visual-profile-presets.check.ts OK');

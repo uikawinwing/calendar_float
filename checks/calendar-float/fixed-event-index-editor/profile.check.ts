@@ -53,10 +53,7 @@ function testProfileConfigCanBeParsedAndSerialized(): void {
     '编辑器应该读取配置档案设置.路径.世界地点路径',
   );
   assert(draft.profile.settings.date.eraName === '太初', '编辑器应该读取配置档案设置.日期.纪元名');
-  assert(
-    draft.profile.settings.date.useChineseNumeralYear === true,
-    '编辑器应该读取配置档案设置.日期.中文数字年份',
-  );
+  assert(draft.profile.settings.date.useChineseNumeralYear === true, '编辑器应该读取配置档案设置.日期.中文数字年份');
 
   const serialized = parseYaml(serializeFixedEventIndexDraft(draft)) as Record<string, any>;
   assert(serialized.Profile === undefined, '序列化不应该再写顶层 Profile');
@@ -80,12 +77,12 @@ function testStructuredEditsCanUpdateProfileConfig(): void {
     sourceYaml: PROFILE_INDEX_YAML,
     sourceInfo: SOURCE_INFO,
     profile: {
-      id: 'custom-court',
       label: '王庭月历',
       worldTimePath: 'stat_data.王庭.时辰',
       worldLocationPath: 'stat_data.王庭.所在地',
       eraName: '星历',
       useChineseNumeralYear: 'false',
+      visualYaml: '节庆标记预设: fate-poem\n地点规则: []\n未来字段: 保留',
     },
     groups: [],
     events: [],
@@ -94,8 +91,8 @@ function testStructuredEditsCanUpdateProfileConfig(): void {
   const serialized = parseYaml(updatedYaml) as Record<string, any>;
 
   assert(serialized.Profile === undefined, '结构化编辑不应该重新生成顶层 Profile');
-  assert(serialized.配置档案设置?.id === 'fate-poem', '结构化编辑不得将命定月历改为任意通用 Profile');
-  assert(serialized.配置档案设置?.显示名称 === '王庭月历', '结构化编辑应该更新配置档案设置.显示名称');
+  assert(serialized.配置档案设置?.id === 'fate-poem', '结构化编辑应该保留命定之诗身份');
+  assert(serialized.配置档案设置?.显示名称 === '王庭月历', '结构化编辑应该更新显示名称，固定保留命定之诗身份');
   assert(
     serialized.配置档案设置?.路径?.世界时间路径 === 'stat_data.王庭.时辰',
     '结构化编辑应该更新配置档案设置.路径.世界时间路径',
@@ -105,23 +102,30 @@ function testStructuredEditsCanUpdateProfileConfig(): void {
     '结构化编辑应该更新配置档案设置.路径.世界地点路径',
   );
   assert(serialized.配置档案设置?.日期?.纪元名 === '星历', '结构化编辑应该更新配置档案设置.日期.纪元名');
-  assert(
-    serialized.配置档案设置?.日期?.中文数字年份 === false,
-    '结构化编辑应该更新中文数字年份开关',
-  );
+  assert(serialized.配置档案设置?.日期?.中文数字年份 === false, '结构化编辑应该更新中文数字年份开关');
   assert(
     serialized.配置档案设置?.路径?.事件根路径 === 'stat_data.事件.月历',
     '结构化编辑不应该删除未直接编辑的路径字段',
   );
   assert(serialized.配置档案设置?.日期?.纪元别名?.join('|') === '太初|旧历', '结构化编辑不应该删除纪元别名');
-  assert(
-    serialized.配置档案设置?.世界书?.变量展示标题 === '命定日程',
-    '结构化编辑不应该删除世界书设置',
-  );
-  assert(
-    serialized.配置档案设置?.视觉?.节庆标记预设 === 'fate-poem',
-    '结构化编辑不应该删除视觉设置',
-  );
+  assert(serialized.配置档案设置?.世界书?.变量展示标题 === '命定日程', '结构化编辑不应该删除世界书设置');
+  assert(serialized.配置档案设置?.视觉?.节庆标记预设 === 'fate-poem', '结构化编辑不应该删除视觉设置');
+  assert(Array.isArray(serialized.配置档案设置?.视觉?.地点规则), '视觉 YAML 应写入原索引设置');
+  assert(serialized.配置档案设置?.视觉?.未来字段 === '保留', '视觉 YAML 扩展字段应往返保留');
+  let rejected = false;
+  try {
+    applyFixedEventIndexStructuredEditsToYaml({
+      sourceYaml: PROFILE_INDEX_YAML,
+      sourceInfo: SOURCE_INFO,
+      profile: { visualYaml: '[]' },
+      groups: [],
+      events: [],
+      materials: [],
+    });
+  } catch {
+    rejected = true;
+  }
+  assert(rejected, '视觉 YAML 非对象时必须拒绝转换');
 }
 
 function testProfileConfigFieldsRenderInSettingsPanel(): void {
@@ -148,12 +152,20 @@ function testProfileConfigFieldsRenderInSettingsPanel(): void {
   assert(html.includes('data-role="fixed-event-profile-row"'), '设置页应该渲染命定配置卡片');
   assert(!html.includes('data-field="id"'), '设置页不再提供任意 Profile ID 编辑入口');
   assert(html.includes('fate-poem'), '固定世界书目标应该可见');
+  assert(html.includes('data-field="label"'), '设置页应允许编辑命定之诗月历显示名称');
+  assert(html.includes('data-field="visualYaml"'), '设置页应支持编辑世界书视觉规则');
   assert(html.includes('data-field="worldTimePath"'), '设置页应该渲染 Profile 时间路径字段');
-  assert(!html.includes('data-scope="defaults" data-id="main" data-field="mvuTimePath"'), '设置页不应该重复渲染默认 MVU 时间路径字段');
-  assert(!html.includes('data-scope="defaults" data-id="main" data-field="mvuLocationPath"'), '设置页不应该重复渲染默认 MVU 地点路径字段');
+  assert(
+    !html.includes('data-scope="defaults" data-id="main" data-field="mvuTimePath"'),
+    '设置页不应该重复渲染默认 MVU 时间路径字段',
+  );
+  assert(
+    !html.includes('data-scope="defaults" data-id="main" data-field="mvuLocationPath"'),
+    '设置页不应该重复渲染默认 MVU 地点路径字段',
+  );
   assert(html.includes('data-field="useChineseNumeralYear"'), '设置页应该渲染中文数字年份字段');
   assert(html.includes('data-role="profile-date-preview"'), '设置页应该渲染日期解析预览');
-  assert(html.includes('日期解析规则来自配置档案设置.日期'), '日期解析预览应该说明规则来源');
+  assert(html.includes('预览会根据索引中的纪元与日期格式更新'), '日期解析预览应该说明规则来源');
   assert(!html.includes('太初二年五月二十三日'), '日期解析预览不应该显示误导性的假当前日期');
   assert(!html.includes('解析结果：2-05-23'), '日期解析预览不应该显示误导性的假解析日期');
 }

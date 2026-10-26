@@ -21,7 +21,13 @@ function addIfDefined(target: Record<string, unknown>, key: string, value: unkno
 }
 
 function serializeContentRef(ref: FixedEventContentRefDraft): Record<string, unknown> | undefined {
-  if (!ref.enabled && !ref.entryName && ref.keywords.length === 0 && ref.userKeywords.length === 0) {
+  if (
+    !ref.enabled &&
+    !ref.entryName &&
+    ref.keywords.length === 0 &&
+    ref.userKeywords.length === 0 &&
+    Object.keys(ref.unknownFields).length === 0
+  ) {
     return undefined;
   }
   const output: Record<string, unknown> = { ...ref.unknownFields };
@@ -304,7 +310,9 @@ export function serializeFixedEventIndexDraft(draft: FixedEventIndexDraft): stri
     ...draft.defaults.unknownFields,
     ...(draft.defaults.mvuTimePath ? { mvu时间路径: draft.defaults.mvuTimePath } : {}),
     ...(draft.defaults.mvuLocationPath ? { mvu地点路径: draft.defaults.mvuLocationPath } : {}),
-    ...(draft.defaults.fullBookTriggerTemplate ? { 书籍全文默认关键词模板: draft.defaults.fullBookTriggerTemplate } : {}),
+    ...(draft.defaults.fullBookTriggerTemplate
+      ? { 书籍全文默认关键词模板: draft.defaults.fullBookTriggerTemplate }
+      : {}),
   };
   const reminderDefaults = serializeReminderDefaults(draft.reminderDefaults);
   if (reminderDefaults) {

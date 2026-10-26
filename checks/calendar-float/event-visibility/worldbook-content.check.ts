@@ -20,7 +20,7 @@ for (const content of [rules, staticRules]) {
   assert.doesNotMatch(content, /系统核心名|systemCore/);
   assert.doesNotMatch(content, /^隐藏剧情事件:/m);
   assert.doesNotMatch(content, /^ {2}可见性:/m);
-  assert.doesNotMatch(content, /仅玩家/);
+  assert.doesNotMatch(content, /可见性: optional\[[^\]]*仅玩家/);
   assert.match(content, /提前提醒天数: optional\[number\]/);
   assert.match(content, /可见性: optional\['玩家与LLM' \| '完全不显示'\]/);
   assert.match(content, /普通事件.*默认.*`玩家与LLM`/);

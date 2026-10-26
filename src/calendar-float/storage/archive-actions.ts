@@ -83,6 +83,47 @@ function writeArchivedEvent(args: {
   return true;
 }
 
+function syncRemovedActiveEvents(
+  previous: Record<'临时' | '重复', Record<string, RawCalendarEvent>>,
+  current: Record<'临时' | '重复', Record<string, RawCalendarEvent>>,
+  archive: CalendarArchiveStore,
+  completedAt?: string,
+): { archived: number; skipped: number; deleted: number; restored: number } {
+  const result = { archived: 0, skipped: 0, deleted: 0, restored: 0 };
+
+  (['临时', '重复'] as const).forEach(bucketType => {
+    const previousBucket = previous[bucketType] || {};
+    const currentBucket = current[bucketType] || {};
+    Object.entries(previousBucket).forEach(([id, raw]) => {
+      if (hasActiveEventId(current, id) || archive.completed[id]) {
+        return;
+      }
+
+      const policyAction = resolveCalendarEventPolicyAction(id, raw, archive.policy);
+      if (policyAction === 'protect') {
+        currentBucket[id] = raw;
+        result.restored += 1;
+        return;
+      }
+      if (policyAction === 'delete') {
+        result.deleted += 1;
+        return;
+      }
+      if (!archive.policy.archiveOnActiveRemoval) {
+        result.skipped += 1;
+        return;
+      }
+      if (writeArchivedEvent({ archive, id, type: bucketType, raw, completedAt })) {
+        result.archived += 1;
+        return;
+      }
+      result.skipped += 1;
+    });
+  });
+
+  return result;
+}
+
 export async function archiveCompletedEvent(params: {
   id: string;
   type: '临时' | '重复';
@@ -171,53 +212,9 @@ export async function syncArchiveOnActiveRemoval(
   }
   const archive = readArchiveStore();
   const previous = archive.lastActiveSnapshot;
-  let archived = 0;
-  let skipped = 0;
-  let deleted = 0;
-  let restored = 0;
+  const result = syncRemovedActiveEvents(previous, buckets, archive, completedAt);
 
-  (['临时', '重复'] as const).forEach(bucketType => {
-    const previousBucket = previous[bucketType] || {};
-    const currentBucket = buckets[bucketType] || {};
-    Object.entries(previousBucket).forEach(([id, raw]) => {
-      if (hasActiveEventId(buckets, id)) {
-        return;
-      }
-      if (archive.completed[id]) {
-        return;
-      }
-
-      const policyAction = resolveCalendarEventPolicyAction(id, raw, archive.policy);
-      if (policyAction === 'protect') {
-        currentBucket[id] = raw;
-        restored += 1;
-        return;
-      }
-      if (policyAction === 'delete') {
-        deleted += 1;
-        return;
-      }
-      if (!archive.policy.archiveOnActiveRemoval) {
-        skipped += 1;
-        return;
-      }
-      if (
-        writeArchivedEvent({
-          archive,
-          id,
-          type: bucketType,
-          raw,
-          completedAt,
-        })
-      ) {
-        archived += 1;
-        return;
-      }
-      skipped += 1;
-    });
-  });
-
-  if (restored > 0) {
+  if (result.restored > 0) {
     await replaceActiveBuckets(buckets, isCurrent);
     if (!isCurrent()) {
       return { archived: 0, skipped: 0, deleted: 0, restored: 0 };
@@ -229,7 +226,7 @@ export async function syncArchiveOnActiveRemoval(
   }
   archive.lastActiveSnapshot = cloneBucketsSnapshot(buckets);
   replaceArchiveStore(archive);
-  return { archived, skipped, deleted, restored };
+  return result;
 }
 
 export function syncArchiveFromMvuVariableDiff(params: {
@@ -249,60 +246,16 @@ export function syncArchiveFromMvuVariableDiff(params: {
   const previous = readBucketsFromMvuVariables(params.oldVariables);
   const current = readBucketsFromMvuVariables(params.newVariables);
   const archive = readArchiveStore();
-  let archived = 0;
-  let skipped = 0;
-  let deleted = 0;
-  let restored = 0;
+  const result = syncRemovedActiveEvents(previous, current, archive, params.completedAt);
 
-  (['临时', '重复'] as const).forEach(bucketType => {
-    const previousBucket = previous[bucketType] || {};
-    const currentBucket = current[bucketType] || {};
-    Object.entries(previousBucket).forEach(([id, raw]) => {
-      if (hasActiveEventId(current, id)) {
-        return;
-      }
-      if (archive.completed[id]) {
-        return;
-      }
-
-      const policyAction = resolveCalendarEventPolicyAction(id, raw, archive.policy);
-      if (policyAction === 'protect') {
-        currentBucket[id] = raw;
-        restored += 1;
-        return;
-      }
-      if (policyAction === 'delete') {
-        deleted += 1;
-        return;
-      }
-      if (!archive.policy.archiveOnActiveRemoval) {
-        skipped += 1;
-        return;
-      }
-      if (
-        writeArchivedEvent({
-          archive,
-          id,
-          type: bucketType,
-          raw,
-          completedAt: params.completedAt,
-        })
-      ) {
-        archived += 1;
-        return;
-      }
-      skipped += 1;
-    });
-  });
-
-  if (restored > 0) {
+  if (result.restored > 0) {
     _.set(params.newVariables, getCalendarTempEventsPath(), current.临时);
     _.set(params.newVariables, getCalendarRepeatEventsPath(), current.重复);
   }
 
   archive.lastActiveSnapshot = cloneBucketsSnapshot(current);
   replaceArchiveStore(archive);
-  return { archived, skipped, deleted, restored };
+  return result;
 }
 
 export async function restoreArchivedEvent(id: string): Promise<void> {

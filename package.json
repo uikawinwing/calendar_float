@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "test": "node checks/run-checks.mts",
     "build:dev": "webpack --mode development",
     "build": "webpack --mode production",
     "watch": "webpack --mode development --watch --progress",

@@ -1,18 +1,9 @@
-import {
-  alarmClockIconSvg,
-  arrowsToCircleIconSvg,
-  bookIconSvg,
-  calendarIconSvg,
-  champagneGlassesIconSvg,
-  chessIconSvg,
-  compassIconSvg,
-  heartIconSvg,
-  BUNDLED_FESTIVAL_ICON_BY_FILENAME,
-  suitcaseIconSvg,
-} from './festival-icons';
-import type { CalendarFestivalMarkerPreset } from './festival-visual-types';
+import { BUNDLED_FESTIVAL_ICON_BY_FILENAME, champagneGlassesIconSvg } from './festival-icons';
+import type { CalendarFestivalMarkerPreset, CalendarFestivalMarkerPresetGroup } from './festival-visual-types';
 import { getFestivalLocationKeywords } from './festival-location';
-import { getFatePoemFestivalMarkerPresetGroup } from './profile/festival-visual-presets';
+import { getActiveCalendarProfile } from './profile';
+import type { CalendarProfileVisualSettings } from './profile/types';
+import { buildFestivalMarkerPresetGroup } from './profile/festival-visual-presets';
 import type { CalendarEventColorStyle, DayCellFestivalMarker, FestivalRecord } from './types';
 
 type FestivalVisualSource = Pick<
@@ -40,54 +31,18 @@ function readMetadataColor(value: unknown): CalendarEventColorStyle | undefined 
   return background && text ? { background, text, ...(border ? { border } : {}) } : undefined;
 }
 
-const HASHTAG_MARKER_PRESETS: CalendarFestivalMarkerPreset[] = [
-  {
-    iconSvg: compassIconSvg,
-    color: { background: '#dcecff', text: '#305d97', border: '#a8c7ed' },
-    keywords: ['主线'],
-  },
-  {
-    iconSvg: arrowsToCircleIconSvg,
-    color: { background: '#e9e2ff', text: '#5c4a98', border: '#c8bbf4' },
-    keywords: ['支线'],
-  },
-  {
-    iconSvg: champagneGlassesIconSvg,
-    color: { background: '#ffe6a6', text: '#895710', border: '#e8bf59' },
-    keywords: ['节庆'],
-  },
-  {
-    iconSvg: bookIconSvg,
-    color: { background: '#dff4e8', text: '#2f7048', border: '#a9d9b9' },
-    keywords: ['课程'],
-  },
-  {
-    iconSvg: suitcaseIconSvg,
-    color: { background: '#dff2f3', text: '#2d6f73', border: '#a7d4d7' },
-    keywords: ['旅行'],
-  },
-  {
-    iconSvg: alarmClockIconSvg,
-    color: { background: '#f1e6d8', text: '#73583c', border: '#d3bea6' },
-    keywords: ['限时'],
-  },
-  {
-    iconSvg: heartIconSvg,
-    color: { background: '#ffe1eb', text: '#9a3d61', border: '#efadc2' },
-    keywords: ['约会'],
-  },
-  {
-    iconSvg: chessIconSvg,
-    color: { background: '#ffe3cf', text: '#9a4b20', border: '#efb186' },
-    keywords: ['比赛'],
-  },
-  {
-    iconSvg: calendarIconSvg,
-    color: { background: '#fff0c9', text: '#7a5916', border: '#e8bf59' },
-    keywords: ['纪念'],
-  },
-];
+// 仅缓存当前配置的 SVG 派生结果；索引重载会替换配置对象，不缓存世界书内容。
+let visualSettings: CalendarProfileVisualSettings | undefined;
+let markerGroup: CalendarFestivalMarkerPresetGroup;
 
+function getActiveFestivalMarkerPresetGroup(): CalendarFestivalMarkerPresetGroup {
+  const settings = getActiveCalendarProfile().visual;
+  if (visualSettings !== settings) {
+    markerGroup = buildFestivalMarkerPresetGroup(settings);
+    visualSettings = settings;
+  }
+  return markerGroup;
+}
 
 function findPresetByOrderedKeywords(
   keywords: string[],
@@ -99,8 +54,7 @@ function findPresetByOrderedKeywords(
       item.keywords.some(presetKeyword => {
         const normalizedPresetKeyword = presetKeyword.toLowerCase();
         return (
-          normalizedKeyword.includes(normalizedPresetKeyword) ||
-          normalizedPresetKeyword.includes(normalizedKeyword)
+          normalizedKeyword.includes(normalizedPresetKeyword) || normalizedPresetKeyword.includes(normalizedKeyword)
         );
       }),
     );
@@ -121,9 +75,9 @@ export function buildFestivalTagPreviewMarker(
   color: CalendarEventColorStyle,
 ): Pick<DayCellFestivalMarker, 'iconSvg' | 'iconColor' | 'color'> {
   const normalizedTag = String(tag || '').trim();
-  const profilePresets = getFatePoemFestivalMarkerPresetGroup().markerPresets;
+  const profilePresets = getActiveFestivalMarkerPresetGroup().markerPresets;
   const preset =
-    findPresetByOrderedKeywords([normalizedTag], HASHTAG_MARKER_PRESETS) ??
+    findPresetByOrderedKeywords([normalizedTag], getActiveFestivalMarkerPresetGroup().tagPresets) ??
     findPresetByOrderedKeywords([normalizedTag], profilePresets);
   return {
     iconSvg: preset?.iconSvg ?? champagneGlassesIconSvg,
@@ -135,13 +89,14 @@ export function buildFestivalTagPreviewMarker(
 export function buildFestivalMarker(festival: FestivalVisualSource): DayCellFestivalMarker {
   const keywords = getFestivalLocationKeywords(festival);
   const searchableText = [festival.title, festival.summary, festival.content, ...keywords].join('|').toLowerCase();
-  const presetGroup = getFatePoemFestivalMarkerPresetGroup();
+  const presetGroup = getActiveFestivalMarkerPresetGroup();
   const locationPreset = findPresetByOrderedKeywords(keywords, presetGroup.locationPresets);
   const textPreset = presetGroup.markerPresets.find(item =>
     item.keywords.some(keyword => searchableText.includes(keyword.toLowerCase())),
   );
   const preset = locationPreset ?? textPreset;
-  const fallback = presetGroup.fallbackMarkers[hashText(keywords[0] || festival.id) % presetGroup.fallbackMarkers.length];
+  const fallback =
+    presetGroup.fallbackMarkers[hashText(keywords[0] || festival.id) % presetGroup.fallbackMarkers.length];
   const explicitIconSvg = getExplicitBundledIconSvg(festival);
   const customColor = readMetadataColor(festival.metadata.tagColor ?? festival.metadata.hashtagColor);
   const markerColor = customColor ?? preset?.color ?? fallback;

@@ -2,13 +2,12 @@ import { clamp, set } from 'lodash';
 import {
   MONTH_EVENT_ROW_LIMIT,
   buildDailyAgenda,
-  buildFestivalMonthChipEventsForRange,
   buildMonthAgenda,
   buildMonthCells,
   buildReminderState,
 } from '../calendar-view-model';
 import { INSTANCE_KEY, MESSAGE_KNOWN_TAGS_PATH, ROOT_ID, SCRIPT_NAME, STYLE_ID } from '../constants';
-import { addDays, compareDatePoint, extractClockTimeText, formatDateKey } from '../date';
+import { extractClockTimeText, formatDateKey } from '../date';
 import { buildFestivalTagPreviewMarker } from '../festival-visual';
 import type { CalendarFloatLifecycleToken } from '../lifecycle';
 import {
@@ -49,12 +48,10 @@ import type {
   CalendarArchivePolicy,
   CalendarDataset,
   CalendarEventColorStyle,
-  CalendarEventRecord,
   CalendarMonthAliasRecord,
   DailyAgendaGroup,
   DailyAgendaItem,
   DatePoint,
-  DateRange,
   MonthDayCell,
   ReminderState,
   WidgetRefs,
@@ -97,6 +94,7 @@ import {
 } from './fixed-event-editor-scroll';
 import { getViewportSize, isDesktopViewport } from './layout';
 import { buildLocalFestivalSearchTerms, isFestivalVisibleInLocalScope } from './local-festival-scope';
+import { addCompactFestivalChips } from './compact-festival-layout';
 import {
   buildManagedWorldbookSummaryLines,
   filterWorldbookPickerNames,
@@ -677,13 +675,13 @@ function syncDeveloperToolMenuItems(): void {
   if (!refs.root) {
     return;
   }
-	  const showDeveloperTools = isCalendarDeveloperModeEnabled();
-	  refs.root.querySelectorAll<HTMLElement>('[data-role="developer-tool-menu-item"]').forEach(item => {
-	    item.hidden = !showDeveloperTools;
-	    item.classList.toggle('is-hidden', !showDeveloperTools);
-	    item.setAttribute('aria-hidden', showDeveloperTools ? 'false' : 'true');
-	  });
-	}
+  const showDeveloperTools = isCalendarDeveloperModeEnabled();
+  refs.root.querySelectorAll<HTMLElement>('[data-role="developer-tool-menu-item"]').forEach(item => {
+    item.hidden = !showDeveloperTools;
+    item.classList.toggle('is-hidden', !showDeveloperTools);
+    item.setAttribute('aria-hidden', showDeveloperTools ? 'false' : 'true');
+  });
+}
 
 function getEditingRecord() {
   if (!state.dataset || !state.editingEventId) {
@@ -1067,8 +1065,7 @@ function renderManagedWorldbookDialog(): void {
   const uninstallDisabled = diagnostics.managedEntryCount <= 0;
 
   let title = 'MVU设定';
-  let description =
-    '这里检查月历需要的两条基础规则，也可以调整当前聊天读取 MVU 时间和地点的路径。';
+  let description = '这里检查月历需要的两条基础规则，也可以调整当前聊天读取 MVU 时间和地点的路径。';
   let bodyHtml = buildMvuPathSettingsPanelHtml();
   let actionHtml = [
     '<details class="th-mvu-maintenance-details">',
@@ -1114,9 +1111,7 @@ function renderManagedWorldbookDialog(): void {
     ].join('');
   } else if (dialog.mode === 'export-external') {
     const diagnosticsWorldbookName = String(diagnostics.worldbookName || '').trim();
-    const availableNames = dialog.availableTargetNames
-      .map(name => String(name || '').trim())
-      .filter(Boolean);
+    const availableNames = dialog.availableTargetNames.map(name => String(name || '').trim()).filter(Boolean);
     const suggestedName = availableNames.find(name => name !== diagnosticsWorldbookName) ?? `${SCRIPT_NAME}-基础规则`;
     const worldbookListHtml = availableNames.length
       ? availableNames
@@ -1403,7 +1398,9 @@ function renderTagColorDialog(): void {
 function readMvuPathSettingsInputs(layer: HTMLElement): { mvuTimePath: string; mvuLocationPath: string } {
   return {
     mvuTimePath: String(layer.querySelector<HTMLInputElement>('[data-role="mvu-path-time"]')?.value || '').trim(),
-    mvuLocationPath: String(layer.querySelector<HTMLInputElement>('[data-role="mvu-path-location"]')?.value || '').trim(),
+    mvuLocationPath: String(
+      layer.querySelector<HTMLInputElement>('[data-role="mvu-path-location"]')?.value || '',
+    ).trim(),
   };
 }
 
@@ -1433,8 +1430,7 @@ async function handleFixedEventEditorBindingIntent(intent: FixedEventEditorBindi
   }
 
   const layer = refs.root?.querySelector<HTMLElement>('[data-role="fixed-event-index-editor-layer"]');
-  const scrollSnapshot =
-    intent.render === 'selection' && layer ? readFixedEventIndexEditorScrollSnapshot(layer) : null;
+  const scrollSnapshot = intent.render === 'selection' && layer ? readFixedEventIndexEditorScrollSnapshot(layer) : null;
   for (const command of intent.commands) {
     await session.dispatch(command);
   }
@@ -1919,166 +1915,6 @@ function getMonthBarDataset(visibleDataset: CalendarDataset): CalendarDataset {
     ...visibleDataset,
     festivals: visibleDataset.festivals.filter(festival => localFestivalIds.has(festival.id)),
   };
-}
-
-function getVisibleRangeDayLength(range: DateRange): number {
-  let length = 1;
-  let cursor = range.start;
-  while (compareDatePoint(cursor, range.end) < 0) {
-    length += 1;
-    cursor = addDays(cursor, 1);
-  }
-  return length;
-}
-
-function compareCompactFestivalBars(left: CalendarEventRecord, right: CalendarEventRecord): number {
-  if (left.range && right.range) {
-    const lengthOrder = getVisibleRangeDayLength(right.range) - getVisibleRangeDayLength(left.range);
-    if (lengthOrder !== 0) {
-      return lengthOrder;
-    }
-    const startOrder = compareDatePoint(left.range.start, right.range.start);
-    if (startOrder !== 0) {
-      return startOrder;
-    }
-  }
-  return left.title.localeCompare(right.title, 'zh-CN') || left.id.localeCompare(right.id);
-}
-
-function findWeekCellIndex(week: MonthDayCell[], point: DatePoint): number {
-  return week.findIndex(cell => cell.year === point.year && cell.month === point.month && cell.day === point.day);
-}
-
-function rangesOverlap(left: DateRange, right: DateRange): boolean {
-  return compareDatePoint(left.start, right.end) <= 0 && compareDatePoint(left.end, right.start) >= 0;
-}
-
-function clampRangeToBoundary(range: DateRange, boundary: DateRange): DateRange | null {
-  if (!rangesOverlap(range, boundary)) {
-    return null;
-  }
-  return {
-    start: compareDatePoint(range.start, boundary.start) < 0 ? boundary.start : range.start,
-    end: compareDatePoint(range.end, boundary.end) > 0 ? boundary.end : range.end,
-  };
-}
-
-function incrementOverflowForBlockedSpan(
-  week: MonthDayCell[],
-  rowOccupancy: boolean[][],
-  startIndex: number,
-  endIndex: number,
-): void {
-  let incremented = false;
-  for (let index = startIndex; index <= endIndex; index += 1) {
-    if (rowOccupancy.every(row => row[index])) {
-      week[index].overflowCount += 1;
-      incremented = true;
-    }
-  }
-  if (!incremented) {
-    week[startIndex].overflowCount += 1;
-  }
-}
-
-function addCompactFestivalBars(cells: MonthDayCell[], events: CalendarEventRecord[]): void {
-  if (!cells.length || !events.length) {
-    return;
-  }
-
-  for (let weekStart = 0; weekStart < cells.length; weekStart += 7) {
-    const week = cells.slice(weekStart, weekStart + 7);
-    const first = week[0];
-    const last = week[week.length - 1];
-    if (!first || !last) {
-      continue;
-    }
-
-    const weekRange: DateRange = {
-      start: { year: first.year, month: first.month, day: first.day },
-      end: { year: last.year, month: last.month, day: last.day },
-    };
-    const rowOccupancy = Array.from({ length: MONTH_EVENT_ROW_LIMIT }, () => Array(week.length).fill(false));
-    week.forEach((cell, cellIndex) => {
-      cell.chips.forEach(chip => {
-        if (chip.row >= 0 && chip.row < MONTH_EVENT_ROW_LIMIT) {
-          rowOccupancy[chip.row][cellIndex] = true;
-        }
-      });
-    });
-
-    events
-      .filter(event => event.range && rangesOverlap(event.range, weekRange))
-      .sort(compareCompactFestivalBars)
-      .forEach(event => {
-        if (!event.range) {
-          return;
-        }
-        const clamped = clampRangeToBoundary(event.range, weekRange);
-        if (!clamped) {
-          return;
-        }
-        const startIndex = findWeekCellIndex(week, clamped.start);
-        const endIndex = findWeekCellIndex(week, clamped.end);
-        if (startIndex < 0 || endIndex < startIndex) {
-          return;
-        }
-        const row = rowOccupancy.findIndex(occupied => occupied.slice(startIndex, endIndex + 1).every(value => !value));
-        if (row < 0) {
-          incrementOverflowForBlockedSpan(week, rowOccupancy, startIndex, endIndex);
-          return;
-        }
-
-        for (let index = startIndex; index <= endIndex; index += 1) {
-          rowOccupancy[row][index] = true;
-          const cell = week[index];
-          cell.chips.push({
-            id: event.id,
-            title: event.title,
-            label: typeof event.metadata.monthChipLabel === 'string' ? event.metadata.monthChipLabel : undefined,
-            row,
-            startOffset: 0,
-            endOffset: 0,
-            isStart: compareDatePoint({ year: cell.year, month: cell.month, day: cell.day }, event.range.start) === 0,
-            isEnd: compareDatePoint({ year: cell.year, month: cell.month, day: cell.day }, event.range.end) === 0,
-            source: event.source,
-            colorToken: 'festival',
-            color: event.color,
-            displayKind: event.metadata.monthChipKind === 'stage-bubble' ? 'stage-bubble' : 'bar',
-          });
-        }
-      });
-  }
-
-  cells.forEach(cell => {
-    cell.chips.sort((left, right) => left.row - right.row || left.title.localeCompare(right.title, 'zh-CN'));
-  });
-}
-
-function addCompactFestivalChips(
-  cells: MonthDayCell[],
-  markerDataset: CalendarDataset,
-  barDataset: CalendarDataset,
-): void {
-  if (!cells.length) {
-    return;
-  }
-  const barFestivalIds = new Set(barDataset.festivals.map(festival => festival.id));
-  const compactFestivals = markerDataset.festivals.filter(festival => !barFestivalIds.has(festival.id));
-  if (!compactFestivals.length) {
-    return;
-  }
-
-  const range: DateRange = {
-    start: { year: cells[0].year, month: cells[0].month, day: cells[0].day },
-    end: {
-      year: cells[cells.length - 1].year,
-      month: cells[cells.length - 1].month,
-      day: cells[cells.length - 1].day,
-    },
-  };
-  const compactEvents = buildFestivalMonthChipEventsForRange(compactFestivals, range);
-  addCompactFestivalBars(cells, compactEvents);
 }
 
 function renderMonthView(cells: MonthDayCell[], visibleDataset: CalendarDataset): string {
@@ -3193,6 +3029,7 @@ function destroy(reason?: string): void {
     $(refs.ball).off('.calendar-float');
   }
   if (refs.root) {
+    $(refs.root.ownerDocument).off('.calendar-float-button');
     $(refs.root).off('.calendar-float');
     refs.root.remove();
   }
@@ -3240,7 +3077,7 @@ function scheduleInitialDatasetRefreshRetries(): void {
       if (!state.destroyed) {
         void refreshDataset();
       }
-    }, delay)
+    }, delay),
   );
 }
 

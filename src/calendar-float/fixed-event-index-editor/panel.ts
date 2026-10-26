@@ -1,3 +1,4 @@
+import { stringify } from 'yaml';
 import {
   readCalendarRuntimeIndexSourceEntry,
   type CalendarRuntimeIndexSourceCandidate,
@@ -84,7 +85,7 @@ function renderProfileDatePreview(draft: FixedEventIndexDraft): string {
 
   return `
     <div class="th-index-editor-profile-preview" data-role="profile-date-preview">
-      <div class="th-index-editor-muted">日期解析规则来自配置档案设置.日期</div>
+      <div class="th-index-editor-muted">预览会根据索引中的纪元与日期格式更新</div>
       <ul>${acceptedText.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
     </div>
   `;
@@ -488,7 +489,7 @@ function renderDefaultsEditor(draft: FixedEventIndexDraft): string {
     <section class="th-index-editor-settings-block">
       <div class="th-index-editor-settings-block-head">
         <h3>书籍全文</h3>
-        <p>决定全文资料触发词的默认写法。MVU 时间和地点路径统一在 Profile 设置里编辑。</p>
+        <p>决定全文资料触发词的默认写法。世界时间和地点的变量位置在日历设置里编辑。</p>
       </div>
       <div class="th-index-editor-edit-card" data-role="fixed-event-defaults-row" data-scope="defaults" data-id="main">
         <div class="th-index-editor-edit-grid">
@@ -510,8 +511,8 @@ function renderProfileSettingsEditor(draft: FixedEventIndexDraft): string {
   return `
     <section class="th-index-editor-settings-block">
       <div class="th-index-editor-settings-block-head">
-        <h3>配置档案</h3>
-        <p>专用于《命定之诗》；在这里配置世界时间、地点及纪元格式。</p>
+        <h3>命定之诗日历设置</h3>
+        <p>设置世界时间、地点的变量位置，以及纪元格式、节庆图标与颜色。</p>
       </div>
       <div class="th-index-editor-edit-card" data-role="fixed-event-profile-row" data-scope="profile" data-id="main">
         <div class="th-index-editor-edit-grid">
@@ -561,6 +562,15 @@ function renderProfileSettingsEditor(draft: FixedEventIndexDraft): string {
           })}
         </div>
         ${renderProfileDatePreview(draft)}
+        ${renderInput({
+          scope: 'profile',
+          id: 'main',
+          field: 'visualYaml',
+          label: '节庆视觉规则（YAML）',
+          value: stringify(profile.settings.unknownFields.视觉 ?? profile.settings.unknownFields.visual ?? {}),
+          textarea: true,
+          fieldClassName: 'is-wide',
+        })}
       </div>
     </section>
   `;
@@ -1298,7 +1308,7 @@ function renderStageDetail(draft: FixedEventIndexDraft, selection: FixedEventInd
   return renderStageEditCard(event.id, stage, stageIndex, stages.length);
 }
 
-function renderSettingsDetail(draft: FixedEventIndexDraft, selection: FixedEventIndexEditorSelection): string {
+function renderSettingsDetail(draft: FixedEventIndexDraft): string {
   return renderAllSettingsEditor(draft);
 }
 
@@ -1406,7 +1416,7 @@ function renderEditorDetail(
       ? renderMaterialEditCard(material, validation)
       : '<div class="th-index-editor-empty">找不到这个补充资料</div>';
   } else if (selection.section === 'settings') {
-    content = renderSettingsDetail(draft, selection);
+    content = renderSettingsDetail(draft);
   } else if (selection.scope === 'yaml') {
     content = renderYamlPreview(yamlPreview);
   } else {
@@ -1522,7 +1532,7 @@ export function renderFixedEventIndexEditorPreview(
   model: FixedEventIndexEditorPreviewModel,
   selection?: FixedEventIndexEditorSelection | null,
 ): string {
-  const canSave = Boolean(model.source && !model.saving);
+  const canSave = Boolean(model.source && model.validation?.canSave && !model.saving);
   return `
     <div class="th-managed-worldbook-dialog-backdrop" data-action="close-fixed-event-index-editor"></div>
     <section class="th-managed-worldbook-dialog th-index-editor-dialog" role="dialog" aria-modal="true" aria-label="固定事件索引">

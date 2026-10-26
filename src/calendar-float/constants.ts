@@ -5,10 +5,6 @@ export const ROOT_ID = 'th-calendar-float-root';
 export const STYLE_ID = 'th-calendar-float-style';
 export const INSTANCE_KEY = 'CalendarFloatWidget';
 
-export const MVU_ROOT_PATH = 'stat_data.事件.月历';
-export const MVU_TEMP_PATH = 'stat_data.事件.月历.临时';
-export const MVU_REPEAT_PATH = 'stat_data.事件.月历.重复';
-
 export const CALENDAR_VARIABLE_STORE_KEY = 'calendar_float_store';
 export const CHAT_ARCHIVE_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.archive`;
 export const CHAT_RUNTIME_PATH = `${CALENDAR_VARIABLE_STORE_KEY}.runtime`;

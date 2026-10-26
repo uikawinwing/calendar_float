@@ -1,12 +1,13 @@
 import { FATE_POEM_CALENDAR_PROFILE } from './profiles';
 import type {
   CalendarAddonId,
+  CalendarMarkerAppearance,
+  CalendarMarkerRule,
   CalendarProfile,
   CalendarProfileConfigInput,
   CalendarProfileDateSettings,
   CalendarProfilePaths,
   CalendarProfileResolveResult,
-  CalendarProfileVisualSettings,
   CalendarProfileWorldbookSettings,
 } from './types';
 
@@ -24,7 +25,7 @@ const WORLDBOOK_KEYS: Array<keyof CalendarProfileWorldbookSettings> = [
   'updateRuleTimeExamples',
   'forbiddenRepeatTimeExamples',
 ];
-const VISUAL_KEYS: Array<keyof CalendarProfileVisualSettings> = ['festivalMarkerPresetId'];
+const VISUAL_KEYS = ['festivalMarkerPresetId', 'tagPresets', 'locationPresets', 'markerPresets', 'fallbackMarkers'];
 
 function normalizeText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -45,11 +46,20 @@ function cloneProfile(profile: CalendarProfile): CalendarProfile {
       updateRuleTimeExamples: [...profile.worldbook.updateRuleTimeExamples],
       forbiddenRepeatTimeExamples: [...profile.worldbook.forbiddenRepeatTimeExamples],
     },
-    visual: { ...(profile.visual ?? {}) },
+    visual: {
+      ...(profile.visual ?? {}),
+      tagPresets: profile.visual.tagPresets.map(cloneMarkerRule),
+      locationPresets: profile.visual.locationPresets.map(cloneMarkerRule),
+      markerPresets: profile.visual.markerPresets.map(cloneMarkerRule),
+      fallbackMarkers: profile.visual.fallbackMarkers.map(item => ({ ...item, color: { ...item.color } })),
+    },
     addons: [...profile.addons],
   };
 }
 
+function cloneMarkerRule(rule: CalendarMarkerRule): CalendarMarkerRule {
+  return { ...rule, color: { ...rule.color }, keywords: [...rule.keywords] };
+}
 function warnUnknownKeys(
   warnings: string[],
   area: string,
@@ -106,6 +116,10 @@ function applyPathOverrides(
     }
     warnings.push(`Profile paths.${key} 必须是非空字符串`);
   });
+  if (normalizeText(paths.eventRoot)) {
+    if (paths.tempEvents === undefined) profile.paths.tempEvents = `${profile.paths.eventRoot}.临时`;
+    if (paths.repeatEvents === undefined) profile.paths.repeatEvents = `${profile.paths.eventRoot}.重复`;
+  }
 }
 
 function applyDateOverrides(
@@ -187,6 +201,17 @@ function applyWorldbookOverrides(
   }
 }
 
+function normalizeMarkerAppearance(value: unknown): CalendarMarkerAppearance | null {
+  if (!isPlainRecord(value) || !isPlainRecord(value.color)) return null;
+  const icon = normalizeText(value.icon);
+  const { background, text, border } = value.color;
+  const isColor = (color: unknown): color is string =>
+    typeof color === 'string' && /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(color);
+  if (!icon || /[/\\<>]/.test(icon) || !icon.endsWith('.svg') || !isColor(background) || !isColor(text)) return null;
+  if (border !== undefined && !isColor(border)) return null;
+  return { icon, color: { background, text, ...(border ? { border } : {}) } };
+}
+
 function applyVisualOverrides(
   profile: CalendarProfile,
   visual: CalendarProfileConfigInput['visual'],
@@ -201,13 +226,41 @@ function applyVisualOverrides(
   }
   warnUnknownKeys(warnings, 'visual', visual, VISUAL_KEYS);
   if ('festivalMarkerPresetId' in visual) {
-    const presetId = normalizeText(visual.festivalMarkerPresetId);
-    if (presetId === 'fate-poem') {
-      profile.visual = { ...(profile.visual ?? {}), festivalMarkerPresetId: 'fate-poem' };
+    if (visual.festivalMarkerPresetId === 'fate-poem') {
+      profile.visual = { ...profile.visual, festivalMarkerPresetId: 'fate-poem' };
     } else {
-      warnings.push('只支持命定之诗节庆标记预设 fate-poem');
+      warnings.push('仅支持《命定之诗》视觉规则；请在索引中配置具体规则');
     }
   }
+  (['tagPresets', 'locationPresets', 'markerPresets', 'fallbackMarkers'] as const).forEach(key => {
+    if (!(key in visual)) return;
+    const raw = visual[key];
+    if (!Array.isArray(raw)) {
+      warnings.push(`Profile visual.${key} 必须是数组`);
+      return;
+    }
+    const appearances: CalendarMarkerAppearance[] = [];
+    const rules: CalendarMarkerRule[] = [];
+    raw.forEach((item, index) => {
+      const appearance = normalizeMarkerAppearance(item);
+      const keywords =
+        isPlainRecord(item) && Array.isArray(item.keywords) ? item.keywords.map(normalizeText).filter(Boolean) : [];
+      if (!appearance || (key !== 'fallbackMarkers' && !keywords.length)) {
+        warnings.push(
+          `Profile visual.${key}[${index}] 需要安全的 SVG 文件名、十六进制颜色${key === 'fallbackMarkers' ? '' : '和关键词'}`,
+        );
+        return;
+      }
+      appearances.push(appearance);
+      rules.push({ ...appearance, keywords });
+    });
+    if (appearances.length !== raw.length || (key === 'fallbackMarkers' && !appearances.length)) {
+      warnings.push(`Profile visual.${key} 无效，保留旧版默认规则`);
+      return;
+    }
+    if (key === 'fallbackMarkers') profile.visual.fallbackMarkers = appearances;
+    else profile.visual[key] = rules;
+  });
 }
 
 function applyAddonOverrides(profile: CalendarProfile, addons: unknown, warnings: string[]): void {
@@ -248,18 +301,28 @@ export function resolveCalendarProfileConfig(args: {
 }): CalendarProfileResolveResult {
   const warnings: string[] = [];
   const config = isPlainRecord(args.config) ? (args.config as CalendarProfileConfigInput) : null;
-  // The fixed-event index can override Fate Poem settings, but never select
-  // an unrelated profile or silently turn the script into a generic calendar.
-  const requestedIds = [...new Set([config?.id, args.profileHint].map(normalizeText).filter(Boolean))];
-  for (const id of requestedIds) {
-    if (!['fate-poem', '命定之诗'].includes(id)) {
-      warnings.push(`不支持的月历 Profile：${id}；保持命定之诗`);
-    }
-  }
-
+  const configId = normalizeText(config?.id);
+  const profileHint = normalizeText(args.profileHint);
+  const identities = [configId, profileHint].filter(Boolean).map(identity => identity.toLowerCase());
+  const unsupported = identities.find(identity => !['fate-poem', '命定之诗', 'generic'].includes(identity));
   const profile = cloneProfile(FATE_POEM_CALENDAR_PROFILE);
+  if (unsupported) {
+    return {
+      profile,
+      source: 'default',
+      warnings: [`不支持的日历身份：${unsupported}；本脚本只服务《命定之诗》，已拒绝此索引配置`],
+      compatible: false,
+    };
+  }
+  if (identities.includes('generic'))
+    warnings.push('旧版 generic 配置已按《命定之诗》读取，请将索引身份改为 fate-poem');
   if (!config) {
-    return { profile, source: 'default', warnings };
+    return {
+      profile,
+      source: 'default',
+      warnings,
+      compatible: true,
+    };
   }
 
   warnUnknownKeys(warnings, 'config', config as Record<string, unknown>, [
@@ -281,7 +344,6 @@ export function resolveCalendarProfileConfig(args: {
       warnings.push('Profile label 必须是非空字符串');
     }
   }
-
   applyPathOverrides(profile, config.paths, warnings);
   applyDateOverrides(profile, config.date, warnings);
   applyWorldbookOverrides(profile, config.worldbook, warnings);
@@ -293,5 +355,6 @@ export function resolveCalendarProfileConfig(args: {
     profile,
     source: 'runtime_index',
     warnings,
+    compatible: true,
   };
 }

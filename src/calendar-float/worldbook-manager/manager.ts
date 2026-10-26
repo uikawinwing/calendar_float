@@ -17,6 +17,7 @@ import {
   buildManagedWorldbookEntries,
   hasExpectedManagedEntries,
   isManagedWorldbookEntry,
+  mergeManagedEntry,
   readManagedEntry,
   readVariableListEntry,
   type ManagedWorldbookEntrySeed,
@@ -60,7 +61,11 @@ export type {
   CalendarManagedWorldbookDiagnostics,
   CalendarManagedWorldbookSourceItem,
 } from './diagnostics';
-export type { CalendarWorldbookMoveCandidate, CalendarWorldbookMoveCandidateKind, CalendarWorldbookSourceGroup } from './transfer';
+export type {
+  CalendarWorldbookMoveCandidate,
+  CalendarWorldbookMoveCandidateKind,
+  CalendarWorldbookSourceGroup,
+} from './transfer';
 
 export interface EnsureCalendarManagedWorldbookEntriesResult {
   name: string;
@@ -275,7 +280,11 @@ function readManagedWorldbookTargetName(): {
 
 function isManagedCharacterWorldbookName(worldbookName: string): boolean {
   const normalized = normalizeEntryName(worldbookName);
-  return normalized.includes('月历球世界书') || normalized === '月历球_角色世界书' || normalized.startsWith('月历球_角色世界书_');
+  return (
+    normalized.includes('月历球世界书') ||
+    normalized === '月历球_角色世界书' ||
+    normalized.startsWith('月历球_角色世界书_')
+  );
 }
 
 async function findReadableManagedAdditionalWorldbook(binding: CharWorldbooks): Promise<{
@@ -346,9 +355,7 @@ async function readCharacterPrimaryWorldbookEntries(): Promise<{
   try {
     return { worldbookName: primary, entries: await getWorldbook(primary), targetMode: 'character_primary' };
   } catch (error) {
-    throw new Error(
-      `当前角色主世界书无法读取：${primary}。请先在角色卡绑定或导入世界书，再安装月历 MVU 规则。`,
-    );
+    throw new Error(`当前角色主世界书无法读取：${primary}。请先在角色卡绑定或导入世界书，再安装月历 MVU 规则。`);
   }
 }
 
@@ -373,7 +380,11 @@ async function readWorldbookEntriesByName(
       throw error;
     }
 
-    await createOrReplaceWorldbook(normalizedWorldbookName, []);
+    if (getWorldbookNames().some(name => normalizeEntryName(name) === normalizedWorldbookName)) {
+      throw error;
+    }
+
+    await createWorldbook(normalizedWorldbookName, []);
     const entries = await getWorldbook(normalizedWorldbookName);
     return {
       worldbookName: normalizedWorldbookName,

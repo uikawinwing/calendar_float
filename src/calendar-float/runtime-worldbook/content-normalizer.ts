@@ -431,10 +431,10 @@ export function 规范化节庆提醒节点(
 function 是否内联提醒配置(item: Record<string, unknown>): boolean {
   return Boolean(
     读取节庆开始前天数(item) !== undefined ||
-      读取对象字段(item, ['未开始', '进行中', '注入方式', 'mode', '宏触发词', 'macro']) !== undefined ||
-      读取对象(item, ['自定义正文']) ||
-      读取对象(item, ['自定义提醒']) ||
-      读取对象(item, ['开启自定义提醒']),
+    读取对象字段(item, ['未开始', '进行中', '注入方式', 'mode', '宏触发词', 'macro']) !== undefined ||
+    读取对象(item, ['自定义正文']) ||
+    读取对象(item, ['自定义提醒']) ||
+    读取对象(item, ['开启自定义提醒']),
   );
 }
 
@@ -450,9 +450,9 @@ export function 规范化节庆阶段列表(
   const output: CalendarRuntimeFestivalStageEntry[] = [];
 
   stages.forEach((stageItem, index) => {
-    const stageId = 规范化名称(读取对象字段(stageItem, ['id', '阶段id', 'phase_id', 'phaseId'])) || `stage_${index + 1}`;
-    const stageName =
-      规范化名称(读取对象字段(stageItem, ['名称', '阶段名', 'name', 'title'])) || `阶段 ${index + 1}`;
+    const stageId =
+      规范化名称(读取对象字段(stageItem, ['id', '阶段id', 'phase_id', 'phaseId'])) || `stage_${index + 1}`;
+    const stageName = 规范化名称(读取对象字段(stageItem, ['名称', '阶段名', 'name', 'title'])) || `阶段 ${index + 1}`;
     const 开始 = 规范化名称(readRuntimeField(stageItem, 'start'));
     const 结束 = 规范化名称(readRuntimeField(stageItem, 'end') ?? readRuntimeField(stageItem, 'start'));
     if (!stageId || !stageName || !开始 || !结束) {
@@ -488,9 +488,7 @@ export function 规范化节庆阶段列表(
       元数据: {
         ...(阶段共享触发 ? { 共享条件: 阶段共享触发 } : {}),
         ...(周期 ? { 周期 } : {}),
-        ...(读取节庆开始前天数(stageItem) !== undefined
-          ? { 开始前提醒天数: 读取节庆开始前天数(stageItem) }
-          : {}),
+        ...(读取节庆开始前天数(stageItem) !== undefined ? { 开始前提醒天数: 读取节庆开始前天数(stageItem) } : {}),
       },
     });
   });
@@ -621,6 +619,7 @@ export function 规范化书籍全文节点(
       原始条目名: 原始条目名 || undefined,
       节庆文本条目名: 节庆文本条目名 || undefined,
       共享条件已继承: 继承共享条件,
+      快速触发词: 显式全文关键字[0] ?? 默认全文关键词[0] ?? 实际条目名,
     },
   };
 }

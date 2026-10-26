@@ -1,3 +1,4 @@
+import { strict as assert } from 'node:assert';
 import {
   applyCalendarProfileConfig,
   getActiveCalendarProfile,
@@ -5,89 +6,88 @@ import {
 } from '../../../src/calendar-float/profile';
 import { resolveCalendarProfileConfig } from '../../../src/calendar-float/profile/normalize';
 
-function assert(condition: unknown, message: string): void {
-  if (!condition) throw new Error(message);
-}
-
-async function testFatePoemIsTheOnlyProfile(): Promise<void> {
+async function main(): Promise<void> {
   await initializeCalendarProfile();
-  assert(getActiveCalendarProfile().id === 'fate-poem', 'startup always selects Fate Poem');
-  assert(getActiveCalendarProfile().addons.includes('dlc_ellia'), 'Fate Poem addon is retained');
-  assert(
-    getActiveCalendarProfile().visual?.festivalMarkerPresetId === 'fate-poem',
-    'the Fate Poem marker preset stays active',
-  );
+  assert.equal(getActiveCalendarProfile().id, 'fate-poem');
+  assert.equal(getActiveCalendarProfile().label, '命定之诗');
+  assert.equal(getActiveCalendarProfile().addons.includes('dlc_ellia'), true);
+  assert.equal(getActiveCalendarProfile().visual.festivalMarkerPresetId, 'fate-poem');
 
-  for (const hint of ['generic', 'custom-court', 'unrelated-character']) {
-    const result = resolveCalendarProfileConfig({ profileHint: hint });
-    assert(result.profile.id === 'fate-poem', `unexpected profile ${hint} must not change product identity`);
-    assert(result.warnings.some(warning => warning.includes(hint)), 'unsupported profile must be reported');
-  }
-}
+  const legacy = resolveCalendarProfileConfig({ profileHint: 'generic' });
+  assert.equal(legacy.profile.id, 'fate-poem');
+  assert.equal(legacy.compatible, true);
+  assert.equal(resolveCalendarProfileConfig({ profileHint: 'FATE-POEM' }).compatible, true);
+  assert(legacy.warnings.some(message => message.includes('旧版 generic')));
 
-async function testFateIndexOverridesOnlyRuntimeData(): Promise<void> {
-  await initializeCalendarProfile();
-  const result = applyCalendarProfileConfig({
-    profileHint: 'fate-poem',
+  const configured = applyCalendarProfileConfig({
+    profileHint: '命定之诗',
     config: {
-      id: 'custom-court',
-      label: '命定之诗月历',
+      id: 'fate-poem',
+      label: '自定义显示名',
       paths: {
-        worldTime: 'stat_data.世界.时辰',
-        worldLocation: 'stat_data.世界.所在地',
+        eventRoot: 'stat_data.月历',
+        worldTime: 'stat_data.世界.时刻',
+        worldLocation: 'stat_data.世界.当前位置',
       },
-      date: {
-        eraName: '复兴纪元',
-        eraNames: ['复兴纪元', '旧历'],
-        useChineseNumeralYear: true,
-      },
-      worldbook: {
-        variableDisplayTitle: '现有月历事件',
-        updateRuleTimeExamples: ['复兴纪元一二三年-4月5日'],
-      },
+      date: { eraName: '星历', eraNames: ['星历', '旧历'], useChineseNumeralYear: true },
+      worldbook: { variableDisplayTitle: '现有月历', updateRuleTimeExamples: ['星历一二三年-4月5日'] },
+      addons: ['dlc_ellia'],
       developerMode: true,
     },
   });
-  assert(result.profile.id === 'fate-poem', 'runtime index cannot make a generic/custom product');
-  assert(result.warnings.some(warning => warning.includes('custom-court')), 'ignored custom profile ID is diagnosed');
-  assert(result.profile.paths.worldTime === 'stat_data.世界.时辰', 'Fate Worldbook time override works');
-  assert(result.profile.paths.worldLocation === 'stat_data.世界.所在地', 'Fate Worldbook location override works');
-  assert(result.profile.date.eraNames.join('|') === '复兴纪元|旧历', 'Fate era alias override works');
-  assert(result.profile.developerMode === true, 'Fate editor developer mode works');
-  assert(result.profile.addons.includes('dlc_ellia'), 'Fate addons remain intact');
-}
+  assert.equal(configured.compatible, true);
+  assert.equal(configured.profile.id, 'fate-poem');
+  assert.equal(configured.profile.label, '自定义显示名');
+  assert.equal(configured.profile.paths.tempEvents, 'stat_data.月历.临时');
+  assert.equal(configured.profile.paths.repeatEvents, 'stat_data.月历.重复');
+  assert.equal(configured.profile.paths.worldTime, 'stat_data.世界.时刻');
+  assert.deepEqual(configured.profile.date.eraNames, ['星历', '旧历']);
+  assert.equal(configured.profile.date.useChineseNumeralYear, true);
+  assert.deepEqual(configured.profile.worldbook.updateRuleTimeExamples, ['星历一二三年-4月5日']);
+  assert.equal(configured.profile.developerMode, true);
 
-function testFunctionLikeValuesRemainRejected(): void {
-  const result = resolveCalendarProfileConfig({
+  const invalid = applyCalendarProfileConfig({
+    profileHint: 'unknown-world',
+    config: { paths: { worldTime: 'stat_data.bad' } },
+  });
+  assert.equal(invalid.compatible, false);
+  assert(invalid.warnings.some(message => message.includes('unknown-world')));
+  assert.equal(getActiveCalendarProfile().id, 'fate-poem');
+  assert.equal(getActiveCalendarProfile().paths.worldTime, 'stat_data.世界.时间');
+  assert.equal(
+    resolveCalendarProfileConfig({ profileHint: 'fate-poem', config: { id: 'unknown-world' } }).compatible,
+    false,
+  );
+
+  const badData = resolveCalendarProfileConfig({
     profileHint: 'fate-poem',
     config: {
       paths: { worldTime: () => 'stat_data.bad' },
       worldbook: { updateRuleTimeExamples: ['safe', () => 'bad'] },
-      visual: { festivalMarkerPresetId: () => 'evil' },
       addons: ['dlc_ellia', 'eval(() => bad)'],
+      visual: {
+        festivalMarkerPresetId: () => 'evil',
+        markerPresets: [{ icon: '<svg onload=alert(1)>', color: {}, keywords: ['x'] }],
+        fallbackMarkers: [],
+      },
     },
   });
-  assert(result.profile.paths.worldTime === 'stat_data.世界.时间', 'function path must be ignored');
-  assert(result.profile.worldbook.updateRuleTimeExamples.join('|') === 'safe', 'unsafe examples ignored');
-  assert(result.profile.visual?.festivalMarkerPresetId === 'fate-poem', 'unsafe visual keeps Fate preset');
-  assert(result.profile.addons.join('|') === 'dlc_ellia', 'unsafe add-ons filtered');
-  assert(result.warnings.length >= 2, 'rejected values receive warnings');
-}
+  assert.equal(badData.profile.paths.worldTime, 'stat_data.世界.时间');
+  assert.deepEqual(badData.profile.worldbook.updateRuleTimeExamples, ['safe']);
+  assert.deepEqual(badData.profile.addons, ['dlc_ellia']);
+  assert.equal(badData.profile.visual.festivalMarkerPresetId, 'fate-poem');
+  assert(badData.profile.visual.markerPresets.length > 0);
+  assert(badData.profile.visual.fallbackMarkers.length > 0);
+  assert(badData.warnings.length >= 4);
 
-async function testChatResetKeepsFateIdentity(): Promise<void> {
-  applyCalendarProfileConfig({
-    config: { paths: { worldTime: 'stat_data.世界.临时时辰' }, developerMode: true },
-  });
+  const clean = resolveCalendarProfileConfig({});
+  clean.profile.visual.locationPresets[0].keywords.push('mutation');
+  assert(!resolveCalendarProfileConfig({}).profile.visual.locationPresets[0].keywords.includes('mutation'));
+
+  applyCalendarProfileConfig({ config: { paths: { worldTime: 'stat_data.世界.临时时辰' }, developerMode: true } });
   await initializeCalendarProfile();
-  assert(getActiveCalendarProfile().paths.worldTime === 'stat_data.世界.时间', 'chat reset restores original Fate paths');
-  assert(getActiveCalendarProfile().developerMode === false, 'chat reset resets developer tools');
-}
-
-async function main(): Promise<void> {
-  await testFatePoemIsTheOnlyProfile();
-  await testFateIndexOverridesOnlyRuntimeData();
-  testFunctionLikeValuesRemainRejected();
-  await testChatResetKeepsFateIdentity();
+  assert.equal(getActiveCalendarProfile().paths.worldTime, 'stat_data.世界.时间');
+  assert.equal(getActiveCalendarProfile().developerMode, false);
   console.log('profile.check.ts Fate-only OK');
 }
 

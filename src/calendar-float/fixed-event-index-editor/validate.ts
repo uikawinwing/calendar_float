@@ -56,6 +56,9 @@ export function validateFixedEventIndexDraft(draft: FixedEventIndexDraft): Fixed
   if (!draft.worldbookName) {
     blockingIssues.push('来源世界书为空，无法保存');
   }
+  blockingIssues.push(
+    ...warnings.filter(warning => warning.startsWith('YAML 解析失败：') || warning === '索引 YAML 顶层不是对象'),
+  );
 
   findDuplicates(groupIds).forEach(id => {
     const message = `固定事件分组 id 重复：${id}`;
@@ -131,8 +134,17 @@ export function validateFixedEventIndexDraft(draft: FixedEventIndexDraft): Fixed
         addRowIssue('event', event.id, 'warning', message);
       }
     });
-    if (event.hasUnsupportedAdvancedLogic || event.intro.hasUnsupportedAdvancedLogic || event.reminder.hasUnsupportedAdvancedLogic) {
-      const message = `固定事件「${event.name || event.id}」包含完整逻辑，第一版编辑器不能安全保存`;
+    if (event.stages.some(stage => stage.reminder.hasUnsupportedAdvancedLogic)) {
+      const message = `固定事件「${event.name || event.id}」的阶段提醒包含完整逻辑，编辑器不能安全保存`;
+      blockingIssues.push(message);
+      addRowIssue('event', event.id, 'danger', message);
+    }
+    if (
+      event.hasUnsupportedAdvancedLogic ||
+      event.intro.hasUnsupportedAdvancedLogic ||
+      event.reminder.hasUnsupportedAdvancedLogic
+    ) {
+      const message = `固定事件「${event.name || event.id}」包含完整逻辑，编辑器不能安全保存`;
       blockingIssues.push(message);
       addRowIssue('event', event.id, 'danger', message);
     }
@@ -150,7 +162,7 @@ export function validateFixedEventIndexDraft(draft: FixedEventIndexDraft): Fixed
       addRowIssue('material', material.id, 'danger', message);
     }
     if (material.hasUnsupportedAdvancedLogic) {
-      const message = `补充资料「${material.title || material.id}」包含完整逻辑，第一版编辑器不能安全保存`;
+      const message = `补充资料「${material.title || material.id}」包含完整逻辑，编辑器不能安全保存`;
       blockingIssues.push(message);
       addRowIssue('material', material.id, 'danger', message);
     }

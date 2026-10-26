@@ -30,10 +30,7 @@ import type { CalendarSourceConfig, ResolvedCalendarWorldbookSource } from '../t
 export { resolveCalendarRuntimeWorldbookSources } from './source';
 export { normalizeCalendarRuntimeIndexDocument } from './index-normalizer';
 export { findCalendarRuntimeEntryByReference, resolveCalendarRuntimeContentWorldbookNames } from './references';
-export {
-  type CalendarRuntimeWorldbookMoveCandidate,
-  type CalendarRuntimeWorldbookSummary,
-} from './move-candidates';
+export { type CalendarRuntimeWorldbookMoveCandidate, type CalendarRuntimeWorldbookSummary } from './move-candidates';
 
 export interface CalendarRuntimeWorldbookEntriesResult {
   来源: ResolvedCalendarWorldbookSource[];
@@ -61,8 +58,8 @@ export async function readCalendarRuntimeWorldbookEntries(
       const worldbookEntries = await getWorldbook(source.name);
       const entryNames = worldbookEntries.map(entry => 规范化名称(entry.name)).filter(Boolean);
       const message = `runtime worldbook 已读取「${source.name}」(${source.kind})：${worldbookEntries.length} 条；条目名：${
-          entryNames.length > 0 ? entryNames.join('、') : '（空）'
-        }`;
+        entryNames.length > 0 ? entryNames.join('、') : '（空）'
+      }`;
       diagnostics.push({ level: 'info', code: 'runtime_worldbook_source_read', message, worldbookName: source.name });
       for (const entry of worldbookEntries) {
         entries.push({ 世界书名: source.name, 条目: entry });
@@ -70,7 +67,12 @@ export async function readCalendarRuntimeWorldbookEntries(
     } catch (error) {
       const message = `读取 worldbook「${source.name}」失败：${error instanceof Error ? error.message : String(error)}`;
       warnings.push(message);
-      diagnostics.push({ level: 'error', code: 'runtime_worldbook_source_read_failed', message, worldbookName: source.name });
+      diagnostics.push({
+        level: 'error',
+        code: 'runtime_worldbook_source_read_failed',
+        message,
+        worldbookName: source.name,
+      });
     }
   }
 
@@ -158,6 +160,9 @@ export async function readCalendarRuntimeIndex(): Promise<CalendarWorldbookIndex
 export function buildCalendarRuntimeIndexResultFromEntries(
   loaded: CalendarRuntimeWorldbookEntriesResult,
 ): CalendarWorldbookIndexReadResult {
+  // 每次读取都重建配置，缺失、错误或不支持的索引不会沿用上一份世界设定。
+  applyCalendarProfileConfig({});
+  applyCalendarRuntimeDefaults(undefined);
   const { 来源, 条目 } = loaded;
   const 警告 = [...loaded.警告];
   const 诊断 = [...(loaded.诊断 ?? [])];
@@ -175,10 +180,7 @@ export function buildCalendarRuntimeIndexResultFromEntries(
       来源世界书: 来源.map(item => item.name),
       命中世界书名: null,
       命中条目名: null,
-      警告: [
-        ...警告,
-        ...missingWarnings,
-      ],
+      警告: [...警告, ...missingWarnings],
       诊断: [
         ...诊断,
         ...missingWarnings.map(message => ({
@@ -193,13 +195,14 @@ export function buildCalendarRuntimeIndexResultFromEntries(
   追加多索引候选警告(indexEntryMatches, 警告);
 
   const parsed = 解析Yaml文本<unknown>(indexEntry.条目.content, `索引条目「${indexEntry.条目.name}」`, 警告);
-  const normalized = parsed ? normalizeCalendarRuntimeIndexDocument(parsed, 警告) : null;
-  if (normalized?.Profile || normalized?.Profile设置) {
+  let normalized = parsed ? normalizeCalendarRuntimeIndexDocument(parsed, 警告) : null;
+  if (normalized) {
     const profileResult = applyCalendarProfileConfig({
       profileHint: normalized.Profile,
       config: normalized.Profile设置,
     });
     警告.push(...profileResult.warnings);
+    if (!profileResult.compatible) normalized = null;
   }
   applyCalendarRuntimeDefaults(normalized?.默认设置);
   if (!normalized) {
@@ -263,7 +266,9 @@ export async function listCalendarRuntimeWorldbookMoveCandidates(): Promise<{
 export async function inspectCalendarRuntimeWorldbookSummary(): Promise<CalendarRuntimeWorldbookSummary> {
   const { 来源, 条目, 警告 } = await readCalendarRuntimeWorldbookEntries();
   const indexEntry = findCalendarRuntimeIndexEntry(条目);
-  const parsed = indexEntry ? 解析Yaml文本<unknown>(indexEntry.条目.content, `索引条目「${indexEntry.条目.name}」`, 警告) : null;
+  const parsed = indexEntry
+    ? 解析Yaml文本<unknown>(indexEntry.条目.content, `索引条目「${indexEntry.条目.name}」`, 警告)
+    : null;
   const normalized = parsed ? normalizeCalendarRuntimeIndexDocument(parsed, 警告) : null;
   return inspectCalendarRuntimeWorldbookSummaryFromRuntime({
     sources: 来源,
@@ -297,7 +302,8 @@ function filterTextLibrarySourceDiagnostics(
 ): CalendarRuntimeDiagnostic[] {
   const normalizedWorldbookName = 规范化名称(worldbookName);
   return diagnostics.filter(
-    item => !item.worldbookName || (normalizedWorldbookName && 规范化名称(item.worldbookName) === normalizedWorldbookName),
+    item =>
+      !item.worldbookName || (normalizedWorldbookName && 规范化名称(item.worldbookName) === normalizedWorldbookName),
   );
 }
 
@@ -323,13 +329,15 @@ export function readCalendarRuntimeTextLibraryFromEntries(
       文本库: {},
       来源: reference,
       命中条目名: null,
-      警告: [
-        ...relevantWarnings,
-        message,
-      ],
+      警告: [...relevantWarnings, message],
       诊断: [
         ...relevantDiagnostics,
-        { level: 'warning', code: 'runtime_worldbook_text_library_not_found', message, worldbookName: reference.世界书 },
+        {
+          level: 'warning',
+          code: 'runtime_worldbook_text_library_not_found',
+          message,
+          worldbookName: reference.世界书,
+        },
       ],
     };
   }
