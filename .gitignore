@@ -1,9 +1,12 @@
 node_modules
+<<<<<<< HEAD
 .worktrees/
 .pnpm-store/
 .codegraph/
 .codex/
 .cursor/rules/新增資料夾/
+=======
+>>>>>>> 86263ac33d811f0fc3d2e7860c0b19039a9f4515
 
 .DS_Store
 Thumbs.db
